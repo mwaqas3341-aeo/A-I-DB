@@ -106,52 +106,43 @@ const google = {
 
     /** Each read of .run returns a new isolated chain context. */
     get run() {
-      let _onSuccess = () => {};
-      let _onFailure = (err) => console.error('[api.js] Unhandled failure:', err);
+  let _onSuccess = () => {};
+  let _onFailure = (err) => console.error('[api.js] Unhandled failure:', err);
 
-      // The chain object exposes .withSuccessHandler / .withFailureHandler
-      // and, via Proxy, any server function name as a callable method.
-      const chain = {
-        withSuccessHandler(fn) {
-          if (typeof fn === 'function') _onSuccess = fn;
-          return chain;
-        },
-        withFailureHandler(fn) {
-          if (typeof fn === 'function') _onFailure = fn;
-          return chain;
-        },
-      };
-
-      return new Proxy(chain, {
-        get(target, prop) {
-          // Passthrough for the two known chain methods
-          if (prop in target) return target[prop];
-
-          // Anything else is a server-function call
-          return (...args) => {
-            // Snapshot handlers (the chain may be reused in theory)
-            const onSuccess = _onSuccess;
-            const onFailure = _onFailure;
-
-            // Normalise args: single-object arg → pass as-is, else wrap
-            const payload = args.length === 0
-              ? undefined
-              : args.length === 1
-                ? args[0]
-                : args;           // multi-arg → array
-
-            apiCall(prop, payload)
-              .then(onSuccess)
-              .catch(onFailure);
-          };
-        },
-      });
+  const chain = {
+    withSuccessHandler(fn) {
+      if (typeof fn === 'function') _onSuccess = fn;
+      return proxy;          // ← return proxy, not chain
     },
+    withFailureHandler(fn) {
+      if (typeof fn === 'function') _onFailure = fn;
+      return proxy;          // ← return proxy, not chain
+    },
+  };
 
-  },
-};
+  const proxy = new Proxy(chain, {
+    get(target, prop) {
+      if (prop in target) return target[prop];
 
+      return (...args) => {
+        const onSuccess = _onSuccess;
+        const onFailure = _onFailure;
 
+        const payload = args.length === 0
+          ? undefined
+          : args.length === 1
+            ? args[0]
+            : args;
+
+        apiCall(prop, payload)
+          .then(onSuccess)
+          .catch(onFailure);
+      };
+    },
+  });
+
+  return proxy;
+},
 // ─────────────────────────────────────────────────────────────────────
 //  DEBUG HELPER  (remove or set to false in production)
 // ─────────────────────────────────────────────────────────────────────
