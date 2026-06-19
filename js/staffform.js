@@ -698,9 +698,8 @@ function openStaffFormModal(mode, row) {
     modeTag.textContent = 'VIEW';
     modeTag.className   = 'sfm-mode-tag tag-view';
     title.textContent   = 'Staff Details';
-    footer.innerHTML =
-      '<button class="sfm-header-btn accent" onclick="sfmSwitchToEdit()">✏️ Edit Record</button>' +
-      '<button class="sfm-header-btn" onclick="closeStaffFormModal()">Close</button>';
+    footer.innerHTML = '<button type="button" class="sfm-header-btn accent" onclick="sfmSwitchToEdit()">✏️ Edit Record</button>' + 
+                       '<button type="button" class="sfm-header-btn" onclick="closeStaffFormModal()">Close</button>';
     hdrActions.innerHTML = '';
   } else if (mode === 'edit') {
     sfmCnicStatus = 'unchecked'; // ← add this line
@@ -709,9 +708,8 @@ function openStaffFormModal(mode, row) {
     modeTag.textContent = 'EDIT';
     modeTag.className   = 'sfm-mode-tag tag-edit';
     title.textContent   = 'Edit Staff Record';
-    footer.innerHTML =
-      '<button class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">💾 Save Changes</button>' +
-      '<button class="sfm-header-btn" onclick="sfmSwitchToView()">Cancel</button>';
+footer.innerHTML = '<button type="button" class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">💾 Save Changes</button>' + 
+                   '<button type="button" class="sfm-header-btn" onclick="sfmSwitchToView()">Cancel</button>';
     hdrActions.innerHTML = '';
   } else { // add
     sfmPnoStatus = 'unchecked'; // ← add this line
@@ -721,9 +719,8 @@ function openStaffFormModal(mode, row) {
     modeTag.textContent = 'NEW';
     modeTag.className   = 'sfm-mode-tag tag-add';
     title.textContent   = 'Add New Staff Member';
-    footer.innerHTML =
-      '<button class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">✅ Save Staff Member</button>' +
-      '<button class="sfm-header-btn" onclick="closeStaffFormModal()">Cancel</button>';
+    footer.innerHTML = '<button type="button" class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">✅ Save Staff Member</button>' + 
+                       '<button type="button" class="sfm-header-btn" onclick="closeStaffFormModal()">Cancel</button>';
     hdrActions.innerHTML = '';
   }
 
