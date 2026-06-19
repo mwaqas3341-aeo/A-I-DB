@@ -798,12 +798,14 @@ function sfmDoSave(data) {
     hideLoading();
   }
 
+  // Define userPayload out here so BOTH 'add' and 'edit' can access it
+  var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
+
   if (sfmMode === 'add') {
     google.script.run
       .withFailureHandler(function(err) {
         finishUI();
         showToast('Save failed: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
-        // Modal stays open so the user can retry — no blank screen.
       })
       .withSuccessHandler(function(res) {
         finishUI();
@@ -813,23 +815,21 @@ function sfmDoSave(data) {
             closeStaffFormModal();
             invalidateCache('Staff');
             if (currentSheetView === 'Staff') applyFilter();
-            else showEmptyState && renderTable && renderTable(); // safe no-op fallbacks
+            else showEmptyState && renderTable && renderTable();
           } else {
             showToast('Error: ' + (res && (res.errors ? res.errors.join(', ') : res.error) || 'Unknown error'), 'error');
           }
         } catch (uiErr) {
-          // Ensure we never leave a blank screen even if rendering throws.
           closeStaffFormModal();
           try { applyFilter(); } catch (_e) {}
           showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
         }
-      }).addStaffRow(data);
+      }).addStaffRow(data, userPayload); // <-- Now it can access userPayload
   } else {
     google.script.run
       .withFailureHandler(function(err) {
         finishUI();
         showToast('Update failed: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
-        // Modal stays open so the user can retry — no blank screen.
       })
       .withSuccessHandler(function(res) {
         finishUI();
@@ -848,10 +848,9 @@ function sfmDoSave(data) {
           try { applyFilter(); } catch (_e) {}
           showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
         }
-      }).updateStaffRow(data);
+      }).updateStaffRow(data, userPayload); // <-- Now it can access userPayload
   }
 }
-
 
 // ══════════════════════════════════════════════════════════════════
 //  TRANSFER MODAL
@@ -1020,13 +1019,14 @@ function tfSubmit() {
         try { applyFilter(); } catch (_e) {}
         showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
       }
-    }).executeTransfer({
-      personalNo:     safeVal(transferRowData['PERSONAL NO.']),
+var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
+}).executeTransfer({
+  personalNo:     safeVal(transferRowData['PERSONAL NO.']),
       rowNum:         transferRowData._row,
       targetEmis:     targetEmis,
       notificationNo: notifNo,
       newJoiningDate: formattedDate
-    });
+      }, userPayload);
 }
 
 function closeTransferModal() {
@@ -1255,8 +1255,9 @@ function pmSubmit() {
         try { applyFilter(); } catch (_e) {}
         showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
       }
-    }).executePromotion({
-      personalNo:         safeVal(promotionRowData['PERSONAL NO.']),
+  var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
+}).executePromotion({
+  personalNo:         safeVal(promotionRowData['PERSONAL NO.']),
       rowNum:             promotionRowData._row,
       newDesignation:     designation,
       newBps:             bps,
@@ -1265,7 +1266,7 @@ function pmSubmit() {
       newPostingDate:     formattedPosting,
       newScaleJoiningDate: formattedScale,
       notificationNo:     notifNo
-    });
+      }, userPayload);
 }
 
 function closePromotionModal() {
