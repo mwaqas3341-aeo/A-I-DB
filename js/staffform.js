@@ -998,6 +998,9 @@ function tfSubmit() {
     hideLoading();
   }
 
+  // 🔴 CRITICAL FIX: Define userPayload here, outside and before the server call
+  var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
+
   google.script.run
     .withFailureHandler(function(err) {
       finishUI();
@@ -1019,16 +1022,14 @@ function tfSubmit() {
         try { applyFilter(); } catch (_e) {}
         showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
       }
-var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
-}).executeTransfer({
-  personalNo:     safeVal(transferRowData['PERSONAL NO.']),
+    }).executeTransfer({
+      personalNo:     safeVal(transferRowData['PERSONAL NO.']),
       rowNum:         transferRowData._row,
       targetEmis:     targetEmis,
       notificationNo: notifNo,
       newJoiningDate: formattedDate
-      }, userPayload);
+    }, userPayload); // <-- Now it successfully passes the variable
 }
-
 function closeTransferModal() {
   document.getElementById('transferModal').classList.add('hidden');
   transferRowData = null;
