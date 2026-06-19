@@ -8,7 +8,7 @@
 // sfmMode and sfmCurrentRow are declared in hr_view.js (shared state)
 // var sfmMode       = 'view';     ← declared in hr_view.js
 // var sfmCurrentRow = null;       ← declared in hr_view.js
-var sfmEmisMap    = {};   // emis_lowercase → {d,w,t,m,e} from schoolCache
+var sfmEmisMap    = {};   // emis_lowercase → {d,w,t,m,e} from schoolCache / hrSchoolCache
 var sfmSubmitting = false; // guard against double-submit / re-entrancy
 var sfmPnoStatus  = 'unchecked'; // ← add this line
 var sfmCnicStatus = 'unchecked'; // ← add this line
@@ -48,13 +48,69 @@ var SF_FIELD_MAP = {
   sf_iban:                 'SALARY ACCOUNT IBAN NO.'
 };
 
-// ---------- Build EMIS map from schoolCache (client-side) ----------
+// ---------- Resolve whichever school-cache variable is actually populated ----------
+// FIX: previously this function only ever read `schoolCache`, a variable that
+// is never assigned anywhere in this codebase. The HR module populates
+// `hrSchoolCache` (see hr_view.js → openHrModule / openStaffFormModal /
+// openTransferModal). Because of that mismatch, sfmEmisMap stayed permanently
+// empty and every EMIS lookup inside Add/Edit/Transfer/Promotion silently
+// failed even though the EMIS codes existed in the data.
+//
+// This helper now checks both names, preferring whichever has data, so it
+// works regardless of which module populated it first.
+function _sfmResolveSchoolPool() {
+  if (typeof hrSchoolCache !== 'undefined' && Array.isArray(hrSchoolCache) && hrSchoolCache.length) {
+    return hrSchoolCache;
+  }
+  if (typeof schoolCache !== 'undefined' && Array.isArray(schoolCache) && schoolCache.length) {
+    return schoolCache;
+  }
+  return [];
+}
+
+// ---------- Build EMIS map from whichever school cache is populated ----------
 function buildSfmEmisMap() {
   sfmEmisMap = {};
-  if (!Array.isArray(schoolCache)) return;
-  schoolCache.forEach(function(s) {
+  var pool = _sfmResolveSchoolPool();
+  pool.forEach(function(s) {
     if (s.e) sfmEmisMap[s.e.toString().trim().toLowerCase()] = s;
   });
+}
+
+// ---------- Ensure the school cache is actually loaded before we need it ----------
+// If neither hrSchoolCache nor schoolCache has data yet (e.g. the user opened
+// Add/Edit/Transfer/Promotion before the background load finished), fetch it
+// once via the same server call the HR module uses, then rebuild the map and
+// invoke the callback. If data is already present, the callback fires
+// immediately and synchronously.
+function sfmEnsureSchoolCache(callback) {
+  if (_sfmResolveSchoolPool().length > 0) {
+    buildSfmEmisMap();
+    if (callback) callback();
+    return;
+  }
+  var userPayload = (typeof currentUser !== 'undefined') ? currentUser : null;
+  google.script.run
+    .withSuccessHandler(function(data) {
+      // Populate hrSchoolCache if that global exists in this page; otherwise
+      // fall back to schoolCache so buildSfmEmisMap() still finds it.
+      if (typeof hrSchoolCache !== 'undefined') {
+        hrSchoolCache = data || [];
+      } else {
+        schoolCache = data || [];
+      }
+      buildSfmEmisMap();
+      if (callback) callback();
+    })
+    .withFailureHandler(function(err) {
+      if (typeof showToast === 'function') {
+        showToast('Error loading school data: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
+      }
+      // Still invoke the callback so the UI doesn't hang — lookups will just
+      // report "not found" until the user retries.
+      if (callback) callback();
+    })
+    .getSchoolHierarchyForUser(userPayload);
 }
 
 // ---------- EMIS live-lookup (client-side, instant from cache) ----------
@@ -87,7 +143,20 @@ function sfmOnEmisInput() {
     return;
   }
 
-  // Lookup from client-side schoolCache first (instant)
+  // If the map is still empty (cache not loaded yet), try to load it once
+  // and re-run the lookup automatically instead of reporting a false negative.
+  if (Object.keys(sfmEmisMap).length === 0 && _sfmResolveSchoolPool().length === 0) {
+    errEl.textContent = '⏳ Loading school data…';
+    sfmEnsureSchoolCache(function() {
+      // Only re-trigger if the field still holds the same value
+      if ((document.getElementById('sf_emis').value || '').trim() === emis) {
+        sfmOnEmisInput();
+      }
+    });
+    return;
+  }
+
+  // Lookup from client-side cache (instant)
   var found = sfmEmisMap[emis.toLowerCase()];
   if (!found) {
     errEl.textContent = '⚠ EMIS code not found in Schools data.';
@@ -593,7 +662,18 @@ function openStaffFormModal(mode, row) {
   sfmMode       = mode;
   sfmCurrentRow = row || null;
   sfmSubmitting = false;
-  buildSfmEmisMap();
+
+  // FIX: previously this called buildSfmEmisMap() immediately, which is a
+  // no-op if the school cache hasn't loaded yet (race condition on first
+  // open, or if only hrSchoolCache — not schoolCache — was ever populated).
+  // sfmEnsureSchoolCache() fetches the data first if needed, builds the map,
+  // then re-runs the EMIS lookup for whatever value is already in the field
+  // (relevant for edit/view modes where the field is pre-filled).
+  sfmEnsureSchoolCache(function() {
+    if (sfmMode !== 'add' || (document.getElementById('sf_emis') || {}).value) {
+      sfmOnEmisInput();
+    }
+  });
 
   var modal      = document.getElementById('staffFormModal');
   var form       = document.getElementById('staffForm');
@@ -782,8 +862,17 @@ var tfSubmitting    = false;
 window.openTransferModal = function(row) {
   transferRowData = row;
   tfSubmitting     = false;
-  buildSfmEmisMap();
 
+  // FIX: was buildSfmEmisMap() called unconditionally and synchronously —
+  // if the cache wasn't loaded yet, the modal would render with an empty
+  // sfmEmisMap and every EMIS the user typed would report "not found".
+  // sfmEnsureSchoolCache() loads it first if needed, then renders the modal.
+  sfmEnsureSchoolCache(function() {
+    _sfmRenderTransferModal(row);
+  });
+};
+
+function _sfmRenderTransferModal(row) {
   var currentEmis    = safeVal(row['SCHOOL EMIS CODE']);
   var currentMark    = safeVal(row['MARKAZ NAME']);
   var teacherName    = safeVal(row['NAME OF TEACHER']);
@@ -825,7 +914,7 @@ window.openTransferModal = function(row) {
     '</div>';
 
   document.getElementById('transferModal').classList.remove('hidden');
-};
+}
 
 function tfOnTargetEmis() {
   var emis    = (document.getElementById('tf_targetEmis').value || '').trim();
@@ -956,8 +1045,15 @@ var pmSubmitting     = false;
 window.openPromotionModal = function(row) {
   promotionRowData = row;
   pmSubmitting     = false;
-  buildSfmEmisMap();
 
+  // FIX: same lazy-load guard as Transfer — ensures sfmEmisMap is populated
+  // before the modal (and its EMIS input) is rendered.
+  sfmEnsureSchoolCache(function() {
+    _sfmRenderPromotionModal(row);
+  });
+};
+
+function _sfmRenderPromotionModal(row) {
   var teacherName = safeVal(row['NAME OF TEACHER']);
   var personalNo  = safeVal(row['PERSONAL NO.']);
   var currentDes  = safeVal(row['DESIGNATION']);
@@ -1035,7 +1131,7 @@ window.openPromotionModal = function(row) {
   document.getElementById('pm_bps').addEventListener('input', function(e) {
     document.getElementById('pm_pps').value = e.target.value;
   });
-};
+}
 
 function pmOnTargetEmis() {
   var emis    = (document.getElementById('pm_targetEmis').value || '').trim();
