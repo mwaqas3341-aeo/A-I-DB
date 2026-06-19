@@ -698,8 +698,9 @@ function openStaffFormModal(mode, row) {
     modeTag.textContent = 'VIEW';
     modeTag.className   = 'sfm-mode-tag tag-view';
     title.textContent   = 'Staff Details';
-    footer.innerHTML = '<button type="button" class="sfm-header-btn accent" onclick="sfmSwitchToEdit()">✏️ Edit Record</button>' + 
-                       '<button type="button" class="sfm-header-btn" onclick="closeStaffFormModal()">Close</button>';
+    footer.innerHTML =
+      '<button type="button" class="sfm-header-btn accent" onclick="sfmSwitchToEdit()">✏️ Edit Record</button>' +
+      '<button type="button" class="sfm-header-btn" onclick="closeStaffFormModal()">Close</button>';
     hdrActions.innerHTML = '';
   } else if (mode === 'edit') {
     sfmCnicStatus = 'unchecked'; // ← add this line
@@ -708,8 +709,9 @@ function openStaffFormModal(mode, row) {
     modeTag.textContent = 'EDIT';
     modeTag.className   = 'sfm-mode-tag tag-edit';
     title.textContent   = 'Edit Staff Record';
-footer.innerHTML = '<button type="button" class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">💾 Save Changes</button>' + 
-                   '<button type="button" class="sfm-header-btn" onclick="sfmSwitchToView()">Cancel</button>';
+    footer.innerHTML =
+      '<button type="button" class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">💾 Save Changes</button>' +
+      '<button type="button" class="sfm-header-btn" onclick="sfmSwitchToView()">Cancel</button>';
     hdrActions.innerHTML = '';
   } else { // add
     sfmPnoStatus = 'unchecked'; // ← add this line
@@ -719,8 +721,9 @@ footer.innerHTML = '<button type="button" class="sfm-header-btn accent" id="sfmS
     modeTag.textContent = 'NEW';
     modeTag.className   = 'sfm-mode-tag tag-add';
     title.textContent   = 'Add New Staff Member';
-    footer.innerHTML = '<button type="button" class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">✅ Save Staff Member</button>' + 
-                       '<button type="button" class="sfm-header-btn" onclick="closeStaffFormModal()">Cancel</button>';
+    footer.innerHTML =
+      '<button type="button" class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">✅ Save Staff Member</button>' +
+      '<button type="button" class="sfm-header-btn" onclick="closeStaffFormModal()">Cancel</button>';
     hdrActions.innerHTML = '';
   }
 
@@ -906,8 +909,8 @@ function _sfmRenderTransferModal(row) {
     '</div>' +
 
     '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">' +
-      '<button class="primary-btn" id="tfSubmitBtn" onclick="tfSubmit()">✅ Confirm Transfer</button>' +
-      '<button class="secondary-btn" onclick="closeTransferModal()">Cancel</button>' +
+      '<button type="button" class="primary-btn" id="tfSubmitBtn" onclick="tfSubmit()">✅ Confirm Transfer</button>' +
+      '<button type="button" class="secondary-btn" onclick="closeTransferModal()">Cancel</button>' +
     '</div>';
 
   document.getElementById('transferModal').classList.remove('hidden');
@@ -1118,8 +1121,8 @@ function _sfmRenderPromotionModal(row) {
     '</div>' +
 
     '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">' +
-      '<button class="primary-btn" id="pmSubmitBtn" onclick="pmSubmit()">✅ Confirm Promotion</button>' +
-      '<button class="secondary-btn" onclick="closePromotionModal()">Cancel</button>' +
+      '<button type="button" class="primary-btn" id="pmSubmitBtn" onclick="pmSubmit()">✅ Confirm Promotion</button>' +
+      '<button type="button" class="secondary-btn" onclick="closePromotionModal()">Cancel</button>' +
     '</div>';
 
   document.getElementById('promotionModal').classList.remove('hidden');
