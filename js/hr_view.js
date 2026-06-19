@@ -99,11 +99,11 @@ const HR_SHEET_META = {
   'Deceased':          { title:'Death Cases',        sub:'Deceased staff records' },
   'Termination':       { title:'Terminations',       sub:'Staff whose service was terminated' },
   'Transfer_History': { title:'Transfer History', sub:'All transfer records and movement history' },
-  'Promotions_History':{ title:'Promotion History',  sub:'All promotion events and scale changes' },
+  's_History':{ title:' History',  sub:'All  events and scale changes' },
   'Deleted_Archive':   { title:'Deleted Archive',    sub:'Soft-deleted records stored for audit' }
 };
 
-const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','Promotions_History'];
+const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','s_History'];
 
 const SF_MAP = {
   sf_emis:                 'SCHOOL EMIS CODE',
@@ -678,7 +678,7 @@ function openHrMenu(btn, idx) {
     items += `
       <button class="hr-action-item" onclick="openStaffFormModal('edit', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✏️ Edit Record</button>
       <button class="hr-action-item" onclick="openTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Transfer</button>
-      <button class="hr-action-item" onclick="openPromotionModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">⬆️ Promotion</button>
+      <button class="hr-action-item" onclick="openModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">⬆️ </button>
       <button class="hr-action-item" onclick="openSeparationModal('retirement', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🎓 Retirement</button>
       <button class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>
       <button class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
@@ -686,7 +686,7 @@ function openHrMenu(btn, idx) {
       <button class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>`;
   } else if (isRevert) {
     const revertLabel = hrCurrentSheetView === 'Transfer_History'  ? '↩ Undo Transfer'
-                      : hrCurrentSheetView === 'Promotions_History' ? '↩ Undo Promotion'
+                      : hrCurrentSheetView === 's_History' ? '↩ Undo '
                       : '↩ Revert to Active Staff';
     items += `<button class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
   }
@@ -763,6 +763,9 @@ function openStaffFormModal(mode, row) {
     });
   }
 
+  // ── EMIS data guard: lazy-load hrSchoolCache if not yet populated ──
+  // (mirrors the same pattern used by openHrModule / openTransferModal so
+  // the EMIS lookup never silently fails because the cache is still empty)
   if (hrSchoolCache.length === 0) {
     const emisMsg = document.getElementById('sf_emis_msg');
     emisMsg.textContent   = '⏳ Loading school data…';
@@ -772,6 +775,9 @@ function openStaffFormModal(mode, row) {
       .withSuccessHandler(data => {
         hrSchoolCache = data || [];
         emisMsg.style.display = 'none';
+        // Refresh the StaffForm's own EMIS map (if that module is loaded)
+        // so add/edit/transfer/promotion lookups work immediately too.
+        if (typeof buildSfmEmisMap === 'function') buildSfmEmisMap();
       })
       .withFailureHandler(() => {
         emisMsg.textContent   = '⚠ Failed to load school data.';
@@ -779,6 +785,9 @@ function openStaffFormModal(mode, row) {
         emisMsg.style.display = 'block';
       })
       .getSchoolHierarchyForUser(typeof currentUser !== 'undefined' ? currentUser : null);
+  } else if (typeof buildSfmEmisMap === 'function') {
+    // Cache already populated — make sure the StaffForm EMIS map is in sync.
+    buildSfmEmisMap();
   }
 
   modal.style.display = 'flex';
@@ -857,7 +866,7 @@ function triggerPnoCheck(pno) {
   if (pno.length < 8) return;
 
   // ── 1. Client-side — main sheets (col D) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  const mainSheets = ['Staff','Deleted_Archive','s_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -943,7 +952,7 @@ function triggerCnicCheck(cnic) {
   }
 
   // ── 1. Client-side — main sheets (col W) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  const mainSheets = ['Staff','Deleted_Archive','s_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -1030,7 +1039,7 @@ function triggerIbanCheck(iban) {
   }
 
   // ── 1. Client-side — main sheets (col Z) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  const mainSheets = ['Staff','Deleted_Archive','s_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -1308,7 +1317,7 @@ function submitHrTransfer() {
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  PROMOTION MODAL
+//   MODAL
 // ──────────────────────────────────────────────────────────────────
 function openPromotionModal(row) {
   hrPromotionRow = row;
