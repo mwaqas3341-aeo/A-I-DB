@@ -642,3 +642,126 @@
   background: rgba(0,0,0,.15);
   color: #dc2626;
 }
+/* =========================================================
+   ✨ ENHANCED MODAL, SCROLLBAR & ALIGNMENT FIXES ✨
+========================================================= */
+
+/* 1. LOCK THE OUTER MODAL SO HEADERS/FOOTERS STAY FIXED */
+.hr-modal-content,
+#staffFormModal .modal-content,
+#transferModal .modal-content,
+#promotionModal .modal-content {
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: 90vh !important; /* Prevents modal from being taller than screen */
+    overflow: hidden !important; /* Hides the outer scrollbar */
+}
+
+/* 2. FORCE INNER FORM BODY TO SCROLL WITH PADDING */
+.sfm-body,
+.modal-bdy,
+#hrActualStaffForm,
+#staffForm,
+#hrTransferBody,
+#transferModalBody,
+#hrPromotionBody,
+#promotionModalBody,
+#hrActionBody {
+    flex: 1 1 auto;
+    overflow-y: auto !important; /* Enables vertical scrolling for the form */
+    overflow-x: hidden;
+    max-height: calc(90vh - 130px); /* Leaves room for header and footer */
+    padding: 20px 28px !important;
+}
+
+/* 3. VISIBLE, ELEGANT SCROLLBARS FOR FORMS */
+.sfm-body::-webkit-scrollbar,
+#hrActualStaffForm::-webkit-scrollbar,
+#staffForm::-webkit-scrollbar,
+.modal-bdy::-webkit-scrollbar {
+    width: 8px;
+}
+.sfm-body::-webkit-scrollbar-track,
+#hrActualStaffForm::-webkit-scrollbar-track,
+#staffForm::-webkit-scrollbar-track {
+    background: #f8fafc;
+    border-radius: 8px;
+}
+.sfm-body::-webkit-scrollbar-thumb,
+#hrActualStaffForm::-webkit-scrollbar-thumb,
+#staffForm::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 8px;
+}
+.sfm-body::-webkit-scrollbar-thumb:hover,
+#hrActualStaffForm::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 4. PROFESSIONAL FORM ALIGNMENT (GRID FIXES) */
+.hr-form-grid, .sfm-grid {
+    display: grid;
+    /* Auto-fit ensures columns wrap neatly without stretching too wide */
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important; 
+    gap: 16px 20px !important; /* 16px vertical gap, 20px horizontal gap */
+    align-items: start;
+    margin-bottom: 8px;
+}
+
+.hr-form-group, .sfm-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.hr-form-label, .sfm-field label, .transfer-step label {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* 5. CLEAN, MODERN INPUT FIELDS */
+.hr-form-input, .sfm-input, .sfm-select, .transfer-step input, .transfer-step select {
+    background-color: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    font-size: 0.85rem !important;
+    color: #0f172a !important;
+    transition: all 0.2s ease !important;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.02) !important;
+    width: 100% !important;
+    box-sizing: border-box;
+}
+
+/* Focus state when user clicks an input */
+.hr-form-input:focus, .sfm-input:focus, .sfm-select:focus, .transfer-step input:focus, .transfer-step select:focus {
+    background-color: #ffffff !important;
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.15) !important;
+    outline: none;
+}
+
+/* Locked / View-Only inputs */
+.hr-readonly, .sfm-mode-view .sfm-input, .sfm-mode-view .sfm-select {
+    background-color: #f1f5f9 !important;
+    color: #64748b !important;
+    border-color: #e2e8f0 !important;
+    cursor: not-allowed !important;
+    opacity: 0.9;
+}
+
+/* 6. NEAT SECTION HEADERS */
+.hr-form-section-title, .sfm-section-title {
+    font-size: 0.75rem !important;
+    font-weight: 800 !important;
+    color: #1e40af !important; 
+    border-bottom: 2px solid #e0e7ff !important;
+    padding-bottom: 8px !important;
+    margin-top: 10px !important;
+    margin-bottom: 16px !important;
+    background: transparent !important;
+    border-left: none !important;
+}
