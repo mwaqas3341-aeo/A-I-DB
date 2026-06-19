@@ -997,7 +997,7 @@ function _sfmRenderPromotionModal(row) {
       '<label>New Designation <span style="color:var(--danger)">*</span></label>' +
       '<select id="pm_designation">' +
         '<option value="">Select…</option>' +
-        ['PST','ESE','EST','SESE','SST','SSE','Headmaster','Headmistress'].map(function(d) {
+        ['PST','ESE','EST','SESE','SST','SSE','Headmaster','Headmistress','School Guard','Secuirty Guard','Naib Qasid','Chowkidar','Mali','C.IV'].map(function(d) {
           return '<option value="' + d + '"' + (d === currentDes ? ' selected' : '') + '>' + d + '</option>';
         }).join('') +
       '</select>' +
