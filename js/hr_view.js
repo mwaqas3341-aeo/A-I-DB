@@ -93,17 +93,16 @@ function _getJurisdictionSchools() {
 }
 
 const HR_SHEET_META = {
-  'Staff':             { title:'Active Staff',       sub:'Browse and manage all active teaching staff records' },
-  'Retirement':        { title:'Retirements',        sub:'Staff who have retired from service' },
-  'Resignation':       { title:'Resignations',       sub:'Staff who have resigned from service' },
-  'Deceased':          { title:'Death Cases',        sub:'Deceased staff records' },
-  'Termination':       { title:'Terminations',       sub:'Staff whose service was terminated' },
-  'Transfer_History': { title:'Transfer History', sub:'All transfer records and movement history' },
-  's_History':{ title:' History',  sub:'All  events and scale changes' },
-  'Deleted_Archive':   { title:'Deleted Archive',    sub:'Soft-deleted records stored for audit' }
+  'Staff':              { title:'Active Staff',       sub:'Browse and manage all active teaching staff records' },
+  'Retirement':         { title:'Retirements',        sub:'Staff who have retired from service' },
+  'Resignation':        { title:'Resignations',       sub:'Staff who have resigned from service' },
+  'Deceased':           { title:'Death Cases',        sub:'Deceased staff records' },
+  'Termination':        { title:'Terminations',       sub:'Staff whose service was terminated' },
+  'Transfer_History':   { title:'Transfer History',   sub:'All transfer records and movement history' },
+  'Promotions_History': { title:'Promotions History', sub:'All promotion events and scale changes' },
+  'Deleted_Archive':    { title:'Deleted Archive',    sub:'Soft-deleted records stored for audit' }
 };
-
-const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','s_History'];
+const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','Promotions_History'];
 
 const SF_MAP = {
   sf_emis:                 'SCHOOL EMIS CODE',
@@ -686,7 +685,7 @@ function openHrMenu(btn, idx) {
       <button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>`;
   } else if (isRevert) {
     const revertLabel = hrCurrentSheetView === 'Transfer_History'  ? '↩ Undo Transfer'
-                      : hrCurrentSheetView === 's_History' ? '↩ Undo '
+                      : hrCurrentSheetView === 'Promotions_History' ? '↩ Undo Promotion'
                       : '↩ Revert to Active Staff';
     items += `<button type="button" class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
   }
