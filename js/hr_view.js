@@ -631,14 +631,14 @@ function renderHrTable() {
     hrCurrentHeaders.map(h => `<th>${h}</th>`).join('') + '</tr>';
   const body = pageRows.map((row, idx) => {
     const cells = hrCurrentHeaders.map(h => `<td>${row[h] !== undefined && row[h] !== null ? row[h] : ''}</td>`).join('');
-    return `<tr><td class="hr-actions-col"><button class="hr-btn-ghost action-menu-btn" style="padding:3px 8px;" onclick="openHrMenu(this,${start+idx})">⋮</button></td>${cells}</tr>`;
+    return `<tr><td class="hr-actions-col"><button type="button" class="hr-btn-ghost action-menu-btn" style="padding:3px 8px;" onclick="openHrMenu(this,${start+idx})">⋮</button></td>${cells}</tr>`;
   }).join('');
 
   const pagination = totalPages > 1 ? `
     <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <button class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage-1})" ${hrCurrentPage===1?'disabled':''}>‹ Prev</button>
+      <button type="button" class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage-1})" ${hrCurrentPage===1?'disabled':''}>‹ Prev</button>
       <span style="font-size:13px;color:#475569;">Page ${hrCurrentPage} of ${totalPages}</span>
-      <button class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage+1})" ${hrCurrentPage===totalPages?'disabled':''}>Next ›</button>
+      <button type="button" class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage+1})" ${hrCurrentPage===totalPages?'disabled':''}>Next ›</button>
     </div>` : '';
 
   container.innerHTML = `
@@ -672,23 +672,23 @@ function openHrMenu(btn, idx) {
   const menu = document.createElement('div');
   menu.className = 'hr-fixed-menu';
 
-  let items = `<button class="hr-action-item" onclick="openStaffFormModal('view', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">👁 View Details</button>`;
+  let items = `<button type="button" class="hr-action-item" onclick="openStaffFormModal('view', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">👁 View Details</button>`;
 
   if (isStaff) {
     items += `
-      <button class="hr-action-item" onclick="openStaffFormModal('edit', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✏️ Edit Record</button>
-      <button class="hr-action-item" onclick="openTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Transfer</button>
-      <button class="hr-action-item" onclick="openModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">⬆️ </button>
-      <button class="hr-action-item" onclick="openSeparationModal('retirement', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🎓 Retirement</button>
-      <button class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>
-      <button class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
-      <button class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
-      <button class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>`;
+      <button type="button" class="hr-action-item" onclick="openStaffFormModal('edit', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✏️ Edit Record</button>
+      <button type="button" class="hr-action-item" onclick="openTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Transfer</button>
+      <button type="button" class="hr-action-item" onclick="openModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">⬆️ </button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('retirement', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🎓 Retirement</button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
+      <button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>`;
   } else if (isRevert) {
     const revertLabel = hrCurrentSheetView === 'Transfer_History'  ? '↩ Undo Transfer'
                       : hrCurrentSheetView === 's_History' ? '↩ Undo '
                       : '↩ Revert to Active Staff';
-    items += `<button class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
+    items += `<button type="button" class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
   }
 
   menu.innerHTML = items;
@@ -1261,8 +1261,8 @@ function openTransferModal(row) {
         <div class="transfer-err" id="tfe_date"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-        <button class="hr-btn-primary" onclick="submitHrTransfer()">✅ Confirm Transfer</button>
-        <button class="hr-btn-ghost" onclick="document.getElementById('hrTransferModal').style.display='none'">Cancel</button>
+        <button type="button" class="hr-btn-primary" onclick="submitHrTransfer()">✅ Confirm Transfer</button>
+        <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrTransferModal').style.display='none'">Cancel</button>
       </div>`;
     document.getElementById('hrTransferModal').style.display = 'flex';
   });
@@ -1362,8 +1362,8 @@ function openPromotionModal(row) {
       <div class="transfer-err" id="pme_scale"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button class="hr-btn-primary" onclick="submitHrPromotion()">✅ Confirm Promotion</button>
-      <button class="hr-btn-ghost" onclick="document.getElementById('hrPromotionModal').style.display='none'">Cancel</button>
+      <button type="button" class="hr-btn-primary" onclick="submitHrPromotion()">✅ Confirm Promotion</button>
+      <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrPromotionModal').style.display='none'">Cancel</button>
     </div>`;
   document.getElementById('hrPromotionModal').style.display = 'flex';
 }
@@ -1449,10 +1449,10 @@ function openSeparationModal(actionType, row) {
       <div class="transfer-err" id="sae_date"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button class="hr-btn-danger" onclick="submitSeparation('${actionType}', hrFilteredResults.find(r=>r['PERSONAL NO.']==='${(row['PERSONAL NO.']||'').replace(/'/g,"\\'")}'))">
+      <button type="button" class="hr-btn-danger" onclick="submitSeparation('${actionType}', hrFilteredResults.find(r=>r['PERSONAL NO.']==='${(row['PERSONAL NO.']||'').replace(/'/g,"\\'")}'))">
         Submit ${labels[actionType].replace(/^[^ ]+ /, '')}
       </button>
-      <button class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
+      <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
     </div>`;
   document.getElementById('hrActionModal').style.display = 'flex';
 }
