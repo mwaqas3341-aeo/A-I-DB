@@ -766,40 +766,57 @@
     border-left: none !important;
 }
 /* =========================================================
-   🔵 BLUE HEADERS & PERFECT CLOSE BUTTON ALIGNMENT 🔵
-   Transforms Transfer, Promotion, Edit, and View headers
-   to exactly match the Retirement modal design.
-========================================================= */
+  /* ══ CORRECTED BLUE HEADERS & PERFECT ALIGNMENT ══ */
 
-/* 1. Transform the top header area of the modals to solid blue */
-#staffFormModal .modal-content > :first-child:not(.close-btn),
+/* 1. Target the actual header class for Staff Modals */
+#staffFormModal .sfm-header,
 #transferModal .modal-content > :first-child:not(.close-btn),
 #promotionModal .modal-content > :first-child:not(.close-btn),
-#hrStaffFormModal .modal-content > :first-child:not(.close-btn),
 #hrTransferModal .modal-content > :first-child:not(.close-btn),
-#hrPromotionModal .modal-content > :first-child:not(.close-btn) {
+#hrPromotionModal .modal-content > :first-child:not(.close-btn),
+#hrActionModal .modal-content > :first-child:not(.close-btn) {
     background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%) !important;
     padding: 16px 24px !important;
     display: flex !important;
     align-items: center !important;
     gap: 12px !important;
-    margin: 0 !important;
     border-bottom: none !important;
-    border-radius: 12px 12px 0 0 !important; /* Rounds the top corners */
-}
-
-/* 2. Force the title text and icons inside the blue header to be white */
-#staffFormModal .modal-content > :first-child:not(.close-btn) *,
-#transferModal .modal-content > :first-child:not(.close-btn) *,
-#promotionModal .modal-content > :first-child:not(.close-btn) *,
-#hrStaffFormModal .modal-content > :first-child:not(.close-btn) *,
-#hrTransferModal .modal-content > :first-child:not(.close-btn) *,
-#hrPromotionModal .modal-content > :first-child:not(.close-btn) * {
+    border-radius: 12px 12px 0 0 !important;
     color: #ffffff !important;
 }
 
-/* 3. Keep the NEW/EDIT/VIEW badge styled nicely against the new blue background */
-#sfmModeTag, #sfmModeChip {
+/* 2. Force text and icons inside these headers to be white */
+#staffFormModal .sfm-header *,
+#transferModal .modal-content > :first-child:not(.close-btn) *,
+#promotionModal .modal-content > :first-child:not(.close-btn) *,
+#hrTransferModal .modal-content > :first-child:not(.close-btn) *,
+#hrPromotionModal .modal-content > :first-child:not(.close-btn) *,
+#hrActionModal .modal-content > :first-child:not(.close-btn) * {
+    color: #ffffff !important;
+}
+
+/* 3. Fix the Close Button (X) positioning */
+#staffFormModal .close-btn,
+#transferModal .close-btn,
+#promotionModal .close-btn,
+#hrTransferModal .close-btn,
+#hrPromotionModal .close-btn,
+#hrActionModal .close-btn {
+    position: absolute !important;
+    top: 18px !important;
+    right: 20px !important;
+    background: transparent !important;
+    color: #ffffff !important;
+    font-size: 1.5rem !important;
+    font-weight: bold !important;
+    border: none !important;
+    cursor: pointer !important;
+    z-index: 50 !important;
+    line-height: 1 !important;
+}
+
+/* 4. Fix for the Staff Form Badge/Chip */
+#sfmModeTag {
     background: rgba(255, 255, 255, 0.25) !important;
     border: 1px solid rgba(255, 255, 255, 0.4) !important;
     color: #ffffff !important;
@@ -807,45 +824,4 @@
     border-radius: 20px !important;
     font-size: 0.75rem !important;
     font-weight: 800 !important;
-    letter-spacing: 0.05em !important;
-}
-
-/* 4. Align the 'X' Close Button exactly like the Retirement picture */
-#staffFormModal .close-btn,
-#transferModal .close-btn,
-#promotionModal .close-btn,
-#hrStaffFormModal .close-btn,
-#hrTransferModal .close-btn,
-#hrPromotionModal .close-btn {
-    position: absolute !important;
-    top: 18px !important;       /* Brings it down to vertically center in the blue header */
-    right: 20px !important;     /* Pushes it inward from the very corner */
-    background: transparent !important; /* Removes the dark circle completely */
-    color: #ffffff !important;  /* Makes the X pure white */
-    font-size: 1.5rem !important; /* Gives the X a clean, legible size */
-    font-weight: bold !important;
-    border: none !important;
-    box-shadow: none !important;
-    width: auto !important;
-    height: auto !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    line-height: 1 !important;
-    padding: 0 !important;
-    z-index: 50 !important; /* Ensures it stays visible above the blue header */
-    transition: opacity 0.2s ease, transform 0.2s ease !important;
-}
-
-/* Subtle hover effect for the X (so it responds when the mouse goes over it) */
-#staffFormModal .close-btn:hover,
-#transferModal .close-btn:hover,
-#promotionModal .close-btn:hover,
-#hrStaffFormModal .close-btn:hover,
-#hrTransferModal .close-btn:hover,
-#hrPromotionModal .close-btn:hover {
-    background: transparent !important;
-    color: #ffffff !important;
-    opacity: 0.7 !important;
-    transform: scale(1.15) !important;
 }
