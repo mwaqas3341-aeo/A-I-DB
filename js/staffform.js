@@ -1161,6 +1161,7 @@ function pmOnTargetEmis() {
 }
 
 // HARD GATE: invalid input -> highlighted fields + toast, no server call.
+// HARD GATE: invalid input -> highlighted fields + toast, no server call.
 function pmSubmit() {
   if (pmSubmitting) return;
 
@@ -1235,41 +1236,13 @@ function pmSubmit() {
     hideLoading();
   }
 
+  // 🔴 CRITICAL FIX: Define userPayload here, BEFORE the google.script.run chain starts
+  var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
+
   google.script.run
     .withFailureHandler(function(err) {
       finishUI();
-      showToast('Promotion failed: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
-    })
-    .withSuccessHandler(function(res) {
-      finishUI();
-      try {
-        if (res && res.success) {
-          showToast(res.message || 'Promotion recorded.', 'success');
-          closePromotionModal();
-          invalidateCache('Staff');
-          applyFilter();
-        } else {
-          showToast('Error: ' + (res && res.error || 'Unknown error'), 'error');
-        }
-      } catch (uiErr) {
-        closePromotionModal();
-        try { applyFilter(); } catch (_e) {}
-        showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
-      }
-  var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
-}).executePromotion({
-  personalNo:         safeVal(promotionRowData['PERSONAL NO.']),
-      rowNum:             promotionRowData._row,
-      newDesignation:     designation,
-      newBps:             bps,
-      newPps:             pps, // Passing new PPS to backend
-      targetEmis:         targetEmis,
-      newPostingDate:     formattedPosting,
-      newScaleJoiningDate: formattedScale,
-      notificationNo:     notifNo
-      }, userPayload);
-}
-
+      showToast('Promotion failed: ' + (err &&
 function closePromotionModal() {
   document.getElementById('promotionModal').classList.add('hidden');
   promotionRowData = null;
