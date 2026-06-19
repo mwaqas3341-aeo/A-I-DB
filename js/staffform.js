@@ -6,13 +6,13 @@
 
 // ---------- State ----------
 // sfmMode and sfmCurrentRow are declared in hr_view.js (shared state)
-// var sfmMode       = 'view';     ← declared in hr_view.js
-// var sfmCurrentRow = null;       ← declared in hr_view.js
-var sfmEmisMap    = {};   // emis_lowercase → {d,w,t,m,e} from schoolCache / hrSchoolCache
-var sfmSubmitting = false; // guard against double-submit / re-entrancy
-var sfmPnoStatus  = 'unchecked'; // ← add this line
-var sfmCnicStatus = 'unchecked'; // ← add this line
-var sfmIbanStatus = 'unchecked'; // ← add this line
+// var sfmMode       = 'view';       ← declared in hr_view.js
+// var sfmCurrentRow = null;         ← declared in hr_view.js
+var sfmEmisMap    = {};              // emis_lowercase → {d,w,t,m,e} from schoolCache / hrSchoolCache
+var sfmSubmitting = false;           // guard against double-submit / re-entrancy
+var sfmPnoStatus  = 'unchecked'; 
+var sfmCnicStatus = 'unchecked'; 
+var sfmIbanStatus = 'unchecked'; 
 
 // ---------- Field map: DOM id → sheet header key ----------
 var SF_FIELD_MAP = {
@@ -49,15 +49,6 @@ var SF_FIELD_MAP = {
 };
 
 // ---------- Resolve whichever school-cache variable is actually populated ----------
-// FIX: previously this function only ever read `schoolCache`, a variable that
-// is never assigned anywhere in this codebase. The HR module populates
-// `hrSchoolCache` (see hr_view.js → openHrModule / openStaffFormModal /
-// openTransferModal). Because of that mismatch, sfmEmisMap stayed permanently
-// empty and every EMIS lookup inside Add/Edit/Transfer/Promotion silently
-// failed even though the EMIS codes existed in the data.
-//
-// This helper now checks both names, preferring whichever has data, so it
-// works regardless of which module populated it first.
 function _sfmResolveSchoolPool() {
   if (typeof hrSchoolCache !== 'undefined' && Array.isArray(hrSchoolCache) && hrSchoolCache.length) {
     return hrSchoolCache;
@@ -78,11 +69,6 @@ function buildSfmEmisMap() {
 }
 
 // ---------- Ensure the school cache is actually loaded before we need it ----------
-// If neither hrSchoolCache nor schoolCache has data yet (e.g. the user opened
-// Add/Edit/Transfer/Promotion before the background load finished), fetch it
-// once via the same server call the HR module uses, then rebuild the map and
-// invoke the callback. If data is already present, the callback fires
-// immediately and synchronously.
 function sfmEnsureSchoolCache(callback) {
   if (_sfmResolveSchoolPool().length > 0) {
     buildSfmEmisMap();
@@ -92,8 +78,6 @@ function sfmEnsureSchoolCache(callback) {
   var userPayload = (typeof currentUser !== 'undefined') ? currentUser : null;
   google.script.run
     .withSuccessHandler(function(data) {
-      // Populate hrSchoolCache if that global exists in this page; otherwise
-      // fall back to schoolCache so buildSfmEmisMap() still finds it.
       if (typeof hrSchoolCache !== 'undefined') {
         hrSchoolCache = data || [];
       } else {
@@ -106,8 +90,6 @@ function sfmEnsureSchoolCache(callback) {
       if (typeof showToast === 'function') {
         showToast('Error loading school data: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
       }
-      // Still invoke the callback so the UI doesn't hang — lookups will just
-      // report "not found" until the user retries.
       if (callback) callback();
     })
     .getSchoolHierarchyForUser(userPayload);
@@ -143,12 +125,9 @@ function sfmOnEmisInput() {
     return;
   }
 
-  // If the map is still empty (cache not loaded yet), try to load it once
-  // and re-run the lookup automatically instead of reporting a false negative.
   if (Object.keys(sfmEmisMap).length === 0 && _sfmResolveSchoolPool().length === 0) {
     errEl.textContent = '⏳ Loading school data…';
     sfmEnsureSchoolCache(function() {
-      // Only re-trigger if the field still holds the same value
       if ((document.getElementById('sf_emis').value || '').trim() === emis) {
         sfmOnEmisInput();
       }
@@ -156,7 +135,7 @@ function sfmOnEmisInput() {
     return;
   }
 
-  // Lookup from client-side cache (instant)
+  // Lookup from client-side cache
   var found = sfmEmisMap[emis.toLowerCase()];
   if (!found) {
     errEl.textContent = '⚠ EMIS code not found in Schools data.';
@@ -170,8 +149,8 @@ function sfmOnEmisInput() {
 
   document.getElementById('sf_markaz').value   = found.m || '';
   document.getElementById('sf_district').value = found.d || '';
-  document.getElementById('sf_wing').value      = found.w || '';
-  document.getElementById('sf_tehsil').value    = found.t || '';
+  document.getElementById('sf_wing').value     = found.w || '';
+  document.getElementById('sf_tehsil').value   = found.t || '';
 
   infoEl.classList.remove('hidden');
   infoEl.textContent = '✓ ' + (found.d || '') + ' › ' + (found.w || '') + ' › ' + (found.t || '') + ' › ' + (found.m || '');
@@ -189,14 +168,12 @@ function sfmOnPersonalNoInput() {
   infoEl.classList.add('hidden');
   infoEl.className = 'sfm-pno-info hidden';
   errEl.textContent = '';
-  sfmPnoStatus = 'unchecked';  // ← reset on every keystroke
+  sfmPnoStatus = 'unchecked';
 
   if (!pno || sfmMode !== 'add') return;
   if (pno.length < 8) return;
 
-  // ── 1. Client-side — main sheets (col D) ─────────────────────
-  var mainSheets = ['Staff','Deleted_Archive','Promotions_History',
-                    'Deceased','Termination','Retirement','Resignation'];
+  var mainSheets = ['Staff','Deleted_Archive','Promotions_History','Deceased','Termination','Retirement','Resignation'];
   var foundIn = null;
 
   mainSheets.forEach(function(sh) {
@@ -212,7 +189,6 @@ function sfmOnPersonalNoInput() {
       foundIn = sh;
   });
 
-  // ── 2. Client-side — Transfer_History (col B) ────────────────
   if (!foundIn) {
     var thCache = sheetDataCache['Transfer_History'];
     if (thCache && thCache.rows) {
@@ -227,7 +203,7 @@ function sfmOnPersonalNoInput() {
   }
 
   if (foundIn) {
-    sfmPnoStatus = 'duplicate';  // ← block submission
+    sfmPnoStatus = 'duplicate';
     infoEl.classList.remove('hidden');
     infoEl.className = 'sfm-pno-info warn';
     infoEl.style.background  = '#FFF7ED';
@@ -237,8 +213,7 @@ function sfmOnPersonalNoInput() {
     return;
   }
 
-  // ── 3. Server-side fallback ───────────────────────────────────
-  sfmPnoStatus = 'checking';  // ← hold submission until resolved
+  sfmPnoStatus = 'checking';
   infoEl.classList.remove('hidden');
   infoEl.className = 'sfm-pno-info';
   infoEl.style.background  = '#F1F5F9';
@@ -250,14 +225,14 @@ function sfmOnPersonalNoInput() {
     .withSuccessHandler(function(res) {
       if (document.getElementById('sf_personalNo').value !== pno) return;
       if (res && res.found) {
-        sfmPnoStatus = 'duplicate';  // ← block submission
+        sfmPnoStatus = 'duplicate';
         infoEl.className = 'sfm-pno-info warn';
         infoEl.style.background  = '#FFF7ED';
         infoEl.style.borderColor = '#FDE68A';
         infoEl.style.color       = '#D97706';
         infoEl.textContent = '⚠ Personal No. already exists in "' + res.sheet + '".';
       } else {
-        sfmPnoStatus = 'available';  // ← allow submission
+        sfmPnoStatus = 'available';
         infoEl.className = 'sfm-pno-info ok';
         infoEl.style.background  = '#F0FDF4';
         infoEl.style.borderColor = '#BBF7D0';
@@ -266,11 +241,13 @@ function sfmOnPersonalNoInput() {
       }
     })
     .withFailureHandler(function() {
-      sfmPnoStatus = 'unchecked';  // ← don't block if check fails
+      sfmPnoStatus = 'unchecked';
       infoEl.classList.add('hidden');
     })
     .checkPersonalNoDuplicate(pno, null);
-}// ---------- Toggle Date of Regularization based on Nature of Job ----------
+}
+
+// ---------- Toggle Date of Regularization based on Nature of Job ----------
 function toggleRegularizationDate() {
   var jobNature = document.getElementById('sf_natureOfJob').value;
   var container = document.getElementById('regDateContainer');
@@ -279,11 +256,11 @@ function toggleRegularizationDate() {
   if (!container) return;
 
   if (jobNature === 'Permanent') {
-    container.style.display = 'flex'; // Show field
+    container.style.display = 'flex';
   } else {
-    container.style.display = 'none'; // Hide field
+    container.style.display = 'none';
     if (sfmMode !== 'view') {
-      dateInput.value = ''; // Clear value if hidden (so it doesn't accidentally save)
+      dateInput.value = '';
     }
   }
 }
@@ -297,7 +274,7 @@ function sfmOnCnicInput() {
   infoEl.classList.add('hidden');
   infoEl.className = 'sfm-cnic-info hidden';
   errEl.textContent = '';
-  sfmCnicStatus = 'unchecked'; // ← reset on every keystroke
+  sfmCnicStatus = 'unchecked';
 
   if (!cnic) return;
 
@@ -308,16 +285,13 @@ function sfmOnCnicInput() {
     return;
   }
 
-  // Skip check in edit mode for the same record's own CNIC
   var ownCnic = sfmCurrentRow ? safeVal(sfmCurrentRow['CNIC']).trim() : '';
   if (sfmMode === 'edit' && cnic === ownCnic) {
     sfmCnicStatus = 'available';
     return;
   }
 
-  // ── 1. Client-side — main sheets (col W) ─────────────────────
-  var mainSheets = ['Staff','Deleted_Archive','Promotions_History',
-                    'Deceased','Termination','Retirement','Resignation'];
+  var mainSheets = ['Staff','Deleted_Archive','Promotions_History','Deceased','Termination','Retirement','Resignation'];
   var foundIn = null;
 
   mainSheets.forEach(function(sh) {
@@ -334,7 +308,6 @@ function sfmOnCnicInput() {
     })) foundIn = sh;
   });
 
-  // ── 2. Client-side — Transfer_History (col C) ────────────────
   if (!foundIn) {
     var thCache = sheetDataCache['Transfer_History'];
     if (thCache && thCache.rows) {
@@ -349,7 +322,7 @@ function sfmOnCnicInput() {
   }
 
   if (foundIn) {
-    sfmCnicStatus = 'duplicate'; // ← block submission
+    sfmCnicStatus = 'duplicate';
     infoEl.classList.remove('hidden');
     infoEl.className = 'sfm-cnic-info warn';
     infoEl.style.background  = '#FFF7ED';
@@ -359,8 +332,7 @@ function sfmOnCnicInput() {
     return;
   }
 
-  // ── 3. Server-side fallback ───────────────────────────────────
-  sfmCnicStatus = 'checking'; // ← hold submission until resolved
+  sfmCnicStatus = 'checking';
   infoEl.classList.remove('hidden');
   infoEl.className = 'sfm-cnic-info';
   infoEl.style.background  = '#F1F5F9';
@@ -374,14 +346,14 @@ function sfmOnCnicInput() {
     .withSuccessHandler(function(res) {
       if ((document.getElementById('sf_cnic').value || '').trim() !== cnic) return;
       if (res && res.found) {
-        sfmCnicStatus = 'duplicate'; // ← block submission
+        sfmCnicStatus = 'duplicate';
         infoEl.className = 'sfm-cnic-info warn';
         infoEl.style.background  = '#FFF7ED';
         infoEl.style.borderColor = '#FDE68A';
         infoEl.style.color       = '#D97706';
         infoEl.textContent = '⚠ CNIC already exists in "' + res.sheet + '".';
       } else {
-        sfmCnicStatus = 'available'; // ← allow submission
+        sfmCnicStatus = 'available';
         infoEl.className = 'sfm-cnic-info ok';
         infoEl.style.background  = '#F0FDF4';
         infoEl.style.borderColor = '#BBF7D0';
@@ -390,37 +362,34 @@ function sfmOnCnicInput() {
       }
     })
     .withFailureHandler(function() {
-      sfmCnicStatus = 'unchecked'; // ← don't block if check fails
+      sfmCnicStatus = 'unchecked';
       infoEl.classList.add('hidden');
     })
     .checkCnicDuplicate(cnic, excludeSheet);
 }
+
 function sfmOnIbanInput() {
   var iban   = (document.getElementById('sf_iban').value || '').trim().toUpperCase();
   var errEl  = document.getElementById('sfe_iban');
 
   errEl.textContent = '';
-  sfmIbanStatus = 'unchecked'; // ← reset on every keystroke
+  sfmIbanStatus = 'unchecked';
 
   if (!iban) return;
-
-  if (iban.length !== 24) return; // only check when full 24 chars entered
+  if (iban.length !== 24) return;
 
   if (!/^PK\d{2}[A-Z0-9]{20}$/i.test(iban)) {
     errEl.textContent = 'Pakistani IBAN: PK + 2 digits + 20 alphanumeric chars (24 total).';
     return;
   }
 
-  // Skip check in edit mode for the same record's own IBAN
   var ownIban = sfmCurrentRow ? safeVal(sfmCurrentRow['SALARY ACCOUNT IBAN NO.']).trim().toUpperCase() : '';
   if (sfmMode === 'edit' && iban === ownIban) {
     sfmIbanStatus = 'available';
     return;
   }
 
-  // ── 1. Client-side — main sheets (col Z) ─────────────────────
-  var mainSheets = ['Staff','Deleted_Archive','Promotions_History',
-                    'Deceased','Termination','Retirement','Resignation'];
+  var mainSheets = ['Staff','Deleted_Archive','Promotions_History','Deceased','Termination','Retirement','Resignation'];
   var foundIn = null;
 
   mainSheets.forEach(function(sh) {
@@ -438,14 +407,13 @@ function sfmOnIbanInput() {
   });
 
   if (foundIn) {
-    sfmIbanStatus = 'duplicate'; // ← block submission
+    sfmIbanStatus = 'duplicate';
     errEl.textContent = '⚠ IBAN already exists in "' + foundIn + '".';
     errEl.style.color = '#D97706';
     return;
   }
 
-  // ── 2. Server-side fallback ───────────────────────────────────
-  sfmIbanStatus = 'checking'; // ← hold submission until resolved
+  sfmIbanStatus = 'checking';
   errEl.textContent = '⏳ Verifying IBAN across all records…';
   errEl.style.color = '#475569';
 
@@ -455,21 +423,22 @@ function sfmOnIbanInput() {
     .withSuccessHandler(function(res) {
       if ((document.getElementById('sf_iban').value || '').trim().toUpperCase() !== iban) return;
       if (res && res.found) {
-        sfmIbanStatus = 'duplicate'; // ← block submission
+        sfmIbanStatus = 'duplicate';
         errEl.textContent = '⚠ IBAN already exists in "' + res.sheet + '".';
         errEl.style.color = '#D97706';
       } else {
-        sfmIbanStatus = 'available'; // ← allow submission
+        sfmIbanStatus = 'available';
         errEl.textContent = '✓ IBAN is available.';
         errEl.style.color = '#059669';
       }
     })
     .withFailureHandler(function() {
-      sfmIbanStatus = 'unchecked'; // ← don't block if check fails
+      sfmIbanStatus = 'unchecked';
       errEl.textContent = '';
     })
     .checkIbanDuplicate(iban, excludeSheet);
 }
+
 // ---------- Error helpers ----------
 function setFieldErr(inputId, errId, msg) {
   var el = document.getElementById(inputId);
@@ -490,16 +459,13 @@ function toDateInputVal(str) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   var m = str.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
   if (m) {
-    var months = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
-                  jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+    var months = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
     var mo = months[m[2].toLowerCase()];
     return mo ? (m[3] + '-' + mo + '-' + m[1].padStart(2,'0')) : '';
   }
   var d = new Date(str);
   if (!isNaN(d)) {
-    return d.getFullYear() + '-' +
-           String(d.getMonth()+1).padStart(2,'0') + '-' +
-           String(d.getDate()).padStart(2,'0');
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
   return '';
 }
@@ -515,7 +481,6 @@ function fromDateInputVal(str) {
 // ---------- Populate form from row data ----------
 function sfmPopulateForm(row) {
   buildSfmEmisMap();
-
   Object.keys(SF_FIELD_MAP).forEach(function(id) {
     var key  = SF_FIELD_MAP[id];
     var el   = document.getElementById(id);
@@ -530,16 +495,12 @@ function sfmPopulateForm(row) {
       el.value = val;
     }
 
-    // View-mode span
     var spanId = 'sfv_' + id.replace('sf_', '');
     var span   = document.getElementById(spanId);
     if (span) span.textContent = val || '—';
   });
 
-  // Show EMIS info chip in non-view modes
   if (row && sfmMode !== 'view') sfmOnEmisInput();
-  
-  // Run visibility toggle on load
   toggleRegularizationDate(); 
 }
 
@@ -558,9 +519,6 @@ function sfmCollectData() {
 }
 
 // ---------- Validation ----------
-// Returns true ONLY if every field passes its validation rules.
-// sfmSubmit() must treat this as a hard gate: on false, do NOT call
-// the server and do NOT close/alter the form.
 function sfmValidate() {
   var ok = true;
   document.querySelectorAll('.sfm-err').forEach(function(e) { e.textContent = ''; });
@@ -572,16 +530,16 @@ function sfmValidate() {
   function e(inputId, errId, msg) { setFieldErr(inputId, errId, msg); ok = false; }
 
   // Personal No.
-var pno = v('sf_personalNo');
-if (!pno) {
-  e('sf_personalNo', 'sfe_personalNo', 'Personal No. is required.');
-} else if (pno.length !== 8) {
-  e('sf_personalNo', 'sfe_personalNo', 'Must be exactly 8 digits.');
-} else if (sfmPnoStatus === 'duplicate') {
-  e('sf_personalNo', 'sfe_personalNo', 'This Personal No. already exists in another record.');
-} else if (sfmPnoStatus === 'checking') {
-  e('sf_personalNo', 'sfe_personalNo', 'Still verifying — please wait a moment and try again.');
-}
+  var pno = v('sf_personalNo');
+  if (!pno) {
+    e('sf_personalNo', 'sfe_personalNo', 'Personal No. is required.');
+  } else if (pno.length !== 8) {
+    e('sf_personalNo', 'sfe_personalNo', 'Must be exactly 8 digits.');
+  } else if (sfmPnoStatus === 'duplicate') {
+    e('sf_personalNo', 'sfe_personalNo', 'This Personal No. already exists in another record.');
+  } else if (sfmPnoStatus === 'checking') {
+    e('sf_personalNo', 'sfe_personalNo', 'Still verifying — please wait a moment and try again.');
+  }
 
   // EMIS
   var emis = v('sf_emis');
@@ -593,48 +551,34 @@ if (!pno) {
     e('sf_emis', 'sfe_emis', 'EMIS not found in Schools data.');
   }
 
-  // Name
   if (!v('sf_name')) e('sf_name', 'sfe_name', 'Name of Teacher is required.');
-
-  // DOB
   if (!v('sf_dob')) e('sf_dob', 'sfe_dob', 'Date of Birth is required.');
-
-  // Gender
   if (!v('sf_gender')) e('sf_gender', 'sfe_gender', 'Gender is required.');
-
-  // Designation
   if (!v('sf_designation')) e('sf_designation', 'sfe_designation', 'Designation is required.');
 
-  // BPS
+  // BPS & PPS
   var bps = v('sf_bps');
   if (!bps) {
     e('sf_bps', 'sfe_bps', 'BPS is required.');
   } else if (isNaN(bps) || +bps < 1 || +bps > 22) {
     e('sf_bps', 'sfe_bps', 'BPS must be 1–22.');
   }
-
-  // PPS optional
   var pps = v('sf_pps');
-  if (pps && (isNaN(pps) || +pps < 1 || +pps > 22))
+  if (pps && (isNaN(pps) || +pps < 1 || +pps > 22)) {
     e('sf_pps', 'sfe_pps', 'PPS must be 1–22.');
+  }
 
-  // Govt entry date
   if (!v('sf_govtEntry')) e('sf_govtEntry', 'sfe_govtEntry', 'Date of Entry in Govt. Service is required.');
 
-  // Cell No
   var cell = v('sf_cellNo');
   if (cell && !/^\d{11}$/.test(cell)) e('sf_cellNo', 'sfe_cellNo', 'Must be exactly 11 digits.');
 
-  // WhatsApp
   var wa = v('sf_whatsapp');
   if (wa && !/^\d{11}$/.test(wa)) e('sf_whatsapp', 'sfe_whatsapp', 'Must be exactly 11 digits.');
 
-  // Email
   var email = v('sf_email');
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    e('sf_email', 'sfe_email', 'Enter a valid email address.');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e('sf_email', 'sfe_email', 'Enter a valid email address.');
 
-  // CNIC
   var cnic = v('sf_cnic');
   if (cnic && !/^\d{13}$/.test(cnic)) {
     e('sf_cnic', 'sfe_cnic', 'CNIC must be exactly 13 digits.');
@@ -644,7 +588,6 @@ if (!pno) {
     e('sf_cnic', 'sfe_cnic', 'Still verifying CNIC — please wait a moment and try again.');
   }
 
-  // IBAN
   var iban = v('sf_iban');
   if (iban && !/^PK\d{2}[A-Z0-9]{20}$/i.test(iban)) {
     e('sf_iban', 'sfe_iban', 'Pakistani IBAN: PK + 2 digits + 20 alphanumeric chars (24 total).');
@@ -663,12 +606,6 @@ function openStaffFormModal(mode, row) {
   sfmCurrentRow = row || null;
   sfmSubmitting = false;
 
-  // FIX: previously this called buildSfmEmisMap() immediately, which is a
-  // no-op if the school cache hasn't loaded yet (race condition on first
-  // open, or if only hrSchoolCache — not schoolCache — was ever populated).
-  // sfmEnsureSchoolCache() fetches the data first if needed, builds the map,
-  // then re-runs the EMIS lookup for whatever value is already in the field
-  // (relevant for edit/view modes where the field is pre-filled).
   sfmEnsureSchoolCache(function() {
     if (sfmMode !== 'add' || (document.getElementById('sf_emis') || {}).value) {
       sfmOnEmisInput();
@@ -682,11 +619,8 @@ function openStaffFormModal(mode, row) {
   var footer     = document.getElementById('sfmFooter');
   var hdrActions = document.getElementById('sfmHeaderActions');
 
-  // Reset validation state
   form.querySelectorAll('.sfm-err').forEach(function(e) { e.textContent = ''; });
-  form.querySelectorAll('.sfm-input,.sfm-select').forEach(function(e) {
-    e.classList.remove('invalid', 'valid');
-  });
+  form.querySelectorAll('.sfm-input,.sfm-select').forEach(function(e) { e.classList.remove('invalid', 'valid'); });
   ['sfm_emisInfo','sfm_pnoInfo','sfm_cnicInfo'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) { el.classList.add('hidden'); el.textContent = ''; }
@@ -703,8 +637,8 @@ function openStaffFormModal(mode, row) {
       '<button type="button" class="sfm-header-btn" onclick="closeStaffFormModal()">Close</button>';
     hdrActions.innerHTML = '';
   } else if (mode === 'edit') {
-    sfmCnicStatus = 'unchecked'; // ← add this line
-    sfmIbanStatus = 'unchecked'; // ← add this line
+    sfmCnicStatus = 'unchecked';
+    sfmIbanStatus = 'unchecked';
     form.classList.remove('sfm-mode-view');
     modeTag.textContent = 'EDIT';
     modeTag.className   = 'sfm-mode-tag tag-edit';
@@ -713,10 +647,10 @@ function openStaffFormModal(mode, row) {
       '<button type="button" class="sfm-header-btn accent" id="sfmSaveBtn" onclick="sfmSubmit()">💾 Save Changes</button>' +
       '<button type="button" class="sfm-header-btn" onclick="sfmSwitchToView()">Cancel</button>';
     hdrActions.innerHTML = '';
-  } else { // add
-    sfmPnoStatus = 'unchecked'; // ← add this line
-    sfmCnicStatus = 'unchecked'; // ← add this line
-    sfmIbanStatus = 'unchecked'; // ← add this line
+  } else { 
+    sfmPnoStatus = 'unchecked';
+    sfmCnicStatus = 'unchecked';
+    sfmIbanStatus = 'unchecked';
     form.classList.remove('sfm-mode-view');
     modeTag.textContent = 'NEW';
     modeTag.className   = 'sfm-mode-tag tag-add';
@@ -727,7 +661,6 @@ function openStaffFormModal(mode, row) {
     hdrActions.innerHTML = '';
   }
 
-  // Wire events
   document.getElementById('sf_emis').oninput         = sfmOnEmisInput;
   document.getElementById('sf_personalNo').oninput   = sfmOnPersonalNoInput;
   document.getElementById('sf_cnic').oninput         = sfmOnCnicInput;
@@ -742,12 +675,10 @@ function openStaffFormModal(mode, row) {
 
 function sfmSetInputsDisabled(disabled) {
   document.getElementById('staffForm').querySelectorAll('input,select').forEach(function(el) {
-    // Location fields are always readonly (auto from EMIS), never truly disabled for form collection
     if (['sf_markaz','sf_district','sf_wing','sf_tehsil'].includes(el.id)) {
       el.disabled = disabled;
       return;
     }
-    // Personal No. is readonly in edit mode (not add)
     if (el.id === 'sf_personalNo' && sfmMode === 'edit') {
       el.readOnly = true;
       el.classList.add('sfm-readonly');
@@ -769,17 +700,14 @@ function closeStaffFormModal() {
 }
 
 // ---------- Submit ----------
-// HARD GATE: if sfmValidate() returns false, we stop here completely.
-// No google.script.run call is made, the modal stays open exactly as
-// the user left it, and the offending fields are highlighted.
 function sfmSubmit() {
-  if (sfmSubmitting) return; // prevent double-submit while a request is in flight
+  if (sfmSubmitting) return;
 
   if (!sfmValidate()) {
     showToast('Please fix the highlighted errors before saving.', 'warning');
     var firstErr = document.querySelector('#staffForm .sfm-input.invalid, #staffForm .sfm-select.invalid');
     if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return; // <-- submission stopped, nothing sent to server
+    return;
   }
 
   var data = sfmCollectData();
@@ -798,7 +726,6 @@ function sfmDoSave(data) {
     hideLoading();
   }
 
-  // Define userPayload out here so BOTH 'add' and 'edit' can access it
   var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
 
   if (sfmMode === 'add') {
@@ -824,7 +751,7 @@ function sfmDoSave(data) {
           try { applyFilter(); } catch (_e) {}
           showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
         }
-      }).addStaffRow(data, userPayload); // <-- Now it can access userPayload
+      }).addStaffRow(data, userPayload);
   } else {
     google.script.run
       .withFailureHandler(function(err) {
@@ -848,7 +775,7 @@ function sfmDoSave(data) {
           try { applyFilter(); } catch (_e) {}
           showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
         }
-      }).updateStaffRow(data, userPayload); // <-- Now it can access userPayload
+      }).updateStaffRow(data, userPayload);
   }
 }
 
@@ -860,12 +787,8 @@ var tfSubmitting    = false;
 
 window.openTransferModal = function(row) {
   transferRowData = row;
-  tfSubmitting     = false;
+  tfSubmitting    = false;
 
-  // FIX: was buildSfmEmisMap() called unconditionally and synchronously —
-  // if the cache wasn't loaded yet, the modal would render with an empty
-  // sfmEmisMap and every EMIS the user typed would report "not found".
-  // sfmEnsureSchoolCache() loads it first if needed, then renders the modal.
   sfmEnsureSchoolCache(function() {
     _sfmRenderTransferModal(row);
   });
@@ -927,7 +850,6 @@ function tfOnTargetEmis() {
 
   if (!/^\d{8}$/.test(emis)) return;
 
-  // Validate against client-side EMIS map (built from Schools sheet col E)
   var found = sfmEmisMap[emis.toLowerCase()];
   if (!found) {
     errEl.textContent = '⚠ EMIS not found in Schools data.';
@@ -942,7 +864,6 @@ function tfOnTargetEmis() {
     '<div><b>Tehsil:</b> ' + escHtml(found.t) + ' &nbsp;|&nbsp; <b>Markaz:</b> ' + escHtml(found.m) + '</div>';
 }
 
-// HARD GATE: invalid input -> highlighted fields + toast, no server call.
 function tfSubmit() {
   if (tfSubmitting) return;
 
@@ -952,9 +873,7 @@ function tfSubmit() {
   var ok = true;
 
   document.querySelectorAll('.transfer-err').forEach(function(e) { e.textContent = ''; });
-  document.querySelectorAll('#transferModalBody input').forEach(function(e) {
-    e.classList.remove('invalid');
-  });
+  document.querySelectorAll('#transferModalBody input').forEach(function(e) { e.classList.remove('invalid'); });
 
   if (!targetEmis || !/^\d{8}$/.test(targetEmis)) {
     document.getElementById('tfe_emis').textContent = 'Valid 8-digit EMIS code is required.';
@@ -973,7 +892,7 @@ function tfSubmit() {
   }
   if (!ok) {
     showToast('Please fix the highlighted errors before confirming.', 'warning');
-    return; // submission stopped
+    return;
   }
 
   var newSchool     = sfmEmisMap[targetEmis.toLowerCase()];
@@ -998,7 +917,6 @@ function tfSubmit() {
     hideLoading();
   }
 
-  // 🔴 CRITICAL FIX: Define userPayload here, outside and before the server call
   var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
 
   google.script.run
@@ -1028,14 +946,14 @@ function tfSubmit() {
       targetEmis:     targetEmis,
       notificationNo: notifNo,
       newJoiningDate: formattedDate
-    }, userPayload); // <-- Now it successfully passes the variable
+    }, userPayload);
 }
+
 function closeTransferModal() {
   document.getElementById('transferModal').classList.add('hidden');
   transferRowData = null;
-  tfSubmitting     = false;
+  tfSubmitting    = false;
 }
-
 
 // ══════════════════════════════════════════════════════════════════
 //  PROMOTION MODAL
@@ -1047,8 +965,6 @@ window.openPromotionModal = function(row) {
   promotionRowData = row;
   pmSubmitting     = false;
 
-  // FIX: same lazy-load guard as Transfer — ensures sfmEmisMap is populated
-  // before the modal (and its EMIS input) is rendered.
   sfmEnsureSchoolCache(function() {
     _sfmRenderPromotionModal(row);
   });
@@ -1059,7 +975,7 @@ function _sfmRenderPromotionModal(row) {
   var personalNo  = safeVal(row['PERSONAL NO.']);
   var currentDes  = safeVal(row['DESIGNATION']);
   var currentBps  = safeVal(row['BPS']);
-  var currentPps  = safeVal(row['PPS']); // Added PPS lookup
+  var currentPps  = safeVal(row['PPS']); 
   var currentEmis = safeVal(row['SCHOOL EMIS CODE']);
 
   document.getElementById('promotionModalBody').innerHTML =
@@ -1094,7 +1010,6 @@ function _sfmRenderPromotionModal(row) {
       '<div class="transfer-err" id="pme_bps"></div>' +
     '</div>' +
 
-    // NEW PPS FIELD IN PROMOTION MODAL
     '<div class="transfer-step">' +
       '<label>New PPS</label>' +
       '<input type="number" id="pm_pps" min="1" max="22" placeholder="Auto-fills with BPS" value="' + escHtml(currentPps) + '">' +
@@ -1128,7 +1043,6 @@ function _sfmRenderPromotionModal(row) {
 
   document.getElementById('promotionModal').classList.remove('hidden');
 
-  // Add event listener so PPS auto-syncs with BPS
   document.getElementById('pm_bps').addEventListener('input', function(e) {
     document.getElementById('pm_pps').value = e.target.value;
   });
@@ -1160,15 +1074,13 @@ function pmOnTargetEmis() {
     '<div><b>Tehsil:</b> ' + escHtml(found.t) + ' &nbsp;|&nbsp; <b>Markaz:</b> ' + escHtml(found.m) + '</div>';
 }
 
-// HARD GATE: invalid input -> highlighted fields + toast, no server call.
-// HARD GATE: invalid input -> highlighted fields + toast, no server call.
 function pmSubmit() {
   if (pmSubmitting) return;
 
   var notifNo     = (document.getElementById('pm_notifNo').value || '').trim();
   var designation = (document.getElementById('pm_designation').value || '').trim();
   var bps         = (document.getElementById('pm_bps').value || '').trim();
-  var pps         = (document.getElementById('pm_pps').value || '').trim(); // Get new PPS
+  var pps         = (document.getElementById('pm_pps').value || '').trim(); 
   var targetEmis  = (document.getElementById('pm_targetEmis').value || '').trim();
   var postingDate = (document.getElementById('pm_postingDate').value || '').trim();
   var scaleDate   = (document.getElementById('pm_scaleDate').value || '').trim();
@@ -1208,7 +1120,7 @@ function pmSubmit() {
   }
   if (!ok) {
     showToast('Please fix the highlighted errors before confirming.', 'warning');
-    return; // submission stopped
+    return; 
   }
 
   var teacherName      = safeVal(promotionRowData['NAME OF TEACHER']);
@@ -1236,13 +1148,42 @@ function pmSubmit() {
     hideLoading();
   }
 
-  // 🔴 CRITICAL FIX: Define userPayload here, BEFORE the google.script.run chain starts
   var userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
 
   google.script.run
     .withFailureHandler(function(err) {
       finishUI();
-      showToast('Promotion failed: ' + (err &&
+      showToast('Promotion failed: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
+    })
+    .withSuccessHandler(function(res) {
+      finishUI();
+      try {
+        if (res && res.success) {
+          showToast(res.message || 'Promotion recorded.', 'success');
+          closePromotionModal();
+          invalidateCache('Staff');
+          applyFilter();
+        } else {
+          showToast('Error: ' + (res && res.error || 'Unknown error'), 'error');
+        }
+      } catch (uiErr) {
+        closePromotionModal();
+        try { applyFilter(); } catch (_e) {}
+        showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
+      }
+    }).executePromotion({
+      personalNo:          safeVal(promotionRowData['PERSONAL NO.']),
+      rowNum:              promotionRowData._row,
+      newDesignation:      designation,
+      newBps:              bps,
+      newPps:              pps, 
+      targetEmis:          targetEmis,
+      newPostingDate:      formattedPosting,
+      newScaleJoiningDate: formattedScale,
+      notificationNo:      notifNo
+    }, userPayload);
+}
+
 function closePromotionModal() {
   document.getElementById('promotionModal').classList.add('hidden');
   promotionRowData = null;
