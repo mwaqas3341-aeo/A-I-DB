@@ -289,8 +289,13 @@ function applyHrFilter() {
     google.script.run
       .withSuccessHandler(res => {
         if (res.error) { hrShowToast('Error: ' + res.error, false); return; }
-        hrSheetDataCache[sheet] = { headers: res.headers, rows: res.rows };
-        if (sheet === 'Staff') hrStaffFullRows = res.rows || [];
+        const headersIn  = res.headers || [];
+        const rowsIn     = res.rows || [];
+        rowsIn.forEach(r => {
+          r._searchBlob = headersIn.map(h => r[h] || '').join(' ').toLowerCase();
+        });
+        hrSheetDataCache[sheet] = { headers: headersIn, rows: rowsIn };
+        if (sheet === 'Staff') hrStaffFullRows = rowsIn;
         runHrClientFilter(sheet);
       })
       .withFailureHandler(err => hrShowToast('Backend Error: ' + err.message, false))
@@ -299,7 +304,7 @@ function applyHrFilter() {
 }
 function runHrClientFilter(sheet) {
   const cache = hrSheetDataCache[sheet];
-  if (!cache || !cache.rows.length) {
+  if (!cache || !cache.rows || !cache.rows.length) {
     document.getElementById('hrResultsContainer').innerHTML =
       '<div class="hr-empty-state">No records found in this sheet.</div>';
     if (sheet === 'Staff') { resetSummaryCards(); document.getElementById('hrSummaryCards').style.display = 'none'; }
@@ -332,7 +337,7 @@ function runHrClientFilter(sheet) {
     if (fTeh  && rTeh !== fTeh)  return false;
     if (fMark && !rMark.includes(fMark)) return false;
     if (fEmis && !rEmis.includes(fEmis)) return false;
-    if (fKey  && !hrCurrentHeaders.map(h => row[h] || '').join(' ').toLowerCase().includes(fKey)) return false;
+    if (fKey  && !(row._searchBlob || hrCurrentHeaders.map(h => row[h] || '').join(' ').toLowerCase()).includes(fKey)) return false;
     return true;
   });
 
