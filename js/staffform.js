@@ -5,8 +5,9 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ---------- State ----------
-var sfmMode       = 'view';
-var sfmCurrentRow = null;
+// sfmMode and sfmCurrentRow are declared in hr_view.js (shared state)
+// var sfmMode       = 'view';     ← declared in hr_view.js
+// var sfmCurrentRow = null;       ← declared in hr_view.js
 var sfmEmisMap    = {};   // emis_lowercase → {d,w,t,m,e} from schoolCache
 var sfmSubmitting = false; // guard against double-submit / re-entrancy
 var sfmPnoStatus  = 'unchecked'; // ← add this line
