@@ -357,6 +357,8 @@ function runHrClientFilter(sheet) {
 // ──────────────────────────────────────────────────────────────────
 function resetSummaryCards() {
   document.getElementById('scTotalStaff').textContent  = '—';
+  const scTotalStaff2El = document.getElementById('scTotalStaff2');
+  if (scTotalStaff2El) scTotalStaff2El.textContent = '—';
   document.getElementById('scRetiring1Yr').textContent = '—';
   document.getElementById('scNoHead').textContent      = '—';
   document.getElementById('scHeadCount').textContent   = '—';
@@ -365,6 +367,8 @@ function resetSummaryCards() {
 function updateSummaryCards(filteredRows) {
   // 1. Total active staff in current filter
   document.getElementById('scTotalStaff').textContent = filteredRows.length.toLocaleString();
+  const scTotalStaff2ElLive = document.getElementById('scTotalStaff2');
+  if (scTotalStaff2ElLive) scTotalStaff2ElLive.textContent = filteredRows.length.toLocaleString();
 
   // 2. Retiring within 1 year — reads column AE: "DATE OF RETIREMENT"
   //    Supports formats: "DD-Mon-YYYY", "YYYY-MM-DD", JS date strings
@@ -577,22 +581,26 @@ function downloadHeadTeachers() {
           window.open(res.url, '_blank');
           hrShowToast('Head Teachers Excel opened successfully.', true);
         } else {
-          _hrDownloadCsv(headTeachers, exportCols);
+          _hrDownloadCsv(headTeachers, exportCols, 'Head_Teachers_Filtered', 'Head Teachers list');
         }
       })
       .withFailureHandler(() => {
-        _hrDownloadCsv(headTeachers, exportCols);
+        _hrDownloadCsv(headTeachers, exportCols, 'Head_Teachers_Filtered', 'Head Teachers list');
       })
-      .exportHeadTeachersToExcel(cleanRows, exportCols, userPayload);
+      .exportHeadTeachersToExcel(cleanRows, exportCols, userPayload, 'HeadTeachers_Export');
   } catch (e) {
-    _hrDownloadCsv(headTeachers, exportCols);
+    _hrDownloadCsv(headTeachers, exportCols, 'Head_Teachers_Filtered', 'Head Teachers list');
   }
 }
 
 /**
  * Pure client-side CSV download — exports every column passed in cols[].
+ * filePrefix / toastLabel are optional, default to the original
+ * Head Teachers wording so existing callers keep working unchanged.
  */
-function _hrDownloadCsv(rows, cols) {
+function _hrDownloadCsv(rows, cols, filePrefix, toastLabel) {
+  filePrefix = filePrefix || 'Head_Teachers_Filtered';
+  toastLabel = toastLabel || 'Head Teachers list';
   const escape = v => {
     const s = (v === null || v === undefined) ? '' : String(v);
     return s.includes(',') || s.includes('"') || s.includes('\n')
@@ -605,12 +613,62 @@ function _hrDownloadCsv(rows, cols) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'Head_Teachers_Filtered_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.download = filePrefix + '_' + new Date().toISOString().slice(0,10) + '.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  hrShowToast('Head Teachers list downloaded (' + rows.length + ' records, ' + cols.length + ' columns).', true);
+  hrShowToast(toastLabel + ' downloaded (' + rows.length + ' records, ' + cols.length + ' columns).', true);
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  DOWNLOAD ALL ACTIVE STAFF (filtered by current jurisdiction/filters)
+//  Mirrors downloadHeadTeachers() but exports every row currently
+//  visible in hrFilteredResults — no "Working as Head" restriction.
+// ──────────────────────────────────────────────────────────────────
+function downloadActiveStaffList() {
+  if (hrCurrentSheetView !== 'Staff') {
+    hrShowToast('Switch to the Active Staff view first.', false);
+    return;
+  }
+
+  if (!hrFilteredResults.length) {
+    hrShowToast('No records in the current filter to export.', false);
+    return;
+  }
+
+  // Export ALL columns present in the current sheet headers
+  const exportCols = hrCurrentHeaders.length > 0
+    ? hrCurrentHeaders
+    : Object.values(SF_MAP); // fallback if headers not yet populated
+
+  const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name: 'Admin' };
+  const cleanRows   = hrFilteredResults.map(r => {
+    const obj = {};
+    exportCols.forEach(col => { obj[col] = r[col] !== undefined ? r[col] : ''; });
+    return obj;
+  });
+
+  hrShowToast('Preparing Active Staff export…', true);
+
+  // Attempt backend Excel export; fall back to CSV
+  try {
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res && res.url) {
+          window.open(res.url, '_blank');
+          hrShowToast('Active Staff list exported successfully (' + hrFilteredResults.length + ' records).', true);
+        } else {
+          _hrDownloadCsv(hrFilteredResults, exportCols, 'Active_Staff_Filtered', 'Active Staff list');
+        }
+      })
+      .withFailureHandler(() => {
+        _hrDownloadCsv(hrFilteredResults, exportCols, 'Active_Staff_Filtered', 'Active Staff list');
+      })
+      .exportHeadTeachersToExcel(cleanRows, exportCols, userPayload, 'Active_Staff_Export');
+  } catch (e) {
+    _hrDownloadCsv(hrFilteredResults, exportCols, 'Active_Staff_Filtered', 'Active Staff list');
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -705,16 +763,24 @@ function openHrMenu(btn, idx) {
 
 // ──────────────────────────────────────────────────────────────────
 //  STAFF FORM MODAL
+//  NOTE: This implementation (and openTransferModal / openPromotionModal
+//  / sfmSubmit below) is overridden by staffform.js, which loads after
+//  this file and redefines the same function names with EMIS-map-aware
+//  validation. Kept here as a fallback only — the early-return guards
+//  below make this a no-op when the legacy DOM (hrStaffFormModal /
+//  hrActualStaffForm) is absent, which is the current production state.
 // ──────────────────────────────────────────────────────────────────
 function openStaffFormModal(mode, row) {
   sfmMode = mode;
   sfmCurrentRow = row || null;
 
   const modal   = document.getElementById('hrStaffFormModal');
+  const form    = document.getElementById('hrActualStaffForm');
+  if (!modal || !form) return; // legacy DOM not present — staffform.js owns this path
+
   const chip    = document.getElementById('sfmModeChip');
   const title   = document.getElementById('sfmTitle');
   const saveBtn = document.getElementById('sfmSaveBtn');
-  const form    = document.getElementById('hrActualStaffForm');
 
   form.reset();
   document.getElementById('sf_emis_msg').style.display  = 'none';
@@ -816,6 +882,7 @@ function triggerEmisLookup(emisValue) {
   const valStr = emisValue.toString().trim();
   const msg    = document.getElementById('sf_emis_msg');
   const emisEl = document.getElementById('sf_emis');
+  if (!msg || !emisEl) return; // legacy DOM not present
 
   ['sf_district','sf_wing','sf_tehsil','sf_markaz'].forEach(id => {
     const el = document.getElementById(id);
@@ -858,6 +925,7 @@ function triggerEmisLookup(emisValue) {
 // ──────────────────────────────────────────────────────────────────
 function triggerPnoCheck(pno) {
   const msg = document.getElementById('sf_pno_msg');
+  if (!msg) return; // legacy DOM not present
   msg.style.display = 'none';
   hrPnoStatus = 'unchecked'; // ← reset on every call
 
@@ -865,7 +933,9 @@ function triggerPnoCheck(pno) {
   if (pno.length < 8) return;
 
   // ── 1. Client-side — main sheets (col D) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','s_History',
+  // FIX: 'Promotions_History' (was 's_History' — stale name from before
+  // the sheet was renamed; duplicate checks were silently skipping it).
+  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -932,6 +1002,7 @@ function triggerPnoCheck(pno) {
 // ──────────────────────────────────────────────────────────────────
 function triggerCnicCheck(cnic) {
   const msg = document.getElementById('sf_cnic_msg');
+  if (!msg) return; // legacy DOM not present
   msg.style.display = 'none';
   hrCnicStatus = 'unchecked'; // ← reset on every call
 
@@ -951,7 +1022,8 @@ function triggerCnicCheck(cnic) {
   }
 
   // ── 1. Client-side — main sheets (col W) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','s_History',
+  // FIX: 'Promotions_History' (was 's_History' — stale name).
+  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -1038,7 +1110,8 @@ function triggerIbanCheck(iban) {
   }
 
   // ── 1. Client-side — main sheets (col Z) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','s_History',
+  // FIX: 'Promotions_History' (was 's_History' — stale name).
+  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -1094,8 +1167,10 @@ function triggerIbanCheck(iban) {
 //  REGULARIZATION FIELD TOGGLE
 // ──────────────────────────────────────────────────────────────────
 function toggleRegularizationField() {
-  const natureVal = document.getElementById('sf_natureOfJob').value;
-  const regGroup  = document.getElementById('sf_regularizationGroup');
+  const natureEl = document.getElementById('sf_natureOfJob');
+  const regGroup = document.getElementById('sf_regularizationGroup');
+  if (!natureEl || !regGroup) return; // legacy DOM not present
+  const natureVal = natureEl.value;
   if (natureVal === 'Contract') {
     regGroup.style.display = 'none';
     document.getElementById('sf_regularizationDate').value = '';
@@ -1108,8 +1183,10 @@ function toggleRegularizationField() {
 //  RETIREMENT DATE AUTO-CALC
 // ──────────────────────────────────────────────────────────────────
 function calcRetirementDate() {
-  const dobVal = document.getElementById('sf_dob').value;
-  const retEl  = document.getElementById('sf_retirementDate');
+  const dobEl = document.getElementById('sf_dob');
+  const retEl = document.getElementById('sf_retirementDate');
+  if (!dobEl || !retEl) return; // legacy DOM not present
+  const dobVal = dobEl.value;
   if (!dobVal) { retEl.value = ''; return; }
 
   const parts = dobVal.split('-');
@@ -1140,10 +1217,12 @@ function calcRetirementDate() {
 // ──────────────────────────────────────────────────────────────────
 //  SUBMIT FORM
 // ──────────────────────────────────────────────────────────────────
-// ──────────────────────────────────────────────────────────────────
-//  SUBMIT FORM
-// ──────────────────────────────────────────────────────────────────
 function sfmSubmit() {
+  // legacy fallback DOM no longer present in production — this whole
+  // path is dead (staffform.js defines its own sfmSubmit which wins
+  // since it loads after this file). Guard so it never half-runs.
+  if (!document.getElementById('hrStaffFormModal')) return;
+
   calcRetirementDate();
   
   // ── Personal No. duplicate gate ──────────────────────────────
@@ -1226,17 +1305,23 @@ function sfmSubmit() {
       .withFailureHandler(err => hrShowToast('Update failed: ' + err.message, false))
       .updateStaffRow(data, userPayload);
   }
-} // <--- Correctly closes the function here
+}
 
 // ──────────────────────────────────────────────────────────────────
 //  TRANSFER MODAL
+//  NOTE: window.openTransferModal is overridden by staffform.js
+//  (loads after this file). This implementation is a fallback only,
+//  used if staffform.js fails to load for any reason.
 // ──────────────────────────────────────────────────────────────────
 function openTransferModal(row) {
   hrTransferRow = row;
   _ensureAllSchoolCache(() => {
     const teacherName = row['NAME OF TEACHER'] || '';
     const currentEmis = row['SCHOOL EMIS CODE'] || '';
-    document.getElementById('hrTransferBody').innerHTML = `
+    const body = document.getElementById('hrTransferBody');
+    const modal = document.getElementById('hrTransferModal');
+    if (!body || !modal) return; // hr_view's own transfer modal not present in current DOM
+    body.innerHTML = `
       <div class="hr-info-box" style="margin-bottom:18px;">
         <strong>📋 Current Assignment</strong>
         <div><b>Teacher:</b> ${teacherName} &nbsp;|&nbsp; <b>P.No:</b> ${row['PERSONAL NO.'] || ''}</div>
@@ -1263,7 +1348,7 @@ function openTransferModal(row) {
         <button type="button" class="hr-btn-primary" onclick="submitHrTransfer()">✅ Confirm Transfer</button>
         <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrTransferModal').style.display='none'">Cancel</button>
       </div>`;
-    document.getElementById('hrTransferModal').style.display = 'flex';
+    modal.style.display = 'flex';
   });
 }
 
@@ -1316,11 +1401,18 @@ function submitHrTransfer() {
 }
 
 // ──────────────────────────────────────────────────────────────────
-//   MODAL
+//  PROMOTION MODAL
+//  NOTE: window.openPromotionModal is overridden by staffform.js.
+//  Fallback only — designation list kept identical to the Add Staff
+//  form's <select id="sf_designation"> in index.html so both stay
+//  in sync (no "Mali" omitted, no "Secuirty" typo).
 // ──────────────────────────────────────────────────────────────────
 function openPromotionModal(row) {
   hrPromotionRow = row;
-  document.getElementById('hrPromotionBody').innerHTML = `
+  const body  = document.getElementById('hrPromotionBody');
+  const modal = document.getElementById('hrPromotionModal');
+  if (!body || !modal) return; // hr_view's own promotion modal not present in current DOM
+  body.innerHTML = `
     <div class="hr-info-box" style="margin-bottom:18px;">
       <strong>📋 Current Record</strong>
       <div><b>Teacher:</b> ${row['NAME OF TEACHER']||''} | <b>P.No:</b> ${row['PERSONAL NO.']||''}</div>
@@ -1335,7 +1427,7 @@ function openPromotionModal(row) {
       <label>New Designation <span style="color:#EF4444">*</span></label>
       <select id="pm_desig">
         <option value="">Select…</option>
-        ${['PST','ESE','EST','SESE','SST','SSE','Headmaster','Headmistress','School Guard','Secuirty Guard','Naib Qasid','Chowkidar','Mali','C.IV'].map(d => `<option${d===row['DESIGNATION']?' selected':''}>${d}</option>`).join('')}
+        ${['PST','ESE','EST','SESE','SST','SSE','Headmaster','Headmistress','School Guard','Security Guard','Naib Qasid','Chowkidar','Mali','C.IV'].map(d => `<option${d===row['DESIGNATION']?' selected':''}>${d}</option>`).join('')}
       </select>
       <div class="transfer-err" id="pme_desig"></div>
     </div>
@@ -1364,7 +1456,7 @@ function openPromotionModal(row) {
       <button type="button" class="hr-btn-primary" onclick="submitHrPromotion()">✅ Confirm Promotion</button>
       <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrPromotionModal').style.display='none'">Cancel</button>
     </div>`;
-  document.getElementById('hrPromotionModal').style.display = 'flex';
+  modal.style.display = 'flex';
 }
 
 function hrVerifyPromoEmis() {
@@ -1419,7 +1511,7 @@ function submitHrPromotion() {
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  SEPARATION MODAL
+//  SEPARATION MODAL  (active — not overridden by staffform.js)
 // ──────────────────────────────────────────────────────────────────
 function openSeparationModal(actionType, row) {
   const labels = {
@@ -1480,7 +1572,7 @@ function submitSeparation(actionType, row) {
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  DELETE & REVERT
+//  DELETE & REVERT  (active — not overridden by staffform.js)
 // ──────────────────────────────────────────────────────────────────
 function confirmDeleteHrRow(row) {
   if (!confirm('Delete ' + (row['NAME OF TEACHER']||'this record') + '?\nWill be archived in Deleted_Archive.')) return;
@@ -1495,7 +1587,6 @@ function confirmDeleteHrRow(row) {
     .deleteStaffRow(row['PERSONAL NO.'], userPayload);
 }
 
-// REPLACE THE ENTIRE revertHrRow function with this:
 function revertHrRow(row) {
   // Transfer_History uses different column names than Staff sheet
   const pno  = row['PERSONAL NO.'] || row['Employee Personal No'] || '';
