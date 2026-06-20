@@ -10,6 +10,9 @@ let privDataLoaded       = false;
 let privModal;
 let nameCheckModalInstance;
 
+// ★ NEW: Store filtered school hierarchy for dropdowns
+let privSchoolHierarchy = [];
+
 // Header keys for cascade filters
 let privFHeaders = { district: '', tehsil: '', markaz: '', status: '', name: '', regNo: '' };
 
@@ -78,6 +81,7 @@ function openPrivateModule(sheetName) {
     privData         = [];
     privHeaders      = [];
     privFilteredCache = [];
+    privSchoolHierarchy = [];
 
     document.getElementById('privCurrentSheet').textContent = sheetName;
     document.getElementById('privRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
@@ -89,7 +93,7 @@ function openPrivateModule(sheetName) {
     if (typeof switchGlobalTab === 'function') switchGlobalTab('privateDataView', null);
 
     // Reset to empty state
-    _privShowEmptyState('Loading data from server…', true);
+    _privShowEmptyState('Loading data…', true);
 
     // Reset filter dropdowns
     ['privFltDistrict','privFltTehsil','privFltMarkaz','privFltStatus','privFltSearch','privSearchInput']
@@ -97,7 +101,6 @@ function openPrivateModule(sheetName) {
         const el = document.getElementById(id);
         if (!el) return;
         if (el.tagName === 'SELECT') {
-          // preserve Status options
           if (id === 'privFltStatus') { el.value = ''; return; }
           el.innerHTML = '<option value="">All</option>';
         } else {
@@ -107,30 +110,41 @@ function openPrivateModule(sheetName) {
 
     const activeUser = (typeof currentUser !== 'undefined') ? currentUser : null;
 
+    // ★ Step 1: Load filtered school hierarchy for dropdowns
     google.script.run
-      .withSuccessHandler(res => {
-        if (!res || !res.success) {
-          _privShowEmptyState('Error loading data: ' + (res ? res.message : 'Unknown'), false);
-          return;
-        }
-        privHeaders   = res.headers;
-        privData      = res.data;
-        privDataLoaded = true;
+      .withSuccessHandler(function(schools) {
+        privSchoolHierarchy = schools || [];
+        // ★ Step 2: Load the actual data rows
+        google.script.run
+          .withSuccessHandler(res => {
+            if (!res || !res.success) {
+              _privShowEmptyState('Error loading data: ' + (res ? res.message : 'Unknown'), false);
+              return;
+            }
+            privHeaders   = res.headers;
+            privData      = res.data;
+            privDataLoaded = true;
 
-        // Detect header keys for cascades
-        setupPrivFilterHeaders();
-        setupPrivFilters();
-        buildPrivateForm();
+            setupPrivFilterHeaders();
+            // ★ Populate dropdowns from schoolHierarchy (not from privData)
+            populatePrivFiltersFromHierarchy();
 
-        // ★ Show "apply filter" prompt — do NOT render rows yet
-        _privShowEmptyState('Select your filters above and click Filter Data to load records.', false);
-        document.getElementById('privRecordCount').innerHTML =
-          `<i class="bi bi-database"></i> ${privData.length} Total`;
+            buildPrivateForm();
+
+            // Show "apply filter" prompt — do NOT render rows yet
+            _privShowEmptyState('Select your filters above and click Filter Data to load records.', false);
+            document.getElementById('privRecordCount').innerHTML =
+              `<i class="bi bi-database"></i> ${privData.length} Total`;
+          })
+          .withFailureHandler(err => {
+            _privShowEmptyState('Server error: ' + err.message, false);
+          })
+          .getPrivateDashboardData(activeUser, sheetName);
       })
       .withFailureHandler(err => {
-        _privShowEmptyState('Server error: ' + err.message, false);
+        _privShowEmptyState('Error loading school hierarchy: ' + err.message, false);
       })
-      .getPrivateDashboardData(activeUser, sheetName);
+      .getSchoolHierarchyForUser(activeUser);
   } catch (e) {
     alert('openPrivateModule crash: ' + e.message);
   }
@@ -154,7 +168,7 @@ function _privShowEmptyState(msg, isLoading) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  ★ NEW: PRIVATE FILTER HEADER MAPPING
+//  FILTER HEADER MAPPING & DROPDOWN POPULATION (NEW)
 // ══════════════════════════════════════════════════════════════════════
 function setupPrivFilterHeaders() {
   const findH = (keys) =>
@@ -167,48 +181,63 @@ function setupPrivFilterHeaders() {
   privFHeaders.regNo    = findH(['emis code', 'reg no', 'registeration no']);
 }
 
-function popPrivSelect(id, dataList, headerName) {
-  const el = document.getElementById(id);
-  if (!el || !headerName) return;
-  const cur  = el.value;
-  const uniq = [...new Set(dataList.map(r => r[headerName]).filter(Boolean))].sort();
-  el.innerHTML =
-    '<option value="">All</option>' +
-    uniq.map(v => `<option value="${_privEsc(v)}">${_privEsc(v)}</option>`).join('');
-  if (uniq.includes(cur)) el.value = cur;
-}
+// ★ NEW: Populate dropdowns from schoolHierarchy
+function populatePrivFiltersFromHierarchy() {
+  const dists = [...new Set(privSchoolHierarchy.map(s => s.d).filter(Boolean))].sort();
+  const tehsils = [...new Set(privSchoolHierarchy.map(s => s.t).filter(Boolean))].sort();
+  const markazs = [...new Set(privSchoolHierarchy.map(s => s.m).filter(Boolean))].sort();
 
-function setupPrivFilters() {
-  popPrivSelect('privFltDistrict', privData, privFHeaders.district);
-  popPrivSelect('privFltTehsil',   privData, privFHeaders.tehsil);
-  popPrivSelect('privFltMarkaz',   privData, privFHeaders.markaz);
+  const popSelect = (id, items) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    el.innerHTML = '<option value="">All</option>' +
+      items.map(v => `<option value="${_privEsc(v)}">${_privEsc(v)}</option>`).join('');
+    if (items.includes(cur)) el.value = cur;
+  };
+
+  popSelect('privFltDistrict', dists);
+  popSelect('privFltTehsil', tehsils);
+  popSelect('privFltMarkaz', markazs);
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  ★ NEW: PRIVATE CASCADE FILTER (District → Tehsil → Markaz)
+//  CASCADE FILTER – uses schoolHierarchy (not privData)
 // ══════════════════════════════════════════════════════════════════════
 function updatePrivCascades(trigger) {
   const d = document.getElementById('privFltDistrict').value;
   const t = document.getElementById('privFltTehsil').value;
 
-  let tData = [...privData];
+  let filtered = [...privSchoolHierarchy];
 
   if (trigger === 'District') {
-    if (d && privFHeaders.district) tData = tData.filter(r => r[privFHeaders.district] === d);
-    popPrivSelect('privFltTehsil', tData, privFHeaders.tehsil);
+    if (d) filtered = filtered.filter(s => s.d === d);
+    const tehsils = [...new Set(filtered.map(s => s.t).filter(Boolean))].sort();
+    const markazs = [...new Set(filtered.map(s => s.m).filter(Boolean))].sort();
+
+    popSelect('privFltTehsil', tehsils);
     document.getElementById('privFltTehsil').value = '';
-    popPrivSelect('privFltMarkaz', tData, privFHeaders.markaz);
+    popSelect('privFltMarkaz', markazs);
     document.getElementById('privFltMarkaz').value = '';
     return;
   }
 
-  if (d && privFHeaders.district) tData = tData.filter(r => r[privFHeaders.district] === d);
-
+  if (d) filtered = filtered.filter(s => s.d === d);
   if (trigger === 'Tehsil') {
-    if (t && privFHeaders.tehsil) tData = tData.filter(r => r[privFHeaders.tehsil] === t);
-    popPrivSelect('privFltMarkaz', tData, privFHeaders.markaz);
+    if (t) filtered = filtered.filter(s => s.t === t);
+    const markazs = [...new Set(filtered.map(s => s.m).filter(Boolean))].sort();
+    popSelect('privFltMarkaz', markazs);
     document.getElementById('privFltMarkaz').value = '';
   }
+}
+
+function popSelect(id, items) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const cur = el.value;
+  el.innerHTML = '<option value="">All</option>' +
+    items.map(v => `<option value="${_privEsc(v)}">${_privEsc(v)}</option>`).join('');
+  if (items.includes(cur)) el.value = cur;
 }
 
 // ══════════════════════════════════════════════════════════════════════
