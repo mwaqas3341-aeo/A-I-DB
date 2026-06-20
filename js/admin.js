@@ -166,7 +166,7 @@ function filterMarkazDropdown() {
 }
 
 // ═══════════════════════════════════════════════
-//  SCOPE VALUE UI - MULTI‑SELECT VERSION
+//  SCOPE VALUE UI – MULTI‑SELECT WITH FILTERING
 // ═══════════════════════════════════════════════
 function renderScopeValueUI(existingValue) {
   const type = document.getElementById('u_scope_type').value;
@@ -175,7 +175,25 @@ function renderScopeValueUI(existingValue) {
   prev.style.display = 'none';
   area.innerHTML = '';
 
-  // Helper: build tag input
+  // Get current user's primary jurisdiction (from the user being edited, or from currentUser if adding)
+  const primary = {
+    district: document.getElementById('u_district').value || (currentUser ? currentUser.district : ''),
+    wing:     document.getElementById('u_wing').value || (currentUser ? currentUser.wing : ''),
+    tehsil:   document.getElementById('u_tehsil').value || (currentUser ? currentUser.tehsil : ''),
+    markaz:   document.getElementById('u_markaz').value || (currentUser ? currentUser.markaz : '')
+  };
+
+  // Helper: filter jMap based on primary location
+  function filterMap(conditions) {
+    return jDropdowns.jMap.filter(item => {
+      return (!conditions.district || item.district === conditions.district) &&
+             (!conditions.wing     || item.wing === conditions.wing) &&
+             (!conditions.tehsil   || item.tehsil === conditions.tehsil) &&
+             (!conditions.markaz   || item.markaz === conditions.markaz);
+    });
+  }
+
+  // Helper: build tag input with filtered items
   function buildTagInput(items, placeholder, existing) {
     return `
       <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -194,28 +212,52 @@ function renderScopeValueUI(existingValue) {
   }
 
   if (type === 'Markaz') {
-    area.innerHTML = buildTagInput(jDropdowns.markazes, 'markaz', existingValue);
+    // Filter markazes by primary wing & tehsil
+    const filtered = filterMap({ wing: primary.wing, tehsil: primary.tehsil });
+    const markazs = [...new Set(filtered.map(i => i.markaz).filter(Boolean))].sort();
+    area.innerHTML = buildTagInput(markazs, 'markaz', existingValue);
     if (existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'markaz'));
     }
   } else if (type === 'Tehsil') {
-    area.innerHTML = buildTagInput(jDropdowns.tehsils, 'tehsil', existingValue);
+    // Filter tehsils by primary district & wing
+    const filtered = filterMap({ district: primary.district, wing: primary.wing });
+    const tehsils = [...new Set(filtered.map(i => i.tehsil).filter(Boolean))].sort();
+    area.innerHTML = buildTagInput(tehsils, 'tehsil', existingValue);
     if (existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'tehsil'));
     }
   } else if (type === 'Wing') {
-    const wings = ['M-EE', 'W-EE', 'SE'];
+    // Filter wings by primary district
+    const filtered = filterMap({ district: primary.district });
+    const wings = [...new Set(filtered.map(i => i.wing).filter(Boolean))].sort();
     area.innerHTML = buildTagInput(wings, 'wing', existingValue);
     if (existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'wing'));
     }
   } else if (type === 'District') {
+    // All districts – no filtering
     area.innerHTML = buildTagInput(jDropdowns.districts, 'district', existingValue);
     if (existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'district'));
     }
   } else if (type === 'Schools') {
-    const rows = jDropdowns.schools.map(s => {
+    // Filter schools by primary wing & tehsil (or primary markaz)
+    // Use jMap to get emis/uid for schools within the primary jurisdiction
+    const filteredSchools = jDropdowns.schools.filter(s => {
+      // Find this school in jMap by emis (public) or uid (private)
+      const matched = jDropdowns.jMap.find(item => {
+        return (s.emis && item.emis === s.emis) || (s.uid && item.uid === s.uid);
+      });
+      if (!matched) return false;
+      // Check if the school's district/wing/tehsil matches primary
+      return (!primary.district || matched.district === primary.district) &&
+             (!primary.wing     || matched.wing === primary.wing) &&
+             (!primary.tehsil   || matched.tehsil === primary.tehsil) &&
+             (!primary.markaz   || matched.markaz === primary.markaz);
+    });
+
+    const rows = filteredSchools.map(s => {
       const sheetClass = s.sheet === 'Public' ? 'pub' : 'priv';
       const emisLabel  = s.emis ? `<span class="sp-emis">EMIS: ${s.emis}</span>` : '';
       const uidLabel   = s.uid  ? `<span class="sp-emis">UID: ${s.uid}</span>`   : '';
@@ -228,6 +270,7 @@ function renderScopeValueUI(existingValue) {
         <span class="sp-sheet ${sheetClass}">${s.sheet}</span>
       </div>`;
     }).join('');
+
     area.innerHTML = `
       <div style="grid-column:1/-1">
         <span class="flabel" style="display:block;margin-bottom:6px">
