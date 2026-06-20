@@ -1182,38 +1182,21 @@
       <div id="hrSummaryCards" style="display:none;">
         <div class="hr-summary-row">
 
-         function downloadActiveStaff() {
-  // 1. Replace this array with your actual staff data (from API, state, or DOM)
-  const activeStaff = [
-    { name: "John Doe", department: "Mathematics", id: "ST-001" },
-    { name: "Jane Smith", department: "Science", id: "ST-002" },
-    { name: "Michael Brown", department: "English", id: "ST-003" },
-    { name: "Emily Davis", department: "History", id: "ST-004" },
-    // Add more staff as needed
-  ];
-
-  // 2. Convert to CSV format
-  const headers = ["Name", "Department", "ID"];
-  const rows = activeStaff.map(staff => [staff.name, staff.department, staff.id]);
-  const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-
-  // 3. Trigger the download using a helper (reuse same logic as your head teachers)
-  downloadFile(csvContent, "active_staff.csv", "text/csv");
-}
-
-// Generic file download helper (reuse this for both downloads)
-function downloadFile(content, filename, mimeType = "text/csv") {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 100);
-}
-
+        <!-- Card: Total Active Staff -->
+          <div class="hr-summary-card hr-card-blue">
+            <div class="hr-card-icon-wrap" style="background:rgba(37,99,235,0.12);">
+              <span class="material-icons-round" style="color:#2563EB;">group</span>
+            </div>
+            <div class="hr-card-body">
+              <div class="hr-card-value" id="scTotalStaff">—</div>
+              <div class="hr-card-label">Active Staff</div>
+              <div class="hr-card-sub" id="scTotalSub">in filtered results</div>
+            </div>
+            <div class="hr-card-value" id="scHeadCount">—</div>
+              <div class="hr-card-label">Total Active Staff</div>
+              <div class="hr-card-sub" style="color:#065F46;">Click to download (filtered)</div>
+           </div>
+          </div>   
           <!-- Card: Retiring within 1 Year -->
           <div class="hr-summary-card hr-card-amber">
             <div class="hr-card-icon-wrap" style="background:rgba(245,158,11,0.12);">
