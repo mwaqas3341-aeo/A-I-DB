@@ -99,11 +99,11 @@ const HR_SHEET_META = {
   'Deceased':          { title:'Death Cases',        sub:'Deceased staff records' },
   'Termination':       { title:'Terminations',       sub:'Staff whose service was terminated' },
   'Transfer_History': { title:'Transfer History', sub:'All transfer records and movement history' },
-  'Promotions_History':{ title:'Promotion History',  sub:'All promotion events and scale changes' },
+  's_History':{ title:' History',  sub:'All  events and scale changes' },
   'Deleted_Archive':   { title:'Deleted Archive',    sub:'Soft-deleted records stored for audit' }
 };
 
-const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','Promotions_History'];
+const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','s_History'];
 
 const SF_MAP = {
   sf_emis:                 'SCHOOL EMIS CODE',
@@ -289,8 +289,13 @@ function applyHrFilter() {
     google.script.run
       .withSuccessHandler(res => {
         if (res.error) { hrShowToast('Error: ' + res.error, false); return; }
-        hrSheetDataCache[sheet] = { headers: res.headers, rows: res.rows };
-        if (sheet === 'Staff') hrStaffFullRows = res.rows || [];
+        const headersIn  = res.headers || [];
+        const rowsIn     = res.rows || [];
+        rowsIn.forEach(r => {
+          r._searchBlob = headersIn.map(h => r[h] || '').join(' ').toLowerCase();
+        });
+        hrSheetDataCache[sheet] = { headers: headersIn, rows: rowsIn };
+        if (sheet === 'Staff') hrStaffFullRows = rowsIn;
         runHrClientFilter(sheet);
       })
       .withFailureHandler(err => hrShowToast('Backend Error: ' + err.message, false))
@@ -299,7 +304,7 @@ function applyHrFilter() {
 }
 function runHrClientFilter(sheet) {
   const cache = hrSheetDataCache[sheet];
-  if (!cache || !cache.rows.length) {
+  if (!cache || !cache.rows || !cache.rows.length) {
     document.getElementById('hrResultsContainer').innerHTML =
       '<div class="hr-empty-state">No records found in this sheet.</div>';
     if (sheet === 'Staff') { resetSummaryCards(); document.getElementById('hrSummaryCards').style.display = 'none'; }
@@ -332,7 +337,7 @@ function runHrClientFilter(sheet) {
     if (fTeh  && rTeh !== fTeh)  return false;
     if (fMark && !rMark.includes(fMark)) return false;
     if (fEmis && !rEmis.includes(fEmis)) return false;
-    if (fKey  && !hrCurrentHeaders.map(h => row[h] || '').join(' ').toLowerCase().includes(fKey)) return false;
+    if (fKey  && !(row._searchBlob || hrCurrentHeaders.map(h => row[h] || '').join(' ').toLowerCase()).includes(fKey)) return false;
     return true;
   });
 
@@ -353,8 +358,6 @@ function runHrClientFilter(sheet) {
 // ──────────────────────────────────────────────────────────────────
 function resetSummaryCards() {
   document.getElementById('scTotalStaff').textContent  = '—';
-  const scTotalStaff2El = document.getElementById('scTotalStaff2');
-  if (scTotalStaff2El) scTotalStaff2El.textContent = '—';
   document.getElementById('scRetiring1Yr').textContent = '—';
   document.getElementById('scNoHead').textContent      = '—';
   document.getElementById('scHeadCount').textContent   = '—';
@@ -363,8 +366,6 @@ function resetSummaryCards() {
 function updateSummaryCards(filteredRows) {
   // 1. Total active staff in current filter
   document.getElementById('scTotalStaff').textContent = filteredRows.length.toLocaleString();
-  const scTotalStaff2ElLive = document.getElementById('scTotalStaff2');
-  if (scTotalStaff2ElLive) scTotalStaff2ElLive.textContent = filteredRows.length.toLocaleString();
 
   // 2. Retiring within 1 year — reads column AE: "DATE OF RETIREMENT"
   //    Supports formats: "DD-Mon-YYYY", "YYYY-MM-DD", JS date strings
@@ -592,9 +593,7 @@ function downloadHeadTeachers() {
 /**
  * Pure client-side CSV download — exports every column passed in cols[].
  */
-function _hrDownloadCsv(rows, cols, filePrefix, toastLabel) {
-  filePrefix = filePrefix || 'Head_Teachers_Filtered';
-  toastLabel = toastLabel || 'Head Teachers list';
+function _hrDownloadCsv(rows, cols) {
   const escape = v => {
     const s = (v === null || v === undefined) ? '' : String(v);
     return s.includes(',') || s.includes('"') || s.includes('\n')
@@ -607,62 +606,12 @@ function _hrDownloadCsv(rows, cols, filePrefix, toastLabel) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = filePrefix + '_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.download = 'Head_Teachers_Filtered_' + new Date().toISOString().slice(0,10) + '.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  hrShowToast(toastLabel + ' downloaded (' + rows.length + ' records, ' + cols.length + ' columns).', true);
-}
-
-// ──────────────────────────────────────────────────────────────────
-//  DOWNLOAD ALL ACTIVE STAFF (filtered by current jurisdiction/filters)
-//  Mirrors downloadHeadTeachers() but exports every row currently
-//  visible in hrFilteredResults — no "Working as Head" restriction.
-// ──────────────────────────────────────────────────────────────────
-function downloadActiveStaffList() {
-  if (hrCurrentSheetView !== 'Staff') {
-    hrShowToast('Switch to the Active Staff view first.', false);
-    return;
-  }
-
-  if (!hrFilteredResults.length) {
-    hrShowToast('No records in the current filter to export.', false);
-    return;
-  }
-
-  // Export ALL columns present in the current sheet headers
-  const exportCols = hrCurrentHeaders.length > 0
-    ? hrCurrentHeaders
-    : Object.values(SF_MAP); // fallback if headers not yet populated
-
-  const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name: 'Admin' };
-  const cleanRows   = hrFilteredResults.map(r => {
-    const obj = {};
-    exportCols.forEach(col => { obj[col] = r[col] !== undefined ? r[col] : ''; });
-    return obj;
-  });
-
-  hrShowToast('Preparing Active Staff export…', true);
-
-  // Attempt backend Excel export; fall back to CSV
-  try {
-    google.script.run
-      .withSuccessHandler(res => {
-        if (res && res.url) {
-          window.open(res.url, '_blank');
-          hrShowToast('Active Staff list exported successfully (' + hrFilteredResults.length + ' records).', true);
-        } else {
-          _hrDownloadCsv(hrFilteredResults, exportCols, 'Active_Staff_Filtered', 'Active Staff list');
-        }
-      })
-      .withFailureHandler(() => {
-        _hrDownloadCsv(hrFilteredResults, exportCols, 'Active_Staff_Filtered', 'Active Staff list');
-      })
-      .exportHeadTeachersToExcel(cleanRows, exportCols, userPayload, 'Active_Staff_Export');
-  } catch (e) {
-    _hrDownloadCsv(hrFilteredResults, exportCols, 'Active_Staff_Filtered', 'Active Staff list');
-  }
+  hrShowToast('Head Teachers list downloaded (' + rows.length + ' records, ' + cols.length + ' columns).', true);
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -682,14 +631,14 @@ function renderHrTable() {
     hrCurrentHeaders.map(h => `<th>${h}</th>`).join('') + '</tr>';
   const body = pageRows.map((row, idx) => {
     const cells = hrCurrentHeaders.map(h => `<td>${row[h] !== undefined && row[h] !== null ? row[h] : ''}</td>`).join('');
-    return `<tr><td class="hr-actions-col"><button class="hr-btn-ghost action-menu-btn" style="padding:3px 8px;" onclick="openHrMenu(this,${start+idx})">⋮</button></td>${cells}</tr>`;
+    return `<tr><td class="hr-actions-col"><button type="button" class="hr-btn-ghost action-menu-btn" style="padding:3px 8px;" onclick="openHrMenu(this,${start+idx})">⋮</button></td>${cells}</tr>`;
   }).join('');
 
   const pagination = totalPages > 1 ? `
     <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <button class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage-1})" ${hrCurrentPage===1?'disabled':''}>‹ Prev</button>
+      <button type="button" class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage-1})" ${hrCurrentPage===1?'disabled':''}>‹ Prev</button>
       <span style="font-size:13px;color:#475569;">Page ${hrCurrentPage} of ${totalPages}</span>
-      <button class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage+1})" ${hrCurrentPage===totalPages?'disabled':''}>Next ›</button>
+      <button type="button" class="hr-btn-ghost" onclick="hrGoPage(${hrCurrentPage+1})" ${hrCurrentPage===totalPages?'disabled':''}>Next ›</button>
     </div>` : '';
 
   container.innerHTML = `
@@ -723,23 +672,23 @@ function openHrMenu(btn, idx) {
   const menu = document.createElement('div');
   menu.className = 'hr-fixed-menu';
 
-  let items = `<button class="hr-action-item" onclick="openStaffFormModal('view', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">👁 View Details</button>`;
+  let items = `<button type="button" class="hr-action-item" onclick="openStaffFormModal('view', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">👁 View Details</button>`;
 
   if (isStaff) {
     items += `
-      <button class="hr-action-item" onclick="openStaffFormModal('edit', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✏️ Edit Record</button>
-      <button class="hr-action-item" onclick="openTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Transfer</button>
-      <button class="hr-action-item" onclick="openPromotionModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">⬆️ Promotion</button>
-      <button class="hr-action-item" onclick="openSeparationModal('retirement', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🎓 Retirement</button>
-      <button class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>
-      <button class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
-      <button class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
-      <button class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>`;
+      <button type="button" class="hr-action-item" onclick="openStaffFormModal('edit', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✏️ Edit Record</button>
+      <button type="button" class="hr-action-item" onclick="openTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Transfer</button>
+      <button type="button" class="hr-action-item" onclick="openPromotionModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">⬆️ Promotion</button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('retirement', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🎓 Retirement</button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
+      <button type="button" class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
+      <button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>`;
   } else if (isRevert) {
     const revertLabel = hrCurrentSheetView === 'Transfer_History'  ? '↩ Undo Transfer'
-                      : hrCurrentSheetView === 'Promotions_History' ? '↩ Undo Promotion'
+                      : hrCurrentSheetView === 's_History' ? '↩ Undo '
                       : '↩ Revert to Active Staff';
-    items += `<button class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
+    items += `<button type="button" class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
   }
 
   menu.innerHTML = items;
@@ -814,6 +763,9 @@ function openStaffFormModal(mode, row) {
     });
   }
 
+  // ── EMIS data guard: lazy-load hrSchoolCache if not yet populated ──
+  // (mirrors the same pattern used by openHrModule / openTransferModal so
+  // the EMIS lookup never silently fails because the cache is still empty)
   if (hrSchoolCache.length === 0) {
     const emisMsg = document.getElementById('sf_emis_msg');
     emisMsg.textContent   = '⏳ Loading school data…';
@@ -823,6 +775,9 @@ function openStaffFormModal(mode, row) {
       .withSuccessHandler(data => {
         hrSchoolCache = data || [];
         emisMsg.style.display = 'none';
+        // Refresh the StaffForm's own EMIS map (if that module is loaded)
+        // so add/edit/transfer/promotion lookups work immediately too.
+        if (typeof buildSfmEmisMap === 'function') buildSfmEmisMap();
       })
       .withFailureHandler(() => {
         emisMsg.textContent   = '⚠ Failed to load school data.';
@@ -830,6 +785,9 @@ function openStaffFormModal(mode, row) {
         emisMsg.style.display = 'block';
       })
       .getSchoolHierarchyForUser(typeof currentUser !== 'undefined' ? currentUser : null);
+  } else if (typeof buildSfmEmisMap === 'function') {
+    // Cache already populated — make sure the StaffForm EMIS map is in sync.
+    buildSfmEmisMap();
   }
 
   modal.style.display = 'flex';
@@ -908,7 +866,7 @@ function triggerPnoCheck(pno) {
   if (pno.length < 8) return;
 
   // ── 1. Client-side — main sheets (col D) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  const mainSheets = ['Staff','Deleted_Archive','s_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -994,7 +952,7 @@ function triggerCnicCheck(cnic) {
   }
 
   // ── 1. Client-side — main sheets (col W) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  const mainSheets = ['Staff','Deleted_Archive','s_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -1081,7 +1039,7 @@ function triggerIbanCheck(iban) {
   }
 
   // ── 1. Client-side — main sheets (col Z) ─────────────────────
-  const mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  const mainSheets = ['Staff','Deleted_Archive','s_History',
                       'Deceased','Termination','Retirement','Resignation'];
   let foundIn = null;
 
@@ -1303,8 +1261,8 @@ function openTransferModal(row) {
         <div class="transfer-err" id="tfe_date"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-        <button class="hr-btn-primary" onclick="submitHrTransfer()">✅ Confirm Transfer</button>
-        <button class="hr-btn-ghost" onclick="document.getElementById('hrTransferModal').style.display='none'">Cancel</button>
+        <button type="button" class="hr-btn-primary" onclick="submitHrTransfer()">✅ Confirm Transfer</button>
+        <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrTransferModal').style.display='none'">Cancel</button>
       </div>`;
     document.getElementById('hrTransferModal').style.display = 'flex';
   });
@@ -1359,7 +1317,7 @@ function submitHrTransfer() {
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  PROMOTION MODAL
+//   MODAL
 // ──────────────────────────────────────────────────────────────────
 function openPromotionModal(row) {
   hrPromotionRow = row;
@@ -1404,8 +1362,8 @@ function openPromotionModal(row) {
       <div class="transfer-err" id="pme_scale"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button class="hr-btn-primary" onclick="submitHrPromotion()">✅ Confirm Promotion</button>
-      <button class="hr-btn-ghost" onclick="document.getElementById('hrPromotionModal').style.display='none'">Cancel</button>
+      <button type="button" class="hr-btn-primary" onclick="submitHrPromotion()">✅ Confirm Promotion</button>
+      <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrPromotionModal').style.display='none'">Cancel</button>
     </div>`;
   document.getElementById('hrPromotionModal').style.display = 'flex';
 }
@@ -1491,10 +1449,10 @@ function openSeparationModal(actionType, row) {
       <div class="transfer-err" id="sae_date"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button class="hr-btn-danger" onclick="submitSeparation('${actionType}', hrFilteredResults.find(r=>r['PERSONAL NO.']==='${(row['PERSONAL NO.']||'').replace(/'/g,"\\'")}'))">
+      <button type="button" class="hr-btn-danger" onclick="submitSeparation('${actionType}', hrFilteredResults.find(r=>r['PERSONAL NO.']==='${(row['PERSONAL NO.']||'').replace(/'/g,"\\'")}'))">
         Submit ${labels[actionType].replace(/^[^ ]+ /, '')}
       </button>
-      <button class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
+      <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
     </div>`;
   document.getElementById('hrActionModal').style.display = 'flex';
 }
