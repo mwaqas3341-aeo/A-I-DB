@@ -166,7 +166,7 @@ function filterMarkazDropdown() {
 }
 
 // ═══════════════════════════════════════════════
-//  SCOPE VALUE UI
+//  SCOPE VALUE UI - MULTI‑SELECT VERSION
 // ═══════════════════════════════════════════════
 function renderScopeValueUI(existingValue) {
   const type = document.getElementById('u_scope_type').value;
@@ -175,64 +175,45 @@ function renderScopeValueUI(existingValue) {
   prev.style.display = 'none';
   area.innerHTML = '';
 
+  // Helper: build tag input
+  function buildTagInput(items, placeholder, existing) {
+    return `
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <select id="scope_picker" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+          <option value="">— Pick ${placeholder} —</option>
+          ${items.map(v => `<option value="${v}">${v}</option>`).join('')}
+        </select>
+        <button type="button" onclick="addScopeTag('${placeholder}')"
+          style="height:38px;padding:0 14px;background:var(--brand);color:#fff;border:none;border-radius:6px;font-size:.82rem;cursor:pointer">
+          <i class="bi bi-plus-lg"></i> Add
+        </button>
+      </div>
+      <div id="scope_tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
+      <input type="hidden" id="scope_value_hidden">
+    `;
+  }
+
   if (type === 'Markaz') {
-    area.innerHTML = `
-      <div class="ff" style="grid-column:1/-1">
-        <span class="flabel">Extra Markazes (Col L) — primary markaz above is automatic; add extra here</span>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <select id="scope_markaz_picker" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
-            <option value="">— Pick a markaz —</option>
-            ${jDropdowns.markazes.map(m => `<option value="${m}">${m}</option>`).join('')}
-          </select>
-          <button type="button" onclick="addExtraMarkaz()"
-            style="height:38px;padding:0 14px;background:var(--brand);color:#fff;border:none;border-radius:6px;font-size:.82rem;cursor:pointer">
-            <i class="bi bi-plus-lg"></i> Add
-          </button>
-        </div>
-        <div id="extra_markaz_tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
-        <input type="hidden" id="scope_value_hidden">
-      </div>`;
+    area.innerHTML = buildTagInput(jDropdowns.markazes, 'markaz', existingValue);
     if (existingValue) {
-      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addMarkazTag(v));
+      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'markaz'));
     }
   } else if (type === 'Tehsil') {
-    area.innerHTML = `
-      <div class="ff">
-        <span class="flabel">Assigned Tehsil (Col L)</span>
-        <select id="scope_value_hidden" onchange="updateScopePreview()"
-          style="width:100%;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
-          <option value="">Select Tehsil</option>
-          ${jDropdowns.tehsils.map(t => `<option value="${t}">${t}</option>`).join('')}
-        </select>
-      </div>`;
-    if (existingValue) document.getElementById('scope_value_hidden').value = existingValue;
-    updateScopePreview();
+    area.innerHTML = buildTagInput(jDropdowns.tehsils, 'tehsil', existingValue);
+    if (existingValue) {
+      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'tehsil'));
+    }
   } else if (type === 'Wing') {
-    area.innerHTML = `
-      <div class="ff">
-        <span class="flabel">Assigned Wing (Col L)</span>
-        <select id="scope_value_hidden" onchange="updateScopePreview()"
-          style="width:100%;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
-          <option value="">Select Wing</option>
-          <option value="M-EE">M-EE (Male Elementary Education)</option>
-          <option value="W-EE">W-EE (Female Elementary Education)</option>
-          <option value="SE">SE (Secondary Education)</option>
-        </select>
-      </div>`;
-    if (existingValue) document.getElementById('scope_value_hidden').value = existingValue;
-    updateScopePreview();
+    const wings = ['M-EE', 'W-EE', 'SE'];
+    area.innerHTML = buildTagInput(wings, 'wing', existingValue);
+    if (existingValue) {
+      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'wing'));
+    }
   } else if (type === 'District') {
-    area.innerHTML = `
-      <div class="ff">
-        <span class="flabel">Assigned District (Col L)</span>
-        <select id="scope_value_hidden" onchange="updateScopePreview()"
-          style="width:100%;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
-          <option value="">Select District</option>
-          ${jDropdowns.districts.map(d => `<option value="${d}">${d}</option>`).join('')}
-        </select>
-      </div>`;
-    if (existingValue) document.getElementById('scope_value_hidden').value = existingValue;
-    updateScopePreview();
+    area.innerHTML = buildTagInput(jDropdowns.districts, 'district', existingValue);
+    if (existingValue) {
+      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'district'));
+    }
   } else if (type === 'Schools') {
     const rows = jDropdowns.schools.map(s => {
       const sheetClass = s.sheet === 'Public' ? 'pub' : 'priv';
@@ -283,29 +264,44 @@ function renderScopeValueUI(existingValue) {
       onSchoolCheck();
     }
   }
+
+  // Store the scope type for tag removal
+  if (type !== 'Schools') {
+    const picker = document.getElementById('scope_picker');
+    if (picker) picker.dataset.scopeType = type;
+  }
 }
 
-function _addMarkazTag(v) {
-  if (!v) return;
-  const tags = document.getElementById('extra_markaz_tags');
-  if (!tags || tags.querySelector(`[data-m="${v}"]`)) return;
+// ── Tag management ──────────────────────────────────────────────
+function _addScopeTag(value, type) {
+  if (!value) return;
+  const tags = document.getElementById('scope_tags');
+  if (!tags || tags.querySelector(`[data-value="${value}"]`)) return;
   const d = document.createElement('div');
-  d.className = 'markaz-tag'; d.setAttribute('data-m', v);
-  d.innerHTML = `<i class="bi bi-geo-alt-fill"></i>${v}<span class="rm" onclick="this.parentElement.remove();updateMarkazScopeValue()">×</span>`;
+  d.className = 'markaz-tag'; // reuse same class
+  d.setAttribute('data-value', value);
+  d.innerHTML = `<i class="bi bi-geo-alt-fill"></i>${value}<span class="rm" onclick="this.parentElement.remove();updateScopeValue()">×</span>`;
   tags.appendChild(d);
+  updateScopeValue();
 }
-function addExtraMarkaz() {
-  const p = document.getElementById('scope_markaz_picker');
-  _addMarkazTag(p.value.trim()); p.value = '';
-  updateMarkazScopeValue();
-}
-function updateMarkazScopeValue() {
-  const tags  = document.querySelectorAll('#extra_markaz_tags [data-m]');
-  const value = Array.from(tags).map(t => t.getAttribute('data-m')).join(', ');
+
+window.addScopeTag = function(type) {
+  const picker = document.getElementById('scope_picker');
+  if (!picker) return;
+  const val = picker.value.trim();
+  if (!val) return;
+  _addScopeTag(val, type);
+  picker.value = '';
+};
+
+function updateScopeValue() {
+  const tags  = document.querySelectorAll('#scope_tags [data-value]');
+  const value = Array.from(tags).map(t => t.getAttribute('data-value')).join(', ');
   const h = document.getElementById('scope_value_hidden');
   if (h) h.value = value;
   updateScopePreview();
 }
+
 function onSchoolCheck() {
   const checked = document.querySelectorAll('#schoolPickerList input[type=checkbox]:checked');
   const vals    = Array.from(checked).map(c => c.value);
@@ -315,6 +311,7 @@ function onSchoolCheck() {
   if (cnt) cnt.textContent = checked.length ? `${checked.length} school(s) selected` : 'No schools selected';
   updateScopePreview();
 }
+
 function filterSchoolPicker(q, sheetOnly, sheetName) {
   const lower = q ? q.toLowerCase().trim() : '';
   document.querySelectorAll('.sp-item').forEach(item => {
@@ -323,6 +320,7 @@ function filterSchoolPicker(q, sheetOnly, sheetName) {
     item.style.display = ((!lower || text.includes(lower)) && (!sheetOnly || sheet === sheetName)) ? '' : 'none';
   });
 }
+
 function updateScopePreview() {
   const h    = document.getElementById('scope_value_hidden');
   const wrap = document.getElementById('scopePreviewWrap');
@@ -398,7 +396,6 @@ function filterUserTable(query) {
   const countEl = document.getElementById('userSearchCount');
 
   if (!q) {
-    // Show all rows
     document.querySelectorAll('#userTBody tr').forEach(tr => tr.style.display = '');
     countEl.textContent = '';
     return;
@@ -415,6 +412,7 @@ function filterUserTable(query) {
   const total = document.querySelectorAll('#userTBody tr').length;
   countEl.textContent = `${visible} of ${total} users`;
 }
+
 // ── User modal: add ──────────────────────────────────────────────
 function openUserModal() {
   document.getElementById('userModalTitle').textContent = 'Add New User';
@@ -463,7 +461,17 @@ function clearUserForm() {
 }
 
 function submitUser() {
-  if (document.getElementById('u_scope_type').value === 'Markaz') updateMarkazScopeValue();
+  // Collect tags from scope UI if not Schools
+  const scopeType = document.getElementById('u_scope_type').value;
+  if (scopeType !== 'Schools') {
+    const tags = document.querySelectorAll('#scope_tags [data-value]');
+    const values = Array.from(tags).map(t => t.getAttribute('data-value')).join(', ');
+    const h = document.getElementById('scope_value_hidden');
+    if (h) h.value = values;
+  } else {
+    // Schools already handled by onSchoolCheck
+  }
+
   const scopeH = document.getElementById('scope_value_hidden');
   const cnic = document.getElementById('u_cnic').value.trim();
   const name = document.getElementById('u_name').value.trim();
@@ -810,7 +818,6 @@ function editKpiCard(ri) {
   if (aType === 'url') {
     document.getElementById('kc_url_input').value = aVal;
   } else {
-    // Match to module select option
     const sel = document.getElementById('kc_module_select');
     const opt = Array.from(sel.options).find(o => o.value === aVal);
     sel.value = opt ? aVal : sel.options[0].value;
