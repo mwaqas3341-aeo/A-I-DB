@@ -7,7 +7,7 @@ let pubData           = [];
 let currentPubSheet   = '';
 let pubFilteredCache  = [];
 let pubModal;
-let pubDataLoaded     = false; // tracks whether backend data is loaded
+let pubDataLoaded     = false;
 
 // Master (read-only) column count A-I
 const PUB_MASTER_COUNT = 9;
@@ -51,6 +51,9 @@ const PUB_EDITABLE_FIELDS = [
 // Header key tracking for cascade filters
 let pubFHeaders = { district: '', tehsil: '', wing: '', markaz: '', emis: '' };
 
+// ── NEW: Store filtered school hierarchy for dropdowns ──────────────
+let pubSchoolHierarchy = [];
+
 // ══════════════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════════════
@@ -69,51 +72,58 @@ function openPublicModule(sheetName) {
   pubData           = [];
   pubHeaders        = [];
   pubFilteredCache  = [];
+  pubSchoolHierarchy = [];
 
   document.getElementById('pubCurrentSheet').textContent = sheetName;
   document.getElementById('pubRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
 
-  // Add School button: only for Public (Active) sheet; hide for Outsourced
   document.getElementById('btnPubAdd').style.display =
     (sheetName === 'Public') ? 'flex' : 'none';
 
-  // Switch to this view
   if (typeof switchGlobalTab === 'function') switchGlobalTab('publicDataView', null);
 
-  // Reset table to empty state
-  _pubShowEmptyState('Loading data from server…', true);
+  _pubShowEmptyState('Loading data…', true);
 
-  // Reset filter dropdowns
   ['pubFltDistrict','pubFltTehsil','pubFltWing','pubFltMarkaz','pubFltEmis','pubSearchInput']
     .forEach(id => {
       const el = document.getElementById(id);
       if (el) el.tagName === 'SELECT' ? (el.innerHTML = '<option value="">All</option>') : (el.value = '');
     });
 
+  // Step 1: Load filtered school hierarchy for dropdowns
   google.script.run
-    .withSuccessHandler(res => {
-      if (!res || !res.success) {
-        _pubShowEmptyState('Error loading data. Please try again.', false);
-        return;
-      }
-      pubHeaders       = res.headers;
-      pubData          = res.data;
-      pubDataLoaded    = true;
+    .withSuccessHandler(function(schools) {
+      pubSchoolHierarchy = schools || [];
+      // Step 2: Load the actual data rows
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.success) {
+            _pubShowEmptyState('Error loading data. Please try again.', false);
+            return;
+          }
+          pubHeaders       = res.headers;
+          pubData          = res.data;
+          pubDataLoaded    = true;
 
-      // Populate cascades from full dataset
-      setupPubFilterHeaders();
-      setupPubFilters();
-      buildPublicForm();
+          setupPubFilterHeaders();
+          // Populate dropdowns from schoolHierarchy (not from pubData)
+          populatePubFiltersFromHierarchy();
 
-      // ★ FIX: Do NOT render the table yet — show the "apply filter" prompt
-      _pubShowEmptyState('Select your filters above and click Filter Data to load records.', false);
-      document.getElementById('pubRecordCount').innerHTML =
-        `<i class="bi bi-database"></i> ${pubData.length} Total`;
+          buildPublicForm();
+
+          _pubShowEmptyState('Select your filters above and click Filter Data to load records.', false);
+          document.getElementById('pubRecordCount').innerHTML =
+            `<i class="bi bi-database"></i> ${pubData.length} Total`;
+        })
+        .withFailureHandler(err => {
+          _pubShowEmptyState('Server error: ' + err.message, false);
+        })
+        .getPublicDashboardData(currentUser, sheetName);
     })
     .withFailureHandler(err => {
-      _pubShowEmptyState('Server error: ' + err.message, false);
+      _pubShowEmptyState('Error loading school hierarchy: ' + err.message, false);
     })
-    .getPublicDashboardData(currentUser, sheetName);
+    .getSchoolHierarchyForUser(currentUser);
 }
 
 // Helper: toggle between empty-state div and table
@@ -144,74 +154,86 @@ function setupPubFilterHeaders() {
   pubFHeaders.emis     = findH(['emis', 'reg no']);
 }
 
-function popPubSelect(id, dataList, headerName) {
-  const el = document.getElementById(id);
-  if (!el || !headerName) return;
-  const cur  = el.value;
-  const uniq = [...new Set(dataList.map(r => r[headerName]).filter(Boolean))].sort();
-  el.innerHTML =
-    '<option value="">All</option>' +
-    uniq.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
-  if (uniq.includes(cur)) el.value = cur;
-}
+// ── NEW: Populate filters from schoolHierarchy ──────────────────────
+function populatePubFiltersFromHierarchy() {
+  const dists = [...new Set(pubSchoolHierarchy.map(s => s.d).filter(Boolean))].sort();
+  const wings = [...new Set(pubSchoolHierarchy.map(s => s.w).filter(Boolean))].sort();
+  const tehsils = [...new Set(pubSchoolHierarchy.map(s => s.t).filter(Boolean))].sort();
+  const markazs = [...new Set(pubSchoolHierarchy.map(s => s.m).filter(Boolean))].sort();
 
-function setupPubFilters() {
-  popPubSelect('pubFltDistrict', pubData, pubFHeaders.district);
-  popPubSelect('pubFltTehsil',   pubData, pubFHeaders.tehsil);
-  popPubSelect('pubFltWing',     pubData, pubFHeaders.wing);
-  popPubSelect('pubFltMarkaz',   pubData, pubFHeaders.markaz);
+  const popSelect = (id, items) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    el.innerHTML = '<option value="">All</option>' +
+      items.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+    if (items.includes(cur)) el.value = cur;
+  };
+
+  popSelect('pubFltDistrict', dists);
+  popSelect('pubFltWing', wings);
+  popSelect('pubFltTehsil', tehsils);
+  popSelect('pubFltMarkaz', markazs);
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  CASCADE FILTER
-//
-//  ★ FIX: Original code used undefined variable `type` inside
-//          document.getElementById('pubFlt' + type).
-//          The parameter is named `trigger` — use that consistently.
-//          Also removed the dead `sel.innerHTML = …` block at top that
-//          was trying to clear a select before re-populating it.
+//  CASCADE FILTER – uses schoolHierarchy (not pubData)
 // ══════════════════════════════════════════════════════════════════════
 function updatePubCascades(trigger) {
   const d = document.getElementById('pubFltDistrict').value;
   const t = document.getElementById('pubFltTehsil').value;
   const w = document.getElementById('pubFltWing').value;
 
-  let tData = [...pubData];
+  let filteredSchools = [...pubSchoolHierarchy];
 
   if (trigger === 'District') {
-    // Filter by district, then repopulate downstream
-    if (d && pubFHeaders.district) tData = tData.filter(r => r[pubFHeaders.district] === d);
-    popPubSelect('pubFltTehsil', tData, pubFHeaders.tehsil);
+    if (d) filteredSchools = filteredSchools.filter(s => s.d === d);
+    const wings = [...new Set(filteredSchools.map(s => s.w).filter(Boolean))].sort();
+    const tehsils = [...new Set(filteredSchools.map(s => s.t).filter(Boolean))].sort();
+    const markazs = [...new Set(filteredSchools.map(s => s.m).filter(Boolean))].sort();
+
+    popSelect('pubFltWing', wings);
+    document.getElementById('pubFltWing').value = '';
+    popSelect('pubFltTehsil', tehsils);
     document.getElementById('pubFltTehsil').value = '';
-    popPubSelect('pubFltWing',   tData, pubFHeaders.wing);
-    document.getElementById('pubFltWing').value = '';
-    popPubSelect('pubFltMarkaz', tData, pubFHeaders.markaz);
+    popSelect('pubFltMarkaz', markazs);
     document.getElementById('pubFltMarkaz').value = '';
     return;
   }
 
-  if (d && pubFHeaders.district) tData = tData.filter(r => r[pubFHeaders.district] === d);
-
+  if (d) filteredSchools = filteredSchools.filter(s => s.d === d);
   if (trigger === 'Tehsil') {
-    if (t && pubFHeaders.tehsil) tData = tData.filter(r => r[pubFHeaders.tehsil] === t);
-    popPubSelect('pubFltWing',   tData, pubFHeaders.wing);
+    if (t) filteredSchools = filteredSchools.filter(s => s.t === t);
+    const wings = [...new Set(filteredSchools.map(s => s.w).filter(Boolean))].sort();
+    const markazs = [...new Set(filteredSchools.map(s => s.m).filter(Boolean))].sort();
+
+    popSelect('pubFltWing', wings);
     document.getElementById('pubFltWing').value = '';
-    popPubSelect('pubFltMarkaz', tData, pubFHeaders.markaz);
+    popSelect('pubFltMarkaz', markazs);
     document.getElementById('pubFltMarkaz').value = '';
     return;
   }
 
-  if (t && pubFHeaders.tehsil) tData = tData.filter(r => r[pubFHeaders.tehsil] === t);
-
+  if (t) filteredSchools = filteredSchools.filter(s => s.t === t);
   if (trigger === 'Wing') {
-    if (w && pubFHeaders.wing) tData = tData.filter(r => r[pubFHeaders.wing] === w);
-    popPubSelect('pubFltMarkaz', tData, pubFHeaders.markaz);
+    if (w) filteredSchools = filteredSchools.filter(s => s.w === w);
+    const markazs = [...new Set(filteredSchools.map(s => s.m).filter(Boolean))].sort();
+    popSelect('pubFltMarkaz', markazs);
     document.getElementById('pubFltMarkaz').value = '';
   }
 }
 
+function popSelect(id, items) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const cur = el.value;
+  el.innerHTML = '<option value="">All</option>' +
+    items.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+  if (items.includes(cur)) el.value = cur;
+}
+
 // ══════════════════════════════════════════════════════════════════════
-//  APPLY FILTERS — called only when user clicks "Filter Data"
+//  APPLY FILTERS – uses pubData (filtered rows)
 // ══════════════════════════════════════════════════════════════════════
 function applyPubFilters() {
   if (!pubDataLoaded) {
@@ -236,7 +258,6 @@ function applyPubFilters() {
 
   pubFilteredCache = fData;
 
-  // Show table, hide empty state
   document.getElementById('pubEmptyState').style.display  = 'none';
   document.getElementById('pubTableWrap').style.display   = 'block';
 
@@ -269,7 +290,7 @@ function applyPubFilters() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  FORM BUILD
+//  FORM BUILD (unchanged)
 // ══════════════════════════════════════════════════════════════════════
 function buildPublicForm() {
   // Master fields (A-I) — read-only
@@ -344,7 +365,7 @@ function openPublicModal() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  CALCULATIONS
+//  CALCULATIONS (unchanged)
 // ══════════════════════════════════════════════════════════════════════
 function calcPubLand() {
   const k = parseFloat(document.getElementById('pub_Kanal')?.value  || 0);
@@ -392,7 +413,7 @@ function handlePubBW() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  SAVE
+//  SAVE (unchanged)
 // ══════════════════════════════════════════════════════════════════════
 function submitPublicForm() {
   const iban = document.getElementById('pub_IBAN')?.value.trim().replace(/\s/g, '') || '';
@@ -433,7 +454,7 @@ function submitPublicForm() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  EXPORT
+//  EXPORT (unchanged)
 // ══════════════════════════════════════════════════════════════════════
 function exportPubView() {
   if (pubFilteredCache.length > 0 && pubHeaders.length > 0) {
