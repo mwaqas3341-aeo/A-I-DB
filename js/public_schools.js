@@ -450,7 +450,13 @@ function submitPublicForm() {
         if (typeof showToast === 'function') showToast(res.message, false);
       }
     })
-    .savePublicSchool(dataObj, currentPubSheet);
+    .withFailureHandler(err => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-save2"></i> Save Record';
+      if (typeof showToast === 'function') showToast('Server error: ' + err.message, false);
+      else alert('Server error: ' + err.message);
+    })
+    .savePublicSchool(dataObj, currentUser, currentPubSheet);
 }
 
 // ══════════════════════════════════════════════════════════════════════
