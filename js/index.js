@@ -80,22 +80,8 @@ function doLogin() {
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Secure Login';
       if (res.success) {
-        currentUser = res;
-        localStorage.setItem('userMarkaz', res.markaz || 'All');
-
-        document.getElementById('userName').textContent       = res.name;
-        document.getElementById('userMarkaz').textContent     = res.markaz || 'N/A';
-        document.getElementById('dashMarkazName').textContent = res.markaz || 'All';
-        document.getElementById('navAvatar').textContent      = res.name.substring(0, 2).toUpperCase();
-        document.getElementById('loginView').style.display    = 'none';
-        document.getElementById('appWrapper').style.display   = 'block';
-
-        if (String(res.role).toLowerCase() === 'admin')
-          document.getElementById('navAdminBtn').style.display = 'block';
-
-        loadKPIs();
-        loadDashboardLinksApps();
-        loadDashboardKpiCards();
+        localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(res));
+        enterApp(res);
       } else {
         showToast(res.message, false);
       }
@@ -103,17 +89,49 @@ function doLogin() {
     .login(cnic, pass);
 }
 
+// ─── Enter app — shared by fresh login and session restore ────────
+function enterApp(user) {
+  currentUser = user;
+  localStorage.setItem('userMarkaz', user.markaz || 'All');
+
+  document.getElementById('userName').textContent       = user.name;
+  document.getElementById('userMarkaz').textContent     = user.markaz || 'N/A';
+  document.getElementById('dashMarkazName').textContent = user.markaz || 'All';
+  document.getElementById('navAvatar').textContent      = user.name.substring(0, 2).toUpperCase();
+  document.getElementById('loginView').style.display    = 'none';
+  document.getElementById('appWrapper').style.display   = 'block';
+
+  if (String(user.role).toLowerCase() === 'admin')
+    document.getElementById('navAdminBtn').style.display = 'block';
+
+  loadKPIs();
+  loadDashboardLinksApps();
+  loadDashboardKpiCards();
+}
+
+// ─── Restore session on page load ──────────────────
+function restoreSession() {
+  const saved = localStorage.getItem(CONFIG.SESSION_KEY);
+  if (!saved) return;
+  try {
+    const user = JSON.parse(saved);
+    if (user && user.cnic) enterApp(user);
+  } catch (e) {
+    localStorage.removeItem(CONFIG.SESSION_KEY);
+  }
+}
+document.addEventListener('DOMContentLoaded', restoreSession);
+
 // ─── Logout ───────────────────────────────────────
 function doLogout() {
   currentUser = null;
   localStorage.removeItem('userMarkaz');
+  localStorage.removeItem(CONFIG.SESSION_KEY);
   document.getElementById('appWrapper').style.display = 'none';
   document.getElementById('loginView').style.display  = 'flex';
   document.getElementById('pass').value = '';
   showToast('Logged out successfully', true);
-}
-
-// ─── Load KPIs ────────────────────────────────────
+}// ─── Load KPIs ────────────────────────────────────
 function loadKPIs() {
   google.script.run.withSuccessHandler(res => {
     if (res.success) {
