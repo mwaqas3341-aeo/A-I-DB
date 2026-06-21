@@ -8,6 +8,7 @@ let toolsHeaders = [], toolsData = [];
 let kpiCardsData  = [];
 let jDropdowns   = { districts:[], tehsils:[], wings:[], markazes:[], schools:[], jMap:[] };
 let jLoaded      = false;
+let jSchoolsLoaded = false;   // tracks lazy-loaded "Schools" scope picker data
 
 let userModalInst, deleteUserModalInst, linksModalInst, toolModalInst, deleteModalInst, kpiCardModalInst;
 let pendingDeleteRow = null, pendingDeleteType = null;
@@ -121,6 +122,7 @@ function loadJurisdictionDropdowns(callback) {
     .withSuccessHandler(res => {
       if (!res.success) { showToast('Could not load jurisdiction data: ' + res.message, false); return; }
       jDropdowns = res;
+      jDropdowns.schools = jDropdowns.schools || [];
       jLoaded    = true;
       populateStaticDropdowns();
       if (callback) callback();
@@ -193,7 +195,8 @@ function renderScopeValueUI(existingValue) {
     });
   }
 
-  // Helper: build tag input with filtered items
+  // Helper: build tag input with filtered items (single-value tags —
+  // used by Markaz / District scope types)
   function buildTagInput(items, placeholder, existing) {
     return `
       <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -211,6 +214,30 @@ function renderScopeValueUI(existingValue) {
     `;
   }
 
+  // Helper: build a TWO-select paired tag input — used by Wing / Tehsil
+  // scope types, which now store "Primary:Secondary" pairs (e.g.
+  // "Layyah:M-EE" for Wing scope, "Kot Addu:W-EE" for Tehsil scope).
+  function buildPairTagInput(primaryItems, secondaryItems, primaryLabel, secondaryLabel) {
+    return `
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <select id="scope_pair_primary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+          <option value="">— Pick ${primaryLabel} —</option>
+          ${primaryItems.map(v => `<option value="${v}">${v}</option>`).join('')}
+        </select>
+        <select id="scope_pair_secondary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+          <option value="">— Pick ${secondaryLabel} —</option>
+          ${secondaryItems.map(v => `<option value="${v}">${v}</option>`).join('')}
+        </select>
+        <button type="button" onclick="addScopePairTag()"
+          style="height:38px;padding:0 14px;background:var(--brand);color:#fff;border:none;border-radius:6px;font-size:.82rem;cursor:pointer">
+          <i class="bi bi-plus-lg"></i> Add
+        </button>
+      </div>
+      <div id="scope_tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
+      <input type="hidden" id="scope_value_hidden">
+    `;
+  }
+
   if (type === 'Markaz') {
     // Filter markazes by primary wing & tehsil
     const filtered = filterMap({ wing: primary.wing, tehsil: primary.tehsil });
@@ -219,7 +246,11 @@ function renderScopeValueUI(existingValue) {
     if (existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'markaz'));
     }
+
   } else if (type === 'Tehsil') {
+    // Paired: Tehsil + Wing — admin picks both per tag.
+    // System-wide tehsil list (not narrowed to primary district), since
+    // a Tehsil-charge can be granted in any wing, anywhere in the system.
     const wings = ['M-EE', 'W-EE', 'SE'];
     area.innerHTML = buildPairTagInput(jDropdowns.tehsils, wings, 'Tehsil', 'Wing');
     if (existingValue) {
@@ -228,7 +259,10 @@ function renderScopeValueUI(existingValue) {
         if (parts.length === 2) _addScopePairTag(pair, `${parts[0]} → ${parts[1]}`);
       });
     }
+
   } else if (type === 'Wing') {
+    // Paired: District + Wing — admin picks both per tag, can differ
+    // from the user's own primary wing. Stored as "District:Wing".
     const wings = ['M-EE', 'W-EE', 'SE'];
     area.innerHTML = buildPairTagInput(jDropdowns.districts, wings, 'District', 'Wing');
     if (existingValue) {
@@ -237,13 +271,34 @@ function renderScopeValueUI(existingValue) {
         if (parts.length === 2) _addScopePairTag(pair, `${parts[0]} → ${parts[1]}`);
       });
     }
+
   } else if (type === 'District') {
-    // All districts – no filtering
+    // All districts – no filtering, full charge (all wings)
     area.innerHTML = buildTagInput(jDropdowns.districts, 'district', existingValue);
     if (existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'district'));
     }
+
   } else if (type === 'Schools') {
+    // ★ LAZY LOAD: only fetch the full Public+Private schools list
+    // (38k+ rows) the first time an admin actually selects "Schools"
+    // as the scope type — not on every Add/Edit User modal open.
+    if (!jSchoolsLoaded) {
+      area.innerHTML = `<div style="padding:24px;text-align:center;color:var(--t3)">
+        <span class="spinner-border spinner-border-sm"></span> Loading school list…
+      </div>`;
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.success) { showToast('Could not load school list: ' + res.message, false); return; }
+          jDropdowns.schools = res.schools || [];
+          jSchoolsLoaded = true;
+          renderScopeValueUI(existingValue);
+        })
+        .withFailureHandler(err => showToast('School list load error: ' + err.message, false))
+        .getSchoolsListForScope(currentUser);
+      return;
+    }
+
     // Filter schools by primary wing & tehsil (or primary markaz)
     // Use jMap to get emis/uid for schools within the primary jurisdiction
     const filteredSchools = jDropdowns.schools.filter(s => {
@@ -310,14 +365,39 @@ function renderScopeValueUI(existingValue) {
     }
   }
 
-  // Store the scope type for tag removal
+  // Store the scope type for tag removal (single-value pickers only —
+  // paired pickers use #scope_pair_primary/#scope_pair_secondary instead)
   if (type !== 'Schools') {
     const picker = document.getElementById('scope_picker');
     if (picker) picker.dataset.scopeType = type;
   }
 }
 
-// ── Tag management ──────────────────────────────────────────────
+// ── Tag management (single-value tags — Markaz / District) ───────
+function _addScopeTag(value, type) {
+  if (!value) return;
+  const tags = document.getElementById('scope_tags');
+  if (!tags || tags.querySelector(`[data-value="${value}"]`)) return;
+  const d = document.createElement('div');
+  d.className = 'markaz-tag'; // reuse same class
+  d.setAttribute('data-value', value);
+  d.innerHTML = `<i class="bi bi-geo-alt-fill"></i>${value}<span class="rm" onclick="this.parentElement.remove();updateScopeValue()">×</span>`;
+  tags.appendChild(d);
+  updateScopeValue();
+}
+
+window.addScopeTag = function(type) {
+  const picker = document.getElementById('scope_picker');
+  if (!picker) return;
+  const val = picker.value.trim();
+  if (!val) return;
+  _addScopeTag(val, type);
+  picker.value = '';
+};
+
+// ── Tag management (paired tags — Wing / Tehsil) ──────────────────
+// Stores raw value as "Primary:Secondary" (e.g. "Layyah:M-EE") while
+// showing a friendlier "Layyah → M-EE" label in the tag itself.
 function _addScopePairTag(rawValue, displayLabel) {
   if (!rawValue) return;
   const tags = document.getElementById('scope_tags');
@@ -342,47 +422,6 @@ window.addScopePairTag = function() {
   _addScopePairTag(rawValue, displayLabel);
   primaryEl.value   = '';
   secondaryEl.value = '';
-};
-
-function buildPairTagInput(primaryItems, secondaryItems, primaryLabel, secondaryLabel) {
-  return `
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <select id="scope_pair_primary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
-        <option value="">— Pick ${primaryLabel} —</option>
-        ${primaryItems.map(v => `<option value="${v}">${v}</option>`).join('')}
-      </select>
-      <select id="scope_pair_secondary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
-        <option value="">— Pick ${secondaryLabel} —</option>
-        ${secondaryItems.map(v => `<option value="${v}">${v}</option>`).join('')}
-      </select>
-      <button type="button" onclick="addScopePairTag()"
-        style="height:38px;padding:0 14px;background:var(--brand);color:#fff;border:none;border-radius:6px;font-size:.82rem;cursor:pointer">
-        <i class="bi bi-plus-lg"></i> Add
-      </button>
-    </div>
-    <div id="scope_tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
-    <input type="hidden" id="scope_value_hidden">
-  `;
-}
-function _addScopeTag(value, type) {
-  if (!value) return;
-  const tags = document.getElementById('scope_tags');
-  if (!tags || tags.querySelector(`[data-value="${value}"]`)) return;
-  const d = document.createElement('div');
-  d.className = 'markaz-tag'; // reuse same class
-  d.setAttribute('data-value', value);
-  d.innerHTML = `<i class="bi bi-geo-alt-fill"></i>${value}<span class="rm" onclick="this.parentElement.remove();updateScopeValue()">×</span>`;
-  tags.appendChild(d);
-  updateScopeValue();
-}
-
-window.addScopeTag = function(type) {
-  const picker = document.getElementById('scope_picker');
-  if (!picker) return;
-  const val = picker.value.trim();
-  if (!val) return;
-  _addScopeTag(val, type);
-  picker.value = '';
 };
 
 function updateScopeValue() {
@@ -509,6 +548,7 @@ function openUserModal() {
   document.getElementById('userModalTitle').textContent = 'Add New User';
   clearUserForm();
   const doOpen = () => { renderScopeValueUI(); userModalInst.show(); };
+  if (!jLoaded) showToast('Loading jurisdiction data…', true);
   jLoaded ? doOpen() : loadJurisdictionDropdowns(doOpen);
 }
 
@@ -536,6 +576,7 @@ function editUser(cnic) {
     renderScopeValueUI(row[UH.SCOPE_VALUE] || '');
     userModalInst.show();
   };
+  if (!jLoaded) showToast('Loading jurisdiction data…', true);
   jLoaded ? doEdit() : loadJurisdictionDropdowns(doEdit);
 }
 
