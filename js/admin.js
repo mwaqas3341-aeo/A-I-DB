@@ -220,20 +220,22 @@ function renderScopeValueUI(existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'markaz'));
     }
   } else if (type === 'Tehsil') {
-    // Filter tehsils by primary district & wing
-    const filtered = filterMap({ district: primary.district, wing: primary.wing });
-    const tehsils = [...new Set(filtered.map(i => i.tehsil).filter(Boolean))].sort();
-    area.innerHTML = buildTagInput(tehsils, 'tehsil', existingValue);
+    const wings = ['M-EE', 'W-EE', 'SE'];
+    area.innerHTML = buildPairTagInput(jDropdowns.tehsils, wings, 'Tehsil', 'Wing');
     if (existingValue) {
-      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'tehsil'));
+      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(pair => {
+        const parts = pair.split(':').map(p => p.trim());
+        if (parts.length === 2) _addScopePairTag(pair, `${parts[0]} → ${parts[1]}`);
+      });
     }
   } else if (type === 'Wing') {
-    // Filter wings by primary district
-    const filtered = filterMap({ district: primary.district });
-    const wings = [...new Set(filtered.map(i => i.wing).filter(Boolean))].sort();
-    area.innerHTML = buildTagInput(wings, 'wing', existingValue);
+    const wings = ['M-EE', 'W-EE', 'SE'];
+    area.innerHTML = buildPairTagInput(jDropdowns.districts, wings, 'District', 'Wing');
     if (existingValue) {
-      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(v => _addScopeTag(v, 'wing'));
+      existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(pair => {
+        const parts = pair.split(':').map(p => p.trim());
+        if (parts.length === 2) _addScopePairTag(pair, `${parts[0]} → ${parts[1]}`);
+      });
     }
   } else if (type === 'District') {
     // All districts – no filtering
@@ -316,6 +318,52 @@ function renderScopeValueUI(existingValue) {
 }
 
 // ── Tag management ──────────────────────────────────────────────
+function _addScopePairTag(rawValue, displayLabel) {
+  if (!rawValue) return;
+  const tags = document.getElementById('scope_tags');
+  if (!tags || tags.querySelector(`[data-value="${rawValue}"]`)) return;
+  const d = document.createElement('div');
+  d.className = 'markaz-tag';
+  d.setAttribute('data-value', rawValue);
+  d.innerHTML = `<i class="bi bi-geo-alt-fill"></i>${displayLabel}<span class="rm" onclick="this.parentElement.remove();updateScopeValue()">×</span>`;
+  tags.appendChild(d);
+  updateScopeValue();
+}
+
+window.addScopePairTag = function() {
+  const primaryEl   = document.getElementById('scope_pair_primary');
+  const secondaryEl = document.getElementById('scope_pair_secondary');
+  if (!primaryEl || !secondaryEl) return;
+  const primaryVal   = primaryEl.value.trim();
+  const secondaryVal = secondaryEl.value.trim();
+  if (!primaryVal || !secondaryVal) { showToast('Please select both values before adding.', false); return; }
+  const rawValue     = `${primaryVal}:${secondaryVal}`;
+  const displayLabel = `${primaryVal} → ${secondaryVal}`;
+  _addScopePairTag(rawValue, displayLabel);
+  primaryEl.value   = '';
+  secondaryEl.value = '';
+};
+
+function buildPairTagInput(primaryItems, secondaryItems, primaryLabel, secondaryLabel) {
+  return `
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <select id="scope_pair_primary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+        <option value="">— Pick ${primaryLabel} —</option>
+        ${primaryItems.map(v => `<option value="${v}">${v}</option>`).join('')}
+      </select>
+      <select id="scope_pair_secondary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+        <option value="">— Pick ${secondaryLabel} —</option>
+        ${secondaryItems.map(v => `<option value="${v}">${v}</option>`).join('')}
+      </select>
+      <button type="button" onclick="addScopePairTag()"
+        style="height:38px;padding:0 14px;background:var(--brand);color:#fff;border:none;border-radius:6px;font-size:.82rem;cursor:pointer">
+        <i class="bi bi-plus-lg"></i> Add
+      </button>
+    </div>
+    <div id="scope_tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
+    <input type="hidden" id="scope_value_hidden">
+  `;
+}
 function _addScopeTag(value, type) {
   if (!value) return;
   const tags = document.getElementById('scope_tags');
