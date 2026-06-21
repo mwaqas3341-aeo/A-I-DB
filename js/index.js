@@ -364,3 +364,32 @@ function openToolsView() {
     `).join('');
   }).getToolsUser();
 }
+// ─── Hash-based router so refresh & back button work ───────────────
+const ROUTES = {
+  home:                () => switchGlobalTab('homeView', document.getElementById('navHomeBtn')),
+  admin:               () => { if (typeof openAdminModule === 'function') openAdminModule(); },
+  tools:               () => { if (typeof openToolsView === 'function') openToolsView(); },
+  hr:                  () => { if (typeof openHrModule === 'function') openHrModule(); },
+  'public-Public':     () => openPublicModule('Public'),
+  'public-OutSourced': () => openPublicModule('Out Sourced School'),
+  'private-Private':   () => openPrivateModule('Private'),
+  'private-Inactive':  () => openPrivateModule('Inactive')
+};
+
+function navigateTo(routeKey, push = true) {
+  const fn = ROUTES[routeKey];
+  if (!fn) return;
+  fn();
+  if (push) history.pushState({ route: routeKey }, '', '#' + routeKey);
+}
+
+window.addEventListener('popstate', e => {
+  const routeKey = (e.state && e.state.route) || (location.hash ? location.hash.slice(1) : 'home');
+  navigateTo(routeKey, false);
+});
+
+function restoreRoute() {
+  const routeKey = location.hash ? location.hash.slice(1) : 'home';
+  navigateTo(routeKey, false);
+  if (!history.state) history.replaceState({ route: routeKey }, '', '#' + routeKey);
+}
