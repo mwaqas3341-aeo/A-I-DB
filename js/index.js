@@ -107,6 +107,15 @@ function enterApp(user) {
   loadKPIs();
   loadDashboardLinksApps();
   loadDashboardKpiCards();
+
+  // ── Seed the history stack so the browser back button never exits the app ──
+  // If a hash route exists (e.g. user refreshed on #hr), restore it;
+  // otherwise land on home and replace so there is no extra entry before login.
+  const startRoute = location.hash ? location.hash.slice(1) : 'home';
+  history.replaceState({ route: 'home' }, '', '#home');   // bottom of stack = home
+  if (startRoute !== 'home') {
+    navigateTo(startRoute, true);                          // push the requested view on top
+  }
 }
 
 // ─── Restore session on page load ──────────────────
@@ -130,6 +139,8 @@ function doLogout() {
   document.getElementById('appWrapper').style.display = 'none';
   document.getElementById('loginView').style.display  = 'flex';
   document.getElementById('pass').value = '';
+  // Clear the hash so back/forward history resets cleanly at login
+  history.replaceState(null, '', location.pathname);
   showToast('Logged out successfully', true);
 }// ─── Load KPIs ────────────────────────────────────
 function loadKPIs() {
@@ -364,32 +375,133 @@ function openToolsView() {
     `).join('');
   }).getToolsUser();
 }
-// ─── Hash-based router so refresh & back button work ───────────────
+// ═══════════════════════════════════════════════════════════════════
+//  ROUTER — hash-based navigation (back/forward button support)
+//
+//  HOW IT WORKS
+//  ────────────
+//  • Every view change pushes a history entry (#home, #hr, etc.)
+//  • Browser back/forward fires popstate → we switch views in-app
+//  • On login we seed the stack:  [#home]  so back never exits the app
+//  • Module functions (openHrModule, openPublicModule …) are wrapped
+//    ONCE after DOMContentLoaded so ANY caller (nav buttons, KPI cards,
+//    onclick attributes in HTML) automatically records the navigation —
+//    no changes to index.html or other JS files are needed.
+//
+//  _navInFlight flag prevents the wrapper from double-pushing state
+//  when the route is triggered by the router itself (popstate path).
+// ═══════════════════════════════════════════════════════════════════
+
+// Raw route handlers — these call the actual view functions.
+// navigateTo() uses these; the wrappers below call the raw originals.
 const ROUTES = {
   home:                () => switchGlobalTab('homeView', document.getElementById('navHomeBtn')),
-  admin:               () => { if (typeof openAdminModule === 'function') openAdminModule(); },
-  tools:               () => { if (typeof openToolsView === 'function') openToolsView(); },
-  hr:                  () => { if (typeof openHrModule === 'function') openHrModule(); },
-  'public-Public':     () => openPublicModule('Public'),
-  'public-OutSourced': () => openPublicModule('Out Sourced School'),
-  'private-Private':   () => openPrivateModule('Private'),
-  'private-Inactive':  () => openPrivateModule('Inactive')
+  admin:               () => { if (typeof _rawOpenAdmin   === 'function') _rawOpenAdmin();          },
+  tools:               () => { if (typeof _rawOpenTools   === 'function') _rawOpenTools();          },
+  hr:                  () => { if (typeof _rawOpenHr      === 'function') _rawOpenHr();             },
+  'public-Public':     () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('Public'); },
+  'public-OutSourced': () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('Out Sourced School'); },
+  'private-Private':   () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Private'); },
+  'private-Inactive':  () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Inactive'); },
 };
 
+// Set to true while the router is driving a navigation so wrappers
+// know not to push a second history entry for the same action.
+let _navInFlight = false;
+
+// Core navigate function — all navigation should flow through here.
 function navigateTo(routeKey, push = true) {
   const fn = ROUTES[routeKey];
   if (!fn) return;
-  fn();
+  _navInFlight = true;
+  try { fn(); } finally { _navInFlight = false; }
   if (push) history.pushState({ route: routeKey }, '', '#' + routeKey);
 }
 
+// Back / Forward button handler
 window.addEventListener('popstate', e => {
-  const routeKey = (e.state && e.state.route) || (location.hash ? location.hash.slice(1) : 'home');
-  navigateTo(routeKey, false);
+  // Only act if the user is actually logged in (app is visible)
+  if (!currentUser) return;
+  const routeKey = (e.state && e.state.route)
+    || (location.hash ? location.hash.slice(1) : 'home');
+  navigateTo(routeKey, false);   // false = don't push, we're already here
 });
 
-function restoreRoute() {
-  const routeKey = location.hash ? location.hash.slice(1) : 'home';
-  navigateTo(routeKey, false);
-  if (!history.state) history.replaceState({ route: routeKey }, '', '#' + routeKey);
+// ── Wrap module-opener functions so ANY call (from onclick attrs,
+//    KPI cards, sidebar buttons) automatically records history.
+//    Called once from DOMContentLoaded after all scripts have loaded.
+// ─────────────────────────────────────────────────────────────────
+let _rawOpenPublic  = null;
+let _rawOpenPrivate = null;
+let _rawOpenHr      = null;
+let _rawOpenAdmin   = null;
+let _rawOpenTools   = null;
+
+function _installRouterWrappers() {
+  // Save references to the originals (defined in other JS files)
+  _rawOpenPublic  = window.openPublicModule;
+  _rawOpenPrivate = window.openPrivateModule;
+  _rawOpenHr      = window.openHrModule;
+  _rawOpenAdmin   = window.openAdminModule;
+  _rawOpenTools   = window.openToolsView;
+
+  // openPublicModule(sheetName)
+  if (typeof _rawOpenPublic === 'function') {
+    window.openPublicModule = function(sheetName) {
+      _rawOpenPublic(sheetName);
+      if (!_navInFlight) {
+        const key = (sheetName === 'Out Sourced School') ? 'public-OutSourced' : 'public-Public';
+        history.pushState({ route: key }, '', '#' + key);
+      }
+    };
+  }
+
+  // openPrivateModule(sheetName)
+  if (typeof _rawOpenPrivate === 'function') {
+    window.openPrivateModule = function(sheetName) {
+      _rawOpenPrivate(sheetName);
+      if (!_navInFlight) {
+        const key = (sheetName === 'Inactive') ? 'private-Inactive' : 'private-Private';
+        history.pushState({ route: key }, '', '#' + key);
+      }
+    };
+  }
+
+  // openHrModule()
+  if (typeof _rawOpenHr === 'function') {
+    window.openHrModule = function() {
+      _rawOpenHr();
+      if (!_navInFlight) history.pushState({ route: 'hr' }, '', '#hr');
+    };
+  }
+
+  // openAdminModule()
+  if (typeof _rawOpenAdmin === 'function') {
+    window.openAdminModule = function() {
+      _rawOpenAdmin();
+      if (!_navInFlight) history.pushState({ route: 'admin' }, '', '#admin');
+    };
+  }
+
+  // openToolsView()
+  if (typeof _rawOpenTools === 'function') {
+    window.openToolsView = function() {
+      _rawOpenTools();
+      if (!_navInFlight) history.pushState({ route: 'tools' }, '', '#tools');
+    };
+  }
+
+  // Home button — intercept click so navigating home is also tracked.
+  // Works alongside any existing onclick on the button.
+  const homeBtn = document.getElementById('navHomeBtn');
+  if (homeBtn) {
+    homeBtn.addEventListener('click', () => {
+      if (!_navInFlight) history.pushState({ route: 'home' }, '', '#home');
+    });
+  }
 }
+
+// Install wrappers after all scripts have parsed.
+// 'load' fires after DOMContentLoaded and after all <script> tags finish,
+// so the module functions from other JS files are guaranteed to exist.
+window.addEventListener('load', _installRouterWrappers);
