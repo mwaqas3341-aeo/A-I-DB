@@ -25,6 +25,15 @@ function renderNotes() {
 }
 document.addEventListener('DOMContentLoaded', renderNotes);
 
+// ── Seed the login history entry immediately on page load ─────────
+// This puts a { page:'login' } entry at the bottom of the in-app
+// history stack.  When the user presses back from any app view they
+// eventually land here and the popstate handler shows the login screen
+// instead of whatever site the user came from (e.g. GitHub).
+document.addEventListener('DOMContentLoaded', () => {
+  history.replaceState({ page: 'login' }, '', location.href);
+});
+
 // ═══════════════════════════════════════════════════
 //  GLOBAL STATE
 // ═══════════════════════════════════════════════════
@@ -108,13 +117,14 @@ function enterApp(user) {
   loadDashboardLinksApps();
   loadDashboardKpiCards();
 
-  // ── Seed the history stack so the browser back button never exits the app ──
-  // If a hash route exists (e.g. user refreshed on #hr), restore it;
-  // otherwise land on home and replace so there is no extra entry before login.
+  // ── Push a history entry for the app so back leads to login, not an external site ──
+  // We PUSH (not replace) so the { page:'login' } entry seeded on load stays beneath
+  // this one.  Pressing back from #home therefore fires popstate with { page:'login' }
+  // and the handler below shows the login screen.
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
-  history.replaceState({ route: 'home' }, '', '#home');   // bottom of stack = home
+  history.pushState({ route: 'home' }, '', '#home');     // push home on top of login
   if (startRoute !== 'home') {
-    navigateTo(startRoute, true);                          // push the requested view on top
+    navigateTo(startRoute, true);                         // push the deep-linked view on top
   }
 }
 
@@ -420,10 +430,24 @@ function navigateTo(routeKey, push = true) {
 
 // Back / Forward button handler
 window.addEventListener('popstate', e => {
-  // Only act if the user is actually logged in (app is visible)
+  // Popped back to the login history entry → show login screen
+  // (state is null, or was tagged { page:'login' } by us on load / after logout)
+  if (!e.state || e.state.page === 'login') {
+    if (currentUser) {
+      // User was logged in — slide back to login screen without fully clearing
+      // their session (they can log back in immediately).  We deliberately do NOT
+      // call the full doLogout() here because that calls history.replaceState which
+      // would discard the current popstate position.
+      currentUser = null;
+      document.getElementById('appWrapper').style.display = 'none';
+      document.getElementById('loginView').style.display  = 'flex';
+    }
+    return;
+  }
+
+  // Normal in-app navigation (all other views)
   if (!currentUser) return;
-  const routeKey = (e.state && e.state.route)
-    || (location.hash ? location.hash.slice(1) : 'home');
+  const routeKey = e.state.route || 'home';
   navigateTo(routeKey, false);   // false = don't push, we're already here
 });
 
