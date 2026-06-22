@@ -132,36 +132,47 @@
   }
 
   // ─── Scan raw rows and build three alert groups ───────────────────
+  // detectCols() is called once on the first row so we resolve the
+  // exact header keys used in THIS deployment (immune to sheet typos).
   function scanRows(rows) {
-    const today = _today();
+    if (!rows || !rows.length) return { regExpired: [], bldgExpired: [], hlthExpired: [] };
+
+    // Auto-detect column keys from actual data (columns I, V, W confirmed)
+    const COL = detectCols(rows[0]);
+
+    // Log detected keys in dev console for easy debugging
+    console.debug('[expiry-alerts] Detected columns:', COL);
+
     const regExpired   = [];
     const bldgExpired  = [];
     const hlthExpired  = [];
 
-    rows.forEach(row => {
+    rows.forEach(function(row) {
       const name     = row[COL.name]     || 'Unknown School';
       const district = row[COL.district] || '';
       const tehsil   = row[COL.tehsil]   || '';
       const markaz   = row[COL.markaz]   || '';
       const location = [markaz, tehsil, district].filter(Boolean).join(', ') || 'N/A';
 
-      // ── Registration ──────────────────────────────────────────────
+      // ── Column I : Registration Expiry ────────────────────────────
       const regStatus = String(row[COL.regStatus] || '').trim();
       const regDate   = row[COL.regExpiry];
       if (regStatus === 'Expired' || isExpired(regDate)) {
         regExpired.push({
           name, location,
-          expiry: regDate ? fmtDate(regDate) : (regStatus === 'Expired' ? 'Marked Expired' : '—')
+          expiry: regDate
+            ? fmtDate(regDate)
+            : (regStatus === 'Expired' ? 'Marked Expired' : '—')
         });
       }
 
-      // ── Building Certificate ──────────────────────────────────────
+      // ── Column V : Building Certificate Expiry ────────────────────
       const bldgDate = row[COL.bldgExpiry];
       if (isExpired(bldgDate)) {
         bldgExpired.push({ name, location, expiry: fmtDate(bldgDate) });
       }
 
-      // ── Health & Hygiene Certificate ──────────────────────────────
+      // ── Column W : Health & Hygiene Certificate Expiry ────────────
       const hlthDate = row[COL.hlthExpiry];
       if (isExpired(hlthDate)) {
         hlthExpired.push({ name, location, expiry: fmtDate(hlthDate) });
