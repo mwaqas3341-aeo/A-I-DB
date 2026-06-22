@@ -28,17 +28,60 @@
 (function () {
   'use strict';
 
-  // ─── Column header strings (must match the sheet exactly) ────────
-  const COL = {
-    name:        'School Name',
-    district:    'District',
-    tehsil:      'Tehsil',
-    markaz:      'Markaz Name',
-    regStatus:   'Registeration Status Registered/Non Registered Pepris',
-    regExpiry:   'Date of Expiry of Registeration on Pepris',
-    bldgExpiry:  'Building Certificate Expirey',
-    hlthExpiry:  'Heallth and hygiene Certificate Expirey',
+  // ─── Column detection ─────────────────────────────────────────────
+  // Auto-detects the right column by keywords from whatever headers
+  // the API actually returns — immune to minor typos/spacing in sheet headers.
+  // Columns confirmed by user:
+  //   I  → Registration Expiry date
+  //   V  → Building Certificate Expiry date
+  //   W  → Health & Hygiene Certificate Expiry date
+  //   G  → Registration Status (Registered / Non Registered / Expired)
+
+  // Fallback exact strings (from private_schools.js PRIVATE_FIELD_CONFIG)
+  const COL_FALLBACK = {
+    name:       'School Name',
+    district:   'District',
+    tehsil:     'Tehsil',
+    markaz:     'Markaz Name',
+    regStatus:  'Registeration Status Registered/Non Registered Pepris',
+    regExpiry:  'Date of Expiry of Registeration on Pepris',
+    bldgExpiry: 'Building Certificate Expirey',
+    hlthExpiry: 'Heallth and hygiene Certificate Expirey',
   };
+
+  // Returns the first key whose lowercase contains ALL of the given terms.
+  function _findKey(keys) {
+    var terms = Array.prototype.slice.call(arguments, 1);
+    return keys.find(function(k) {
+      return terms.every(function(t) {
+        return k.toLowerCase().indexOf(t.toLowerCase()) !== -1;
+      });
+    }) || null;
+  }
+
+  // Called once per scan with the first data row to map column keys.
+  function detectCols(firstRow) {
+    var keys = Object.keys(firstRow);
+    return {
+      name:       _findKey(keys, 'school name')                         || COL_FALLBACK.name,
+      district:   _findKey(keys, 'district')                            || COL_FALLBACK.district,
+      tehsil:     _findKey(keys, 'tehsil')                              || COL_FALLBACK.tehsil,
+      markaz:     _findKey(keys, 'markaz')                              || COL_FALLBACK.markaz,
+      // Col G — registration status
+      regStatus:  _findKey(keys, 'registeration status')
+               || _findKey(keys, 'registration status')                 || COL_FALLBACK.regStatus,
+      // Col I — registration expiry date
+      regExpiry:  _findKey(keys, 'expiry', 'registeration')
+               || _findKey(keys, 'expiry', 'registration')
+               || _findKey(keys, 'reg', 'exp')                          || COL_FALLBACK.regExpiry,
+      // Col V — building certificate expiry date
+      bldgExpiry: _findKey(keys, 'building', 'certificate')
+               || _findKey(keys, 'building', 'exp')                     || COL_FALLBACK.bldgExpiry,
+      // Col W — health & hygiene certificate expiry date
+      hlthExpiry: _findKey(keys, 'health')
+               || _findKey(keys, 'hygiene')                             || COL_FALLBACK.hlthExpiry,
+    };
+  }
 
   const SESSION_KEY = 'expiryAlertsDismissed';
   const PANEL_ID    = 'expiryAlertsPanel';
