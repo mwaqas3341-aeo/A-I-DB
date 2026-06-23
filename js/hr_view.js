@@ -1410,7 +1410,7 @@ function openPromotionModal(row) {
       <label>New Designation <span style="color:#EF4444">*</span></label>
       <select id="pm_desig">
         <option value="">Select…</option>
-        ${['PST','ESE','EST','SESE','SST','SSE','Headmaster','Headmistress','School Guard','Secuirty Guard','Naib Qasid','Chowkidar','Mali','C.IV'].map(d => `<option${d===row['DESIGNATION']?' selected':''}>${d}</option>`).join('')}
+        ${['PST','ESE','EST','PET','SESE','SST','SSE','Headmaster','Headmistress','School Guard','Secuirty Guard','Naib Qasid','Chowkidar','Mali','C.IV'].map(d => `<option${d===row['DESIGNATION']?' selected':''}>${d}</option>`).join('')}
       </select>
       <div class="transfer-err" id="pme_desig"></div>
     </div>
