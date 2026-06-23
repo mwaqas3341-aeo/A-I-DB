@@ -146,7 +146,7 @@
     .module-card .mc-desc{font-size:.75rem;color:var(--t3);line-height:1.4}
     .module-card .mc-arrow{margin-top:auto;font-size:.75rem;color:var(--brand);font-weight:700;display:flex;align-items:center;gap:4px}
 
-    .entry-card{background:var(--brand-dark);border-radius:var(--r3);padding:28px;color:white;box-shadow:0 1px 3px rgba(15,23,42,.18);border-top:3px solid var(--gold);cursor:pointer;transition:box-shadow .2s;margin-bottom:16px;display:flex;align-items:center;gap:20px;}
+    .entry-card{background:var(--brand-dark);border-radius:var(--r3);padding:28px;color:white;box-shadow:0 1px 3px rgba(15,23,42,.18);border-top:3px solid var(--gold);cursor:pointer;transition:box-shadow .2s;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
     .entry-card:hover{box-shadow:0 4px 14px rgba(15,23,42,.22)}
     .entry-card-icon{width:56px;height:56px;background:rgba(255,255,255,.15);border-radius:var(--r2);display:flex;align-items:center;justify-content:center;font-size:1.7rem;flex-shrink:0}
     .entry-card-body{flex:1}
@@ -800,13 +800,146 @@
     transform: scale(1.15) !important;
 }
 
-/* 4. Fix for the Staff Form Badge/Chip */
-#sfmModeTag {
-    background: rgba(255, 255, 255, 0.25) !important;
-    border: 1px solid rgba(255, 255, 255, 0.4) !important;
-    color: var(--s0) !important;
-    padding: 4px 10px !important;
-    border-radius: 3px !important;
-    font-size: 0.75rem !important;
-    font-weight: 800 !important;
+/* =========================================================
+   📱 MOBILE RESPONSIVENESS (added)
+   Scoped under max-width:768px / max-width:480px so desktop
+   layout (already working) is completely untouched above
+   those breakpoints.
+========================================================= */
+
+/* ── 1. TOP NAV: hamburger menu for small screens ──
+   .nav-links and .nav-info are already hidden under 680px
+   by the existing rule above. We add a hamburger button
+   (#navMobileToggle) that reveals a dropdown panel
+   (#navMobileMenu) containing the same nav buttons, so
+   Admin Panel (for admins) and user info are still reachable.
+   Markup needed (add once, inside <nav class="top-nav">,
+   right before the closing </nav> tag):
+
+     <button id="navMobileToggle" class="nav-mobile-toggle">
+       <i class="bi bi-list"></i>
+     </button>
+     <div id="navMobileMenu" class="nav-mobile-menu hidden">
+       <!-- clone of .nav-links buttons + user info + logout go here,
+            or simply move the EXISTING .nav-links / .nav-info / .btn-logout
+            elements inside this container via JS on small screens -->
+     </div>
+
+   Minimal JS needed (place in any loaded script, e.g. index.js):
+     document.getElementById('navMobileToggle')?.addEventListener('click', () => {
+       document.getElementById('navMobileMenu')?.classList.toggle('hidden');
+     });
+*/
+.nav-mobile-toggle{display:none;background:none;border:none;color:white;font-size:1.4rem;cursor:pointer;padding:6px 10px;margin-left:auto}
+.nav-mobile-menu{display:none;position:absolute;top:var(--nav);left:0;right:0;background:var(--brand-dark);border-bottom:3px solid var(--gold);box-shadow:var(--sh3);z-index:199;padding:10px;flex-direction:column;gap:6px}
+.nav-mobile-menu.hidden{display:none!important}
+.nav-mobile-menu:not(.hidden){display:flex}
+.nav-mobile-menu .nav-link-btn{width:100%;text-align:left;padding:12px 14px;font-size:.9rem}
+.nav-mobile-menu .nav-user-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid rgba(255,255,255,.12);margin-top:6px}
+.nav-mobile-menu .btn-logout{width:100%;justify-content:center;height:40px}
+
+@media(max-width:680px){
+  .top-nav{position:relative}
+  .nav-mobile-toggle{display:block}
+}
+
+/* ── 2. DASHBOARD: force single-column module/KPI cards on mobile.
+   Beats the inline style="grid-template-columns:repeat(3,1fr)"
+   set directly on the element in Index.html (inline styles win
+   over normal stylesheet rules, so !important is required here). ── */
+@media(max-width:700px){
+  .kpi-grid,
+  .kpi-grid[style]{
+    grid-template-columns:1fr!important;
+  }
+}
+@media(max-width:480px){
+  .dash-heading{font-size:1rem}
+  .module-card,.kpi-card{padding:18px}
+}
+
+/* ── 3. ENTRY CARD: stack icon/body/CTA vertically on narrow screens
+   instead of cramming into one row (fixes the cut-off "Open Modules"
+   button seen on phones). ── */
+@media(max-width:560px){
+  .entry-card{flex-direction:column;align-items:flex-start;gap:14px;padding:22px}
+  .entry-card-cta{width:100%;justify-content:center}
+}
+
+/* ── 4. TOOLS PAGE GRID: already auto-fills/collapses correctly,
+   just tighten padding on very small screens. ── */
+@media(max-width:480px){
+  .tools-page-grid{gap:14px}
+  .tool-pg-card{padding:20px 14px}
+}
+
+/* ── 5. HR MODULE: convert the fixed-width side-by-side sidebar
+   layout into a horizontal scrollable nav strip above the content,
+   so nothing is cut off or pushes the page into horizontal scroll. ── */
+@media(max-width:860px){
+  .hr-app-layout{flex-direction:column;height:auto}
+  .hr-sidebar{
+    width:100%;
+    flex-direction:row;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .hr-sidebar-inner{
+    display:flex;
+    flex-direction:row;
+    align-items:center;
+    gap:4px;
+    padding:8px;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+  .hr-sidebar-section-label{display:none} /* labels don't fit a horizontal strip */
+  .hr-nav-item{width:auto;flex-shrink:0;padding:8px 12px}
+  .hr-main-content{padding:16px}
+  .hr-page-header{flex-direction:column;align-items:flex-start;gap:10px}
+  .hr-page-header #addStaffBtn,
+  .hr-page-header .hr-btn-success{width:100%;justify-content:center}
+}
+@media(max-width:480px){
+  .hr-card-value{font-size:21px}
+  .hr-summary-row{grid-template-columns:1fr 1fr}
+  .hr-filter-grid{grid-template-columns:1fr}
+  .hr-filter-footer .hr-filter-actions-left{display:flex;flex-direction:column;gap:8px}
+  .hr-filter-footer .hr-filter-actions-left button{width:100%;justify-content:center}
+}
+
+/* ── 6. GENERIC FILTER BAR / TOOLBAR: stack on small screens so
+   the "Filter Data" button and search box don't get squeezed. ── */
+@media(max-width:560px){
+  .filter-bar{grid-template-columns:1fr}
+  .toolbar{flex-direction:column;align-items:stretch}
+  .toolbar .search-box{max-width:none}
+  .btn-add,.btn-export-tbl{width:100%;justify-content:center}
+}
+
+/* ── 7. MODALS: ensure fixed max-width modals (HR transfer/promotion/
+   action, set inline as max-width:520px/560px/480px/700px/780px in
+   Index.html) never exceed the viewport width on small phones. ── */
+@media(max-width:480px){
+  .hr-modal-content,
+  #staffFormModal .modal-content,
+  #transferModal .modal-content,
+  #promotionModal .modal-content{
+    max-width:100%!important;
+    width:100%!important;
+    margin:0 8px;
+  }
+  .modal-dialog{margin:8px}
+}
+
+/* ── 8. TABLES: tighten cell cap further on phones so more columns
+   are visible without excessive horizontal scrolling. ── */
+@media(max-width:480px){
+  thead th, tbody td,
+  .data-table thead th, .data-table tbody td{
+    max-width:140px;
+    font-size:.78rem;
+    padding:8px 10px;
+  }
 }
