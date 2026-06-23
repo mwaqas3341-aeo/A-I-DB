@@ -44,13 +44,12 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  document.getElementById('filterBtn').addEventListener('click', applyFilter);
-  document.getElementById('clearBtn').addEventListener('click', clearFilters);
-  document.getElementById('addStaffBtn').addEventListener('click', () => openAddStaffModal());
-
-  document.getElementById('filterDistrict').addEventListener('change', onDistrictChange);
-  document.getElementById('filterWing').addEventListener('change', onWingChange);
-  document.getElementById('filterTehsil').addEventListener('change', onTehsilChange);
+ document.getElementById('filterBtn')?.addEventListener('click', applyFilter);
+document.getElementById('clearBtn')?.addEventListener('click', clearFilters);
+document.getElementById('addStaffBtn')?.addEventListener('click', () => openAddStaffModal());
+document.getElementById('filterDistrict')?.addEventListener('change', onDistrictChange);
+document.getElementById('filterWing')?.addEventListener('change', onWingChange);
+document.getElementById('filterTehsil')?.addEventListener('change', onTehsilChange);
 
   document.addEventListener('click', e => {
     if (activeFixedMenu && !e.target.closest('.fixed-menu') && !e.target.closest('.action-menu-btn'))
