@@ -27,7 +27,7 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'School Category (Private,Pef,Piema)',                                                          id: 'priv_cat',         type: 'select', options: ['Private', 'Pef', 'Piema'] },
   { header: 'School Name',                                                                                  id: 'priv_name',        wide: true },
   { header: 'Registeration Status Registered/Non Registered Pepris',                                       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
-  { header: 'Registeration No in Case of registered (EMIS Code) pepris',                                   id: 'priv_reg_no',      type: 'number', readonly: true },
+  { header: 'Registeration No in Case of registered (EMIS Code) pepris',                                   id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
   { header: 'Date of Expiry of Registeration on Pepris',                                                   id: 'priv_reg_exp',     type: 'date'   },
   { header: 'Level (Primary,Middle,High,Higher Secondary)',                                                 id: 'priv_level',       type: 'select', options: ['Primary', 'Middle', 'High', 'Higher Secondary'] },
   { header: 'School Gender',                                                                               id: 'priv_gender',      type: 'select', options: ['Male', 'Female', 'Both'] },
@@ -459,7 +459,7 @@ function editPrivate(keyVal) {
     if (el) el.value = row[f.header] || '';
   });
 
-  handleRegStatus();
+  handleRegStatus(true);
   generateKICascades();
 
   const kiStr = document.getElementById('priv_ki_names').value;
@@ -574,7 +574,7 @@ function exportPrivateDirect(sheetName) {
 // ══════════════════════════════════════════════════════════════════════
 //  FIELD HELPERS & CALCULATIONS
 // ══════════════════════════════════════════════════════════════════════
-function handleRegStatus() {
+function handleRegStatus(preserveValue) {
   const st   = document.getElementById('priv_reg_status').value;
   const no   = document.getElementById('priv_reg_no');
   const wrap = document.getElementById('wrap_priv_reg_no');
@@ -584,7 +584,10 @@ function handleRegStatus() {
   } else {
     no.readOnly = true;
     wrap.classList.add('ff-locked');
-    no.value = '';
+    // Only auto-clear on a real user-driven status change (dropdown onchange).
+    // When loading a saved record for edit, preserveValue=true keeps the
+    // existing EMIS value intact even if status isn't Registered/Expired.
+    if (!preserveValue) no.value = '';
   }
 }
 
