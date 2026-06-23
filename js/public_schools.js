@@ -274,7 +274,7 @@ function applyPubFilters() {
   }
 
   document.getElementById('pubTHead').innerHTML =
-    `<tr><th>Actions</th>${pubHeaders.map(h => `<th title="${escHtml(h)}">${escHtml(h)}</th>`).join('')}</tr>`;
+    `<tr><th>Actions</th>${pubHeaders.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr>`;
 
   document.getElementById('pubTBody').innerHTML = fData.map(row => {
     const keyVal = String(row[pubHeaders[0]] || '').replace(/'/g, "\\'");
@@ -284,7 +284,7 @@ function applyPubFilters() {
           <i class="bi bi-pencil-square"></i>
         </button>
       </td>
-      ${pubHeaders.map(h => `<td title="${escHtml(String(row[h] || ''))}">${escHtml(String(row[h] || ''))}</td>`).join('')}
+      ${pubHeaders.map(h => `<td>${escHtml(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
   }).join('');
 }
