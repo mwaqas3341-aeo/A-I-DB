@@ -579,25 +579,61 @@
 
   // ─── Main: fetch Private data and run scan ─────────────────────────
   function runExpiryCheck(user) {
-    // Don't show again if user dismissed it this session
     if (sessionStorage.getItem(SESSION_KEY)) return;
 
-    console.log('[expiry-alerts] Starting scan for user:', user && user.name);
+    // Retry if currentUser isn't set yet (session restore race condition)
+    if (!user) {
+      console.warn('[expiry-alerts] currentUser not ready — retrying in 1.5s...');
+      setTimeout(function() { runExpiryCheck(window.currentUser); }, 1500);
+      return;
+    }
+
+    console.log('[expiry-alerts] Starting scan. user:', user.name, '| cnic:', user.cnic);
     injectCSS();
     showLoadingPanel();
 
     google.script.run
       .withSuccessHandler(function (res) {
         const panel = document.getElementById(PANEL_ID);
-        console.log('[expiry-alerts] API response:', res && res.success, 'rows:', res && res.data && res.data.length);
 
-        if (!res || !res.success || !res.data || !res.data.length) {
-          console.warn('[expiry-alerts] No data returned from API.');
+        // Log the FULL raw response so we can see exactly what the API returns
+        console.log('[expiry-alerts] Raw API response:', JSON.stringify(res).slice(0, 300));
+
+        if (!res) {
+          console.warn('[expiry-alerts] Response is null/undefined.');
+          if (panel) panel.remove();
+          return;
+        }
+        if (!res.success) {
+          console.warn('[expiry-alerts] res.success is false. Message:', res.message);
           if (panel) panel.remove();
           return;
         }
 
-        const alerts = scanRows(res.data);
+        // Handle both res.data (object rows) and res.rows (array rows)
+        var rows = res.data || res.rows || [];
+
+        // If rows is array-of-arrays (not objects), convert using res.headers
+        if (rows.length && Array.isArray(rows[0]) && res.headers && res.headers.length) {
+          console.log('[expiry-alerts] Converting array rows to objects using headers...');
+          rows = rows.map(function(row) {
+            var obj = {};
+            res.headers.forEach(function(h, i) { obj[h] = row[i] !== undefined ? row[i] : ''; });
+            return obj;
+          });
+        }
+
+        console.log('[expiry-alerts] Row count:', rows.length);
+        if (!rows.length) {
+          console.warn('[expiry-alerts] No rows in response. Full res keys:', Object.keys(res));
+          if (panel) panel.remove();
+          return;
+        }
+
+        // Log first row keys so we can verify column detection
+        console.log('[expiry-alerts] First row keys:', Object.keys(rows[0]).join(' | '));
+
+        const alerts = scanRows(rows);
         const total  = alerts.regExpired.length + alerts.bldgExpired.length + alerts.hlthExpired.length;
         console.log('[expiry-alerts] Scan complete — reg:', alerts.regExpired.length,
           'bldg:', alerts.bldgExpired.length, 'hlth:', alerts.hlthExpired.length);
@@ -612,7 +648,7 @@
       .withFailureHandler(function (err) {
         const panel = document.getElementById(PANEL_ID);
         if (panel) panel.remove();
-        console.warn('[expiry-alerts] API call failed:', err.message || err);
+        console.warn('[expiry-alerts] API call FAILED:', err.message || err);
       })
       .getPrivateDashboardData(user, 'Private');
   }
