@@ -223,16 +223,12 @@
     .count-chip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 12px;border-radius:20px;background:var(--brand);color:white;font-size:.78rem;font-weight:700}
     .active-sheet-badge{font-size:1.2rem;font-weight:800;color:var(--t1)}
     .tbl-wrap{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - var(--nav) - 200px);border-radius:var(--r2);background:var(--s0);border:1px solid var(--b0)}
-    table{width:100%;border-collapse:collapse;min-width:800px;table-layout:auto}
-    /* Header cells: capped width + ellipsis truncation for long column names.
-       Add title="..." on the <th> in JS to get the native hover tooltip. */
-    thead th{position:sticky;top:0;z-index:10;background:var(--t1);color:rgba(255,255,255,.9);font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;padding:12px 14px;border-right:1px solid rgba(255,255,255,.05);cursor:default}
+    table{width:100%;border-collapse:collapse;min-width:800px}
+    thead th{position:sticky;top:0;z-index:10;background:var(--t1);color:rgba(255,255,255,.9);font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;padding:12px 14px;border-right:1px solid rgba(255,255,255,.05)}
     tbody tr{border-bottom:1px solid var(--b0);transition:background .1s}
     tbody tr:hover{background:var(--brand-light)}
-    /* Body cells: same cap so columns stay aligned with their header.
-       Add title="..." on the <td> in JS to get the native hover tooltip. */
-    tbody td{padding:10px 14px;font-size:.83rem;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;vertical-align:middle}
-    tbody td:first-child{position:sticky;left:0;z-index:5;background:var(--s0);max-width:60px}
+    tbody td{padding:10px 14px;font-size:.83rem;color:var(--t1);white-space:nowrap;vertical-align:middle}
+    tbody td:first-child{position:sticky;left:0;z-index:5;background:var(--s0)}
     tbody tr:hover td:first-child{background:var(--brand-light)}
     .tbl-btn{width:30px;height:30px;border-radius:6px;border:1px solid;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;transition:all .15s}
     .btn-edit{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}.btn-edit:hover{background:var(--brand);color:white}
@@ -476,11 +472,11 @@
 .toast.info    { background:var(--brand); }
 
 /* data-table used by core.js renderTable */
-.data-table { width:100%; border-collapse:collapse; min-width:800px; font-size:.83rem; table-layout:auto; }
-.data-table thead th { position:sticky; top:0; z-index:10; background:var(--t1); color:rgba(255,255,255,.9); font-size:.72rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; padding:12px 14px; cursor:default; }
+.data-table { width:100%; border-collapse:collapse; min-width:800px; font-size:.83rem; }
+.data-table thead th { position:sticky; top:0; z-index:10; background:var(--t1); color:rgba(255,255,255,.9); font-size:.72rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; white-space:nowrap; padding:12px 14px; }
 .data-table tbody tr { border-bottom:1px solid var(--b0); }
 .data-table tbody tr:hover { background:#ebf0fe; }
-.data-table tbody td { padding:10px 14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; vertical-align:middle; }
+.data-table tbody td { padding:10px 14px; white-space:nowrap; vertical-align:middle; }
 .actions-col { width:44px; }
 .action-menu-btn { width:30px; height:30px; border-radius:6px; border:1px solid var(--b0); background:var(--s1); cursor:pointer; font-size:.85rem; }
 .action-menu-btn:hover { background:#ebf0fe; border-color:var(--brand); }
