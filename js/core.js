@@ -44,12 +44,13 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
 
- document.getElementById('filterBtn')?.addEventListener('click', applyFilter);
-document.getElementById('clearBtn')?.addEventListener('click', clearFilters);
-document.getElementById('addStaffBtn')?.addEventListener('click', () => openAddStaffModal());
-document.getElementById('filterDistrict')?.addEventListener('change', onDistrictChange);
-document.getElementById('filterWing')?.addEventListener('change', onWingChange);
-document.getElementById('filterTehsil')?.addEventListener('change', onTehsilChange);
+  document.getElementById('filterBtn').addEventListener('click', applyFilter);
+  document.getElementById('clearBtn').addEventListener('click', clearFilters);
+  document.getElementById('addStaffBtn').addEventListener('click', () => openAddStaffModal());
+
+  document.getElementById('filterDistrict').addEventListener('change', onDistrictChange);
+  document.getElementById('filterWing').addEventListener('change', onWingChange);
+  document.getElementById('filterTehsil').addEventListener('change', onTehsilChange);
 
   document.addEventListener('click', e => {
     if (activeFixedMenu && !e.target.closest('.fixed-menu') && !e.target.closest('.action-menu-btn'))
@@ -102,12 +103,14 @@ function initSchoolCache() {
 function buildDistrictDropdown() {
   const dists = [...new Set(schoolCache.map(x => x.d).filter(Boolean))].sort();
   populateSelect('filterDistrict', dists, 'All Districts');
-  document.getElementById('filterDistrict').disabled = false;
-  document.getElementById('filterEmis').disabled     = false;
-  document.getElementById('filterKeyword').disabled  = false;
-  document.getElementById('filterBtn').disabled      = false;
-  document.getElementById('clearBtn').disabled       = false;
-  document.getElementById('addStaffBtn').classList.toggle('hidden', currentSheetView !== 'Staff');
+  // Guard each element — they only exist when the HR/Staff view is open
+  const _s = id => document.getElementById(id);
+  if (_s('filterDistrict')) _s('filterDistrict').disabled = false;
+  if (_s('filterEmis'))     _s('filterEmis').disabled     = false;
+  if (_s('filterKeyword'))  _s('filterKeyword').disabled  = false;
+  if (_s('filterBtn'))      _s('filterBtn').disabled      = false;
+  if (_s('clearBtn'))       _s('clearBtn').disabled       = false;
+  if (_s('addStaffBtn'))    _s('addStaffBtn').classList.toggle('hidden', currentSheetView !== 'Staff');
 }
 
 function onDistrictChange() {
@@ -148,12 +151,14 @@ function onTehsilChange() {
 
 function populateSelect(id, values, placeholder) {
   const sel = document.getElementById(id);
+  if (!sel) return;  // element not in current view — skip silently
   sel.innerHTML = `<option value="">${placeholder}</option>` +
     values.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
 }
 
 function resetSelect(id, placeholder, disable = false) {
   const sel = document.getElementById(id);
+  if (!sel) return;  // element not in current view — skip silently
   sel.innerHTML = `<option value="">${placeholder}</option>`;
   sel.disabled  = disable;
 }
