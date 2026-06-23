@@ -582,24 +582,27 @@
     // Don't show again if user dismissed it this session
     if (sessionStorage.getItem(SESSION_KEY)) return;
 
+    console.log('[expiry-alerts] Starting scan for user:', user && user.name);
     injectCSS();
     showLoadingPanel();
 
     google.script.run
       .withSuccessHandler(function (res) {
         const panel = document.getElementById(PANEL_ID);
+        console.log('[expiry-alerts] API response:', res && res.success, 'rows:', res && res.data && res.data.length);
 
         if (!res || !res.success || !res.data || !res.data.length) {
-          // Nothing to show or data unavailable — remove loading panel silently
+          console.warn('[expiry-alerts] No data returned from API.');
           if (panel) panel.remove();
           return;
         }
 
         const alerts = scanRows(res.data);
         const total  = alerts.regExpired.length + alerts.bldgExpired.length + alerts.hlthExpired.length;
+        console.log('[expiry-alerts] Scan complete — reg:', alerts.regExpired.length,
+          'bldg:', alerts.bldgExpired.length, 'hlth:', alerts.hlthExpired.length);
 
         if (total === 0) {
-          // All clear — remove quietly (no need to bother the user)
           if (panel) panel.remove();
           return;
         }
@@ -607,40 +610,52 @@
         showPanel(alerts);
       })
       .withFailureHandler(function (err) {
-        // Silent fail — just remove the loading panel
         const panel = document.getElementById(PANEL_ID);
         if (panel) panel.remove();
-        console.warn('[expiry-alerts] Failed to load Private sheet:', err.message);
+        console.warn('[expiry-alerts] API call failed:', err.message || err);
       })
       .getPrivateDashboardData(user, 'Private');
   }
 
-  // ─── Hook into enterApp WITHOUT modifying index.js ────────────────
-  // We wait for 'load' (all scripts parsed) then wrap the global enterApp.
-  // The wrapper calls the original first, then schedules our scan with a
-  // short delay so the dashboard UI has time to render before the panel
-  // appears.
-  window.addEventListener('load', function () {
-    const _originalEnterApp = window.enterApp;
-
-    if (typeof _originalEnterApp !== 'function') {
-      console.warn('[expiry-alerts] enterApp not found — alerts disabled.');
+  // ─── Hook: MutationObserver on #appWrapper ────────────────────────
+  // Watches for #appWrapper becoming visible (display:block).
+  // This fires for BOTH:
+  //   • Session restore  (DOMContentLoaded → restoreSession → enterApp)
+  //   • Fresh login      (user submits login form → enterApp)
+  // The old window.load + enterApp-wrap approach missed session restores
+  // because DOMContentLoaded (where restoreSession runs) fires BEFORE load.
+  document.addEventListener('DOMContentLoaded', function () {
+    var appWrapper = document.getElementById('appWrapper');
+    if (!appWrapper) {
+      console.warn('[expiry-alerts] #appWrapper element not found — alerts disabled.');
       return;
     }
 
-    window.enterApp = function (user) {
-      // Call the original login flow first
-      _originalEnterApp.call(this, user);
+    console.log('[expiry-alerts] Loaded OK. Watching #appWrapper for login...');
+    var _ran = false;
 
-      // Run our check after a brief pause (lets dashboard render first)
+    function onAppVisible() {
+      if (_ran) return;
+      // Confirm the wrapper is actually visible now
+      if (appWrapper.style.display === 'none' || appWrapper.style.display === '') return;
+      _ran = true;
+      console.log('[expiry-alerts] App is visible — scheduling expiry check in 1s...');
       setTimeout(function () {
         try {
-          runExpiryCheck(user);
+          runExpiryCheck(window.currentUser);
         } catch (e) {
-          console.warn('[expiry-alerts] scan error:', e.message);
+          console.warn('[expiry-alerts] runExpiryCheck threw:', e.message);
         }
-      }, 800);
-    };
+      }, 1000);
+    }
+
+    // Watch for style attribute changes on #appWrapper
+    var observer = new MutationObserver(onAppVisible);
+    observer.observe(appWrapper, { attributes: true, attributeFilter: ['style'] });
+
+    // Also check immediately — handles edge case where app is already visible
+    // before this script runs (e.g. very fast session restore)
+    onAppVisible();
   });
 
 })(); // end IIFE — nothing leaks to global scope except _eaToggle* helpers
