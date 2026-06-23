@@ -578,17 +578,29 @@
   };
 
   // ─── Main: fetch Private data and run scan ─────────────────────────
+  // Read the logged-in user from localStorage — same key enterApp() uses.
+  // This avoids depending on window.currentUser which is a module-level
+  // let variable in index.js and is never exposed on window.
+  function _getStoredUser() {
+    try {
+      var key = (typeof CONFIG !== 'undefined' && CONFIG.SESSION_KEY) ? CONFIG.SESSION_KEY : 'portalUser';
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
+  }
+
   function runExpiryCheck(user) {
     if (sessionStorage.getItem(SESSION_KEY)) return;
 
-    // Retry if currentUser isn't set yet (session restore race condition)
-    if (!user) {
-      console.warn('[expiry-alerts] currentUser not ready — retrying in 1.5s...');
-      setTimeout(function() { runExpiryCheck(window.currentUser); }, 1500);
+    // If user wasn't passed or is stale, read fresh from localStorage
+    var activeUser = (user && user.cnic) ? user : _getStoredUser();
+
+    if (!activeUser || !activeUser.cnic) {
+      console.warn('[expiry-alerts] No logged-in user found in localStorage — aborting.');
       return;
     }
 
-    console.log('[expiry-alerts] Starting scan. user:', user.name, '| cnic:', user.cnic);
+    console.log('[expiry-alerts] Starting scan. user:', activeUser.name, '| cnic:', activeUser.cnic);
     injectCSS();
     showLoadingPanel();
 
@@ -650,7 +662,7 @@
         if (panel) panel.remove();
         console.warn('[expiry-alerts] API call FAILED:', err.message || err);
       })
-      .getPrivateDashboardData(user, 'Private');
+      .getPrivateDashboardData(activeUser, 'Private');
   }
 
   // ─── Hook: MutationObserver on #appWrapper ────────────────────────
