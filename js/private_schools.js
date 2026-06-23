@@ -37,10 +37,10 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'Latitude',                                                                                    id: 'priv_lat',         type: 'number' },
   { header: 'Owner name',                                                                                  id: 'priv_noval'       },
   { header: 'Owner CNIC',                                                                                  id: 'priv_own_cnic',    type: 'number', placeholder: '13 digits', onblur: 'validateCNIC(this)' },
-  { header: 'Owner Cell No',                                                                               id: 'priv_own_cell',    type: 'text', placeholder: '11 digits' },
+  { header: 'Owner Cell No',                                                                               id: 'priv_own_cell',    type: 'number', placeholder: '11 digits' },
   { header: 'Principal Name',                                                                              id: 'priv_prin_name'   },
   { header: 'Principal CNIC',                                                                             id: 'priv_prin_cnic',   type: 'number', placeholder: '13 digits', onblur: 'validateCNIC(this)' },
-  { header: 'Principal Cell No',                                                                          id: 'priv_prin_cell',   type: 'text', placeholder: '11 digits' },
+  { header: 'Principal Cell No',                                                                          id: 'priv_prin_cell',   type: 'number' },
   { header: 'Building Certificate Expirey',                                                               id: 'priv_bldg_exp',    type: 'date'   },
   { header: 'Heallth and hygiene Certificate Expirey',                                                    id: 'priv_health_exp',  type: 'date'   },
   { header: 'Total Rooms',                                                                                id: 'priv_rooms',       type: 'number' },
@@ -442,7 +442,6 @@ function openPrivateModal() {
   }
   document.getElementById('ki_cascade_container').innerHTML = '';
   document.getElementById('kiTitle').style.display = 'none';
-  handleRegStatus(true);
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
   privModal.show();
 }
