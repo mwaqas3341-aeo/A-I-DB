@@ -28,12 +28,11 @@
 
 <!-- ═══════════════════════════════════════════
      LOGIN VIEW — merged landing + login
-     (no separate marketing page; this IS the entry point)
 ════════════════════════════════════════════ -->
 <div id="loginView">
   <div class="login-shell">
 
-    <!-- LEFT: trust panel / live portal feel — hidden on phones via theme.css -->
+    <!-- LEFT: trust panel / live portal feel -->
     <div class="login-trust-panel">
       <div class="lt-eyebrow">District Education Data System</div>
       <h1>One <em>verified</em> record for every school in your Markaz.</h1>
@@ -56,7 +55,7 @@
       </div>
     </div>
 
-    <!-- RIGHT: actual functional login — every ID/onclick unchanged -->
+    <!-- RIGHT: actual functional login -->
     <div class="login-card-wrap">
       <div class="login-card">
         <div class="login-logo"><i class="bi bi-shield-check"></i></div>
@@ -154,50 +153,56 @@
           Markaz Overview: <span id="dashMarkazName">—</span>
         </div>
 
+        <!-- ── MAIN container (entry card + module cards) ── -->
         <div id="mainKpiContainer">
 
-  <div class="section-title">
-    <i class="bi bi-grid-3x3-gap-fill"></i> Portal Modules
-    <div class="title-line"></div>
-  </div>
+          <!-- ████████████████████████████████████████████████████ -->
+          <!-- REPLACED WITH COMPACT CARD GRID                      -->
+          <!-- ████████████████████████████████████████████████████ -->
 
-  <!-- ✅ 4‑column grid with the new card as first item -->
-  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+          <div class="section-title">
+            <i class="bi bi-grid-3x3-gap-fill"></i> Portal Modules
+            <div class="title-line"></div>
+          </div>
 
-    <!-- New compact card -->
-    <div class="module-card" onclick="toggleKpiCards(true)">
-      <i class="bi bi-folder-fill mc-icon"></i>
-      <div class="mc-title">School General Data Management</div>
-      <div class="mc-desc">Govt/Public · Outsourced · Private · Inactive</div>
-      <div class="mc-arrow"><i class="bi bi-grid-fill"></i> Open Modules</div>
-    </div>
+          <!-- 4-column grid with the new "School General Data" card as the first item -->
+          <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
 
-    <!-- Existing cards -->
-    <div class="module-card" onclick="openHrModule()">
-      <i class="bi bi-people-fill mc-icon"></i>
-      <div class="mc-title">Staff Statement</div>
-      <div class="mc-desc">Teaching &amp; non‑teaching staff records</div>
-      <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-    </div>
+            <!-- New compact card -->
+            <div class="module-card" onclick="toggleKpiCards(true)">
+              <i class="bi bi-folder-fill mc-icon"></i>
+              <div class="mc-title">School General Data Management</div>
+              <div class="mc-desc">Govt/Public · Outsourced · Private · Inactive</div>
+              <div class="mc-arrow"><i class="bi bi-grid-fill"></i> Open Modules</div>
+            </div>
 
-    <div class="module-card" onclick="openToolsView()">
-      <i class="bi bi-tools mc-icon" style="color:var(--purple)"></i>
-      <div class="mc-title">Portal Tools</div>
-      <div class="mc-desc">Utilities, calculators &amp; data helpers</div>
-      <div class="mc-arrow" style="color:var(--purple)"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-    </div>
+            <!-- Existing cards -->
+            <div class="module-card" onclick="openHrModule()">
+              <i class="bi bi-people-fill mc-icon"></i>
+              <div class="mc-title">Staff Statement</div>
+              <div class="mc-desc">Teaching &amp; non-teaching staff records</div>
+              <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+            </div>
 
-    <div class="module-card"
-         onclick="window.open('https://mwaqas3341-aeo.github.io/OfficialPerformas/','_blank')">
-      <i class="bi bi-file-earmark-text-fill mc-icon"></i>
-      <div class="mc-title">Official Performas</div>
-      <div class="mc-desc">Download &amp; fill official documents</div>
-      <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-    </div>
+            <div class="module-card" onclick="openToolsView()">
+              <i class="bi bi-tools mc-icon" style="color:var(--purple)"></i>
+              <div class="mc-title">Portal Tools</div>
+              <div class="mc-desc">Utilities, calculators &amp; data helpers</div>
+              <div class="mc-arrow" style="color:var(--purple)">
+                <i class="bi bi-arrow-right-circle-fill"></i> Open
+              </div>
+            </div>
 
-  </div>
+            <div class="module-card"
+                 onclick="window.open('https://mwaqas3341-aeo.github.io/OfficialPerformas/','_blank')">
+              <i class="bi bi-file-earmark-text-fill mc-icon"></i>
+              <div class="mc-title">Official Performas</div>
+              <div class="mc-desc">Download &amp; fill official documents</div>
+              <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+            </div>
 
-  <!-- ══ DYNAMIC KPI / MODULE CARDS ... keep rest unchanged ══ -->
+          </div>
+
           <!-- ══ DYNAMIC KPI / MODULE CARDS (from Admin → Dashboard Cards) ══ -->
           <div id="dynamicKpiSection" style="display:none">
             <div class="section-title" style="margin-top:24px">
@@ -355,7 +360,7 @@
     </span>
   </div>
 
-  <!-- FILTER BAR — always visible; table stays empty until Filter clicked -->
+  <!-- FILTER BAR -->
   <div class="filter-bar" id="pubFilters">
     <div class="filter-group">
       <label>District</label>
