@@ -214,33 +214,53 @@
   // ═══════════════════════════════════════════════════════════════════
   //  STATUS BADGE  (live indicator in navbar)
   // ═══════════════════════════════════════════════════════════════════
-  var _badgeEl = null;
+  var _badgeEl  = null;
+  var _labelEl   = null;
   var _statusTimer = null;
 
   function _injectBadge() {
     if (_badgeEl) return;
-    var nav = document.querySelector('.top-nav') || document.querySelector('nav');
-    if (!nav) return;
 
-    _badgeEl = document.createElement('div');
+    // ── Dot indicator on the avatar (visible on all screen sizes) ──
+    var avatar = document.getElementById('navAvatar');
+    if (!avatar) return;
+
+    // Wrap avatar in a positioned container
+    var wrap = avatar.parentNode;
+    if (avatar.style.position !== 'relative') {
+      avatar.style.position = 'relative';
+    }
+
+    // Small dot overlaid on avatar bottom-right corner
+    _badgeEl = document.createElement('span');
     _badgeEl.id = 'cacheStatusBadge';
     _badgeEl.style.cssText = [
-      'display:inline-flex','align-items:center','gap:5px',
-      'padding:3px 10px','border-radius:20px',
-      'font-size:.68rem','font-weight:700',
-      'background:rgba(5,150,105,.15)','color:#059669',
-      'border:1px solid rgba(5,150,105,.3)',
-      'transition:all .3s','cursor:default',
-      'user-select:none','margin-right:8px',
+      'position:absolute',
+      'bottom:-2px','right:-2px',
+      'width:10px','height:10px',
+      'border-radius:50%',
+      'background:#059669',
+      'border:2px solid #0f172a',   // matches nav background
+      'transition:background .3s',
+      'pointer-events:none',
+      'z-index:10',
     ].join(';');
-    _badgeEl.title = 'Cache status — data is served from memory for speed';
+    avatar.appendChild(_badgeEl);
 
-    // Insert before the logout button
-    var logoutBtn = nav.querySelector('.btn-logout');
-    if (logoutBtn) {
-      nav.insertBefore(_badgeEl, logoutBtn);
-    } else {
-      nav.appendChild(_badgeEl);
+    // Tooltip label next to logout (desktop only — hidden on mobile via CSS)
+    _labelEl = document.createElement('span');
+    _labelEl.id = 'cacheStatusLabel';
+    _labelEl.style.cssText = [
+      'font-size:.65rem','font-weight:700',
+      'color:rgba(255,255,255,.55)',
+      'margin-right:4px',
+      'white-space:nowrap',
+      'transition:color .3s',
+    ].join(';');
+
+    var logoutBtn = document.querySelector('.btn-logout');
+    if (logoutBtn && logoutBtn.parentNode) {
+      logoutBtn.parentNode.insertBefore(_labelEl, logoutBtn);
     }
 
     _setStatus('idle');
@@ -251,24 +271,41 @@
     clearTimeout(_statusTimer);
 
     var states = {
-      idle    : { icon: '●', text: 'Live',     bg: 'rgba(5,150,105,.15)',  color: '#059669', border: 'rgba(5,150,105,.3)'  },
-      loading : { icon: '↻', text: 'Syncing',  bg: 'rgba(14,165,233,.15)', color: '#0ea5e9', border: 'rgba(14,165,233,.3)' },
-      synced  : { icon: '✓', text: 'Updated',  bg: 'rgba(26,86,219,.15)',  color: '#1a56db', border: 'rgba(26,86,219,.3)'  },
-      stale   : { icon: '⚠', text: 'Stale',    bg: 'rgba(217,119,6,.15)', color: '#d97706', border: 'rgba(217,119,6,.3)'  },
-      saved   : { icon: '✓', text: 'Saved',    bg: 'rgba(5,150,105,.15)',  color: '#059669', border: 'rgba(5,150,105,.3)'  },
+      idle    : { dot: '#059669', label: ''         },   // green dot, no text
+      loading : { dot: '#0ea5e9', label: 'Syncing…' },   // blue dot
+      synced  : { dot: '#1a56db', label: 'Updated'  },   // brand blue
+      stale   : { dot: '#d97706', label: 'Stale'    },   // amber dot
+      saved   : { dot: '#059669', label: 'Saved ✓'  },   // green dot
     };
 
     var s = states[state] || states.idle;
-    _badgeEl.style.background = s.bg;
-    _badgeEl.style.color      = s.color;
-    _badgeEl.style.border     = '1px solid ' + s.border;
-    _badgeEl.innerHTML        = s.icon + ' ' + s.text;
+    _badgeEl.style.background = s.dot;
+    if (_labelEl) {
+      _labelEl.textContent = s.label;
+      _labelEl.style.color = s.label
+        ? 'rgba(255,255,255,.75)'
+        : 'rgba(255,255,255,.0)';
+    }
+
+    // Pulse animation on loading
+    _badgeEl.style.animation = (state === 'loading')
+      ? 'cachePulse .8s ease-in-out infinite alternate'
+      : 'none';
 
     // Auto-revert to idle after 3 seconds
     if (state !== 'idle' && state !== 'loading') {
       _statusTimer = setTimeout(function () { _setStatus('idle'); }, 3000);
     }
   }
+
+  // Inject pulse keyframes once
+  (function() {
+    if (document.getElementById('cache-service-styles')) return;
+    var st = document.createElement('style');
+    st.id = 'cache-service-styles';
+    st.textContent = '@keyframes cachePulse{from{opacity:1}to{opacity:.3}}';
+    document.head.appendChild(st);
+  })();
 
   // ═══════════════════════════════════════════════════════════════════
   //  CORE INTERCEPT — wraps window.apiCall
