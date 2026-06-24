@@ -154,47 +154,50 @@
           Markaz Overview: <span id="dashMarkazName">—</span>
         </div>
 
-        <!-- ── MAIN container (entry card + module cards) ── -->
         <div id="mainKpiContainer">
 
-          <div class="entry-card" onclick="toggleKpiCards(true)">
-            <div class="entry-card-icon"><i class="bi bi-folder-fill"></i></div>
-            <div class="entry-card-body">
-              <h4>School General Data Management</h4>
-              <p>Govt/Public Schools · Outsourced · Private · Inactive Schools</p>
-            </div>
-            <div class="entry-card-cta"><i class="bi bi-grid-fill"></i> Open Modules</div>
-          </div>
+  <div class="section-title">
+    <i class="bi bi-grid-3x3-gap-fill"></i> Portal Modules
+    <div class="title-line"></div>
+  </div>
 
-          <div class="section-title">
-            <i class="bi bi-grid-3x3-gap-fill"></i> Portal Modules
-            <div class="title-line"></div>
-          </div>
+  <!-- ✅ 4‑column grid with the new card as first item -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
 
-          <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
-            <div class="module-card" onclick="openHrModule()">
-              <i class="bi bi-people-fill mc-icon"></i>
-              <div class="mc-title">Staff Statement</div>
-              <div class="mc-desc">Teaching &amp; non-teaching staff records</div>
-              <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-            </div>
-            <div class="module-card" onclick="openToolsView()">
-              <i class="bi bi-tools mc-icon" style="color:var(--purple)"></i>
-              <div class="mc-title">Portal Tools</div>
-              <div class="mc-desc">Utilities, calculators &amp; data helpers</div>
-              <div class="mc-arrow" style="color:var(--purple)">
-                <i class="bi bi-arrow-right-circle-fill"></i> Open
-              </div>
-            </div>
-            <div class="module-card"
-                 onclick="window.open('https://mwaqas3341-aeo.github.io/OfficialPerformas/','_blank')">
-              <i class="bi bi-file-earmark-text-fill mc-icon"></i>
-              <div class="mc-title">Official Performas</div>
-              <div class="mc-desc">Download &amp; fill official documents</div>
-              <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-            </div>
-          </div>
+    <!-- New compact card -->
+    <div class="module-card" onclick="toggleKpiCards(true)">
+      <i class="bi bi-folder-fill mc-icon"></i>
+      <div class="mc-title">School General Data Management</div>
+      <div class="mc-desc">Govt/Public · Outsourced · Private · Inactive</div>
+      <div class="mc-arrow"><i class="bi bi-grid-fill"></i> Open Modules</div>
+    </div>
 
+    <!-- Existing cards -->
+    <div class="module-card" onclick="openHrModule()">
+      <i class="bi bi-people-fill mc-icon"></i>
+      <div class="mc-title">Staff Statement</div>
+      <div class="mc-desc">Teaching &amp; non‑teaching staff records</div>
+      <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+    </div>
+
+    <div class="module-card" onclick="openToolsView()">
+      <i class="bi bi-tools mc-icon" style="color:var(--purple)"></i>
+      <div class="mc-title">Portal Tools</div>
+      <div class="mc-desc">Utilities, calculators &amp; data helpers</div>
+      <div class="mc-arrow" style="color:var(--purple)"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+    </div>
+
+    <div class="module-card"
+         onclick="window.open('https://mwaqas3341-aeo.github.io/OfficialPerformas/','_blank')">
+      <i class="bi bi-file-earmark-text-fill mc-icon"></i>
+      <div class="mc-title">Official Performas</div>
+      <div class="mc-desc">Download &amp; fill official documents</div>
+      <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+    </div>
+
+  </div>
+
+  <!-- ══ DYNAMIC KPI / MODULE CARDS ... keep rest unchanged ══ -->
           <!-- ══ DYNAMIC KPI / MODULE CARDS (from Admin → Dashboard Cards) ══ -->
           <div id="dynamicKpiSection" style="display:none">
             <div class="section-title" style="margin-top:24px">
