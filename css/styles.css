@@ -105,6 +105,23 @@
     .kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
     @media(max-width:600px){.kpi-grid{grid-template-columns:1fr}}
 
+    /* ✅ New responsive rule for the 4-card grid (modules) */
+    .kpi-grid[style*="repeat(4,1fr)"] {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 991px) {
+      .kpi-grid[style*="repeat(4,1fr)"] {
+        grid-template-columns: repeat(2, 1fr) !important;
+      }
+    }
+    @media (max-width: 600px) {
+      .kpi-grid[style*="repeat(4,1fr)"] {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
     .kpi-card{background:var(--s0);border-radius:var(--r3);padding:22px;box-shadow:var(--sh1);border:1px solid var(--b0);border-left:5px solid var(--brand);transition:all .2s;position:relative;display:flex;flex-direction:column;}
     .kpi-card .kpi-title{font-size:.82rem;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.05em}
     .kpi-card .kpi-value{font-size:2.5rem;font-weight:800;color:var(--t1);margin-top:8px;font-family:var(--mono)}
@@ -178,6 +195,8 @@
     .link-item:hover i{color:var(--brand)}
 
     .apps-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    @media(max-width:600px){ .apps-grid{grid-template-columns:1fr !important} }
+
     .app-card{display:flex;flex-direction:column;align-items:center;text-align:center;padding:14px 10px;background:var(--s1);border-radius:var(--r2);text-decoration:none;color:var(--t1);border:1px solid var(--b0);transition:all .2s;gap:6px}
     .app-card:hover{background:var(--brand-light);border-color:var(--brand);transform:translateY(-2px);box-shadow:var(--sh1)}
     .app-card i{font-size:1.6rem;color:var(--brand)}
@@ -194,6 +213,42 @@
     ═══════════════════════════════════════════════ */
     .toolbar{background:var(--s0);border-radius:var(--r2);box-shadow:var(--sh1);border:1px solid var(--b0);padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:15px}
     .filter-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;background:var(--brand-light);padding:16px;border-radius:var(--r2);border:1px solid rgba(26,86,219,.15);margin-bottom:15px}
+
+    /* ✅ Mobile: filter bar stacks to 1 column */
+    @media (max-width: 600px) {
+      .filter-bar {
+        grid-template-columns: 1fr !important;
+        padding: 12px;
+      }
+      .filter-group select,
+      .filter-group input {
+        height: 42px;
+        font-size: 16px; /* prevents iOS zoom */
+      }
+    }
+
+    /* ✅ Mobile: toolbar stacks vertically */
+    @media (max-width: 600px) {
+      .toolbar {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 10px;
+      }
+      .btn-add,
+      .btn-export-tbl,
+      .btn-save,
+      .btn-cancel {
+        justify-content: center;
+        width: 100%;
+      }
+      .search-box {
+        max-width: 100% !important;
+      }
+      .search-box input {
+        height: 42px;
+      }
+    }
+
     .filter-group{display:flex;flex-direction:column}
     .filter-group label{font-size:.72rem;font-weight:800;color:var(--brand-dark);text-transform:uppercase;margin-bottom:5px}
     .filter-group select,.filter-group input{height:38px;border:1px solid var(--b0);border-radius:6px;font-family:var(--font);font-size:.85rem;padding:0 10px;background:var(--s0);outline:none;transition:border-color .2s}
@@ -248,6 +303,17 @@
     .form-section{margin-bottom:20px}
     .form-section-title{font-size:.72rem;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.08em;padding:6px 10px;background:var(--brand-light);border-radius:6px;margin-bottom:10px;display:flex;align-items:center;gap:6px;border-left:3px solid var(--brand)}
     .form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+
+    /* ✅ Mobile: form grids stack to 1 column */
+    @media(max-width:600px){
+      .form-grid,
+      .sfm-grid,
+      .hr-form-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+      }
+    }
+
     .ff{background:var(--s0);border-radius:var(--r1);border:1.5px solid var(--b0);padding:9px 11px 11px;transition:border-color .2s,box-shadow .2s}
     .ff:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(26,86,219,.08)}
     .ff.ff-locked{background:var(--s2);border-color:var(--b0)}
