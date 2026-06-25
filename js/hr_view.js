@@ -7,7 +7,7 @@ let hrSchoolCache      = [];
 let hrSheetDataCache   = {};
 let hrFilteredResults  = [];
 let hrCurrentHeaders   = [];
-const HR_PAGE_SIZE     = 100;
+let hrPageSize         = 50;
 let hrCurrentPage      = 1;
 let hrActiveMenu       = null;
 let sfmMode            = 'view';
@@ -162,6 +162,13 @@ window.addEventListener('DOMContentLoaded', () => {
     if (hrActiveMenu && !e.target.closest('.hr-fixed-menu') && !e.target.closest('.action-menu-btn')) {
       hrActiveMenu.remove(); hrActiveMenu = null;
     }
+  });
+
+  // Page size dropdown
+  document.getElementById('hrPageSize').addEventListener('change', function() {
+    hrPageSize = parseInt(this.value);
+    hrCurrentPage = 1;
+    applyHrFilter();
   });
 });
 
@@ -344,7 +351,7 @@ function runHrClientFilter(sheet) {
   // ★ NEW: Sort filtered results by:
   // 1. Markaz Name (A → Z, case‑insensitive)
   // 2. EMIS Code (ascending, numeric)
-  // 3. BPS (ascending, numeric)
+  // 3. BPS (descending, numeric)  <-- changed to descending
   filtered.sort((a, b) => {
     const markazA = (a['MARKAZ NAME'] || a._markaz || '').toString().toLowerCase();
     const markazB = (b['MARKAZ NAME'] || b._markaz || '').toString().toLowerCase();
@@ -357,7 +364,7 @@ function runHrClientFilter(sheet) {
 
     const bpsA = parseInt((a['BPS'] || '').toString(), 10) || 0;
     const bpsB = parseInt((b['BPS'] || '').toString(), 10) || 0;
-    return bpsA - bpsB;
+    return bpsB - bpsA; // Descending BPS
   });
 
   hrFilteredResults = filtered;
@@ -722,9 +729,10 @@ function renderHrTable() {
     container.innerHTML = '<div class="hr-empty-state">No matching records found.</div>';
     return;
   }
-  const totalPages = Math.ceil(hrFilteredResults.length / HR_PAGE_SIZE);
-  const start      = (hrCurrentPage - 1) * HR_PAGE_SIZE;
-  const pageRows   = hrFilteredResults.slice(start, start + HR_PAGE_SIZE);
+  const totalPages = Math.ceil(hrFilteredResults.length / hrPageSize);
+  if (hrCurrentPage > totalPages) hrCurrentPage = totalPages || 1;
+  const start      = (hrCurrentPage - 1) * hrPageSize;
+  const pageRows   = hrFilteredResults.slice(start, start + hrPageSize);
 
   const head = '<tr><th class="hr-actions-col">☰</th>' +
     hrCurrentHeaders.map(h => `<th>${h}</th>`).join('') + '</tr>';
@@ -755,7 +763,7 @@ function renderHrTable() {
 }
 
 function hrGoPage(p) {
-  const total = Math.ceil(hrFilteredResults.length / HR_PAGE_SIZE);
+  const total = Math.ceil(hrFilteredResults.length / hrPageSize);
   if (p < 1 || p > total) return;
   hrCurrentPage = p; renderHrTable();
 }
@@ -1545,7 +1553,7 @@ function openSeparationModal(actionType, row) {
       <div class="transfer-err" id="sae_date"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button type="button" class="hr-btn-danger" onclick="submitSeparation('${actionType}', hrFilteredResults.find(r=>r['PERSONAL NO.']==='${(row['PERSONAL NO.']||'').replace(/'/g,"\\'")}'))">
+      <button type="button" class="hr-btn-danger" onclick="submitSeparation('${actionType}', hrFilteredResults.find(r=>r['PERSONAL NO.']==='${(row['PERSONAL NO.']||'').replace(/'/g,"\\'")}')">
         Submit ${labels[actionType].replace(/^[^ ]+ /, '')}
       </button>
       <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
