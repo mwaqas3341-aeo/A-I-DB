@@ -10,6 +10,10 @@ let privDataLoaded       = false;
 let privModal;
 let nameCheckModalInstance;
 
+// Pagination state
+let privPageSize         = 50;
+let privCurrentPage      = 1;
+
 // ★ NEW: Store filtered school hierarchy for dropdowns
 let privSchoolHierarchy = [];
 
@@ -67,6 +71,12 @@ const PRIVATE_FIELD_CONFIG = [
 window.addEventListener('DOMContentLoaded', () => {
   privModal              = new bootstrap.Modal(document.getElementById('privateSchoolModal'));
   nameCheckModalInstance = new bootstrap.Modal(document.getElementById('nameCheckModal'));
+  // Page size dropdown
+  document.getElementById('privPageSize').addEventListener('change', function() {
+    privPageSize = parseInt(this.value);
+    privCurrentPage = 1;
+    applyPrivFilters();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -275,20 +285,26 @@ function applyPrivFilters() {
 
   privFilteredCache = fData;
 
-  // Show table, hide empty state
+  // Pagination
+  const totalRecords = fData.length;
+  const totalPages = Math.ceil(totalRecords / privPageSize);
+  if (privCurrentPage > totalPages) privCurrentPage = totalPages || 1;
+  const start = (privCurrentPage - 1) * privPageSize;
+  const pageData = fData.slice(start, start + privPageSize);
+
   document.getElementById('privEmptyState').style.display = 'none';
   document.getElementById('privTableWrap').style.display  = 'block';
 
   document.getElementById('privRecordCount').innerHTML =
-    `<i class="bi bi-database"></i> ${fData.length} Records`;
+    `<i class="bi bi-database"></i> ${totalRecords} Records (Page ${privCurrentPage}/${totalPages})`;
 
-  renderPrivateTable(fData);
+  renderPrivateTable(pageData, totalRecords);
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  TABLE RENDER
 // ══════════════════════════════════════════════════════════════════════
-function renderPrivateTable(dataArr) {
+function renderPrivateTable(dataArr, totalRecords) {
   if (!dataArr.length) {
     document.getElementById('privTHead').innerHTML = '';
     document.getElementById('privTBody').innerHTML =
@@ -310,6 +326,32 @@ function renderPrivateTable(dataArr) {
       ${privHeaders.map(h => `<td>${_privEsc(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
   }).join('');
+
+  // Add pagination controls
+  const totalPages = Math.ceil(totalRecords / privPageSize);
+  if (totalPages > 1) {
+    const paginationHtml = `
+      <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:15px;">
+        <button class="btn btn-outline-secondary btn-sm" onclick="privGoPage(${privCurrentPage - 1})" ${privCurrentPage === 1 ? 'disabled' : ''}>Previous</button>
+        <span>Page ${privCurrentPage} of ${totalPages}</span>
+        <button class="btn btn-outline-secondary btn-sm" onclick="privGoPage(${privCurrentPage + 1})" ${privCurrentPage === totalPages ? 'disabled' : ''}>Next</button>
+      </div>
+    `;
+    const tblWrap = document.getElementById('privTableWrap');
+    const existing = tblWrap.querySelector('.priv-pagination');
+    if (existing) existing.remove();
+    const div = document.createElement('div');
+    div.className = 'priv-pagination';
+    div.innerHTML = paginationHtml;
+    tblWrap.appendChild(div);
+  }
+}
+
+function privGoPage(page) {
+  const total = Math.ceil(privFilteredCache.length / privPageSize);
+  if (page < 1 || page > total) return;
+  privCurrentPage = page;
+  applyPrivFilters();
 }
 
 // Quick search within already-filtered results (toolbar search box)
@@ -319,7 +361,13 @@ function quickSearchPriv() {
   const visible = privFilteredCache.filter(r =>
     Object.values(r).some(v => String(v).toLowerCase().includes(q))
   );
-  renderPrivateTable(visible);
+  // Re‑apply pagination to the filtered subset
+  const totalRecords = visible.length;
+  const totalPages = Math.ceil(totalRecords / privPageSize);
+  if (privCurrentPage > totalPages) privCurrentPage = totalPages || 1;
+  const start = (privCurrentPage - 1) * privPageSize;
+  const pageData = visible.slice(start, start + privPageSize);
+  renderPrivateTable(pageData, totalRecords);
 }
 
 // Legacy alias for older code that calls filterPrivateTable()
@@ -595,9 +643,6 @@ function handleRegStatus(preserveValue) {
   } else {
     no.readOnly = true;
     wrap.classList.add('ff-locked');
-    // Only auto-clear on a real user-driven status change (dropdown onchange).
-    // When loading a saved record for edit, preserveValue=true keeps the
-    // existing EMIS value intact even if status isn't Registered/Expired.
     if (!preserveValue) no.value = '';
   }
 }
