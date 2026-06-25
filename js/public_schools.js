@@ -256,6 +256,19 @@ function applyPubFilters() {
   if (e && pubFHeaders.emis)     fData = fData.filter(r => String(r[pubFHeaders.emis]).toLowerCase().includes(e));
   if (q) fData = fData.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
 
+  // ★ NEW: Sort by Markaz Name (A → Z), then EMIS Code (ascending)
+  if (pubFHeaders.markaz && pubFHeaders.emis) {
+    fData.sort((a, b) => {
+      const markazA = (a[pubFHeaders.markaz] || '').toString().toLowerCase();
+      const markazB = (b[pubFHeaders.markaz] || '').toString().toLowerCase();
+      if (markazA < markazB) return -1;
+      if (markazA > markazB) return 1;
+      const emisA = parseInt((a[pubFHeaders.emis] || '').toString(), 10) || 0;
+      const emisB = parseInt((b[pubFHeaders.emis] || '').toString(), 10) || 0;
+      return emisA - emisB;
+    });
+  }
+
   pubFilteredCache = fData;
 
   document.getElementById('pubEmptyState').style.display  = 'none';
