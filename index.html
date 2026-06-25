@@ -388,12 +388,14 @@
       <label>EMIS Code</label>
       <input type="text" id="pubFltEmis" placeholder="8-Digit EMIS…">
     </div>
-    <div class="filter-group" style="justify-content:flex-end">
-      <button
-        class="btn-save"
-        style="height:38px;width:100%;justify-content:center;font-size:.8rem"
-        onclick="applyPubFilters()"
-      >
+    <div class="filter-group" style="justify-content:flex-end; align-items:center; gap:8px;">
+      <label style="font-size:0.75rem; margin:0;">Show</label>
+      <select id="pubPageSize" style="height:38px; padding:0 8px; border:1px solid var(--b0); border-radius:6px; background:var(--s0); font-size:0.8rem;">
+        <option value="10">10</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+      </select>
+      <button class="btn-save" style="height:38px;width:100%;justify-content:center;font-size:.8rem" onclick="applyPubFilters()">
         <i class="bi bi-funnel-fill"></i> Filter Data
       </button>
     </div>
@@ -524,12 +526,14 @@
       <label>School Name / Reg No</label>
       <input type="text" id="privFltSearch" placeholder="Type to search…">
     </div>
-    <div class="filter-group" style="justify-content:flex-end">
-      <button
-        class="btn-save"
-        style="height:38px;width:100%;justify-content:center;font-size:.8rem"
-        onclick="applyPrivFilters()"
-      >
+    <div class="filter-group" style="justify-content:flex-end; align-items:center; gap:8px;">
+      <label style="font-size:0.75rem; margin:0;">Show</label>
+      <select id="privPageSize" style="height:38px; padding:0 8px; border:1px solid var(--b0); border-radius:6px; background:var(--s0); font-size:0.8rem;">
+        <option value="10">10</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+      </select>
+      <button class="btn-save" style="height:38px;width:100%;justify-content:center;font-size:.8rem" onclick="applyPrivFilters()">
         <i class="bi bi-funnel-fill"></i> Filter Data
       </button>
     </div>
@@ -1289,23 +1293,32 @@
               <input type="text" id="hrFilterKeyword" placeholder="Name, P.No, subject…">
             </div>
           </div>
+          <div class="hr-filter-field" style="display:flex; align-items:center; gap:8px;">
+            <label class="hr-filter-label" style="margin:0;">Show</label>
+            <select id="hrPageSize" style="height:38px; padding:0 8px; border:1px solid var(--b0); border-radius:6px; background:var(--s0); font-size:0.8rem;">
+              <option value="10">10</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
         </div>
-               <div class="hr-filter-footer" style="margin-top:15px;">
-  <div class="hr-filter-actions-left">
-    <button class="hr-btn-primary" onclick="applyHrFilter()">
-      <span class="material-icons-round">search</span> Apply Filter
-    </button>
-    <button class="hr-btn-ghost" onclick="clearHrFilters()">
-      <span class="material-icons-round">close</span> Clear
-    </button>
-    <button class="hr-btn-primary" onclick="downloadActiveStaff()" style="margin-left:8px;">
-      <span class="material-icons-round">download</span>Staff Statement
-    </button>
-    <button class="hr-btn-primary" onclick="downloadHeadTeachers()" style="margin-left:8px;">
-      <span class="material-icons-round">download</span>Head Teachers List
-    </button>
-  </div>
-</div>  </section>
+        <div class="hr-filter-footer" style="margin-top:15px;">
+          <div class="hr-filter-actions-left">
+            <button class="hr-btn-primary" onclick="applyHrFilter()">
+              <span class="material-icons-round">search</span> Apply Filter
+            </button>
+            <button class="hr-btn-ghost" onclick="clearHrFilters()">
+              <span class="material-icons-round">close</span> Clear
+            </button>
+            <button class="hr-btn-primary" onclick="downloadActiveStaff()" style="margin-left:8px;">
+              <span class="material-icons-round">download</span>Staff Statement
+            </button>
+            <button class="hr-btn-primary" onclick="downloadHeadTeachers()" style="margin-left:8px;">
+              <span class="material-icons-round">download</span>Head Teachers List
+            </button>
+          </div>
+        </div>
+      </section>
 
       <div id="hrResultsContainer">
         <div class="hr-empty-state">
