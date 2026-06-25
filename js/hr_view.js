@@ -16,9 +16,9 @@ let hrTransferRow      = null;
 let hrPromotionRow     = null;
 let hrAllSchoolCache  = [];
 let hrStaffFullRows    = [];
-let hrPnoStatus        = 'unchecked'; // ← add this line
-let hrCnicStatus = 'unchecked'; // ← add this line
-let hrIbanStatus = 'unchecked'; // ← add this line
+let hrPnoStatus        = 'unchecked';
+let hrCnicStatus = 'unchecked';
+let hrIbanStatus = 'unchecked';
 
 // ──────────────────────────────────────────────────────────────────
 //  JURISDICTION HELPERS
@@ -301,6 +301,7 @@ function applyHrFilter() {
       .loadSheetForClient(sheet, userPayload);
   }
 }
+
 function runHrClientFilter(sheet) {
   const cache = hrSheetDataCache[sheet];
   if (!cache || !cache.rows || !cache.rows.length) {
@@ -322,7 +323,7 @@ function runHrClientFilter(sheet) {
   const fEmis = document.getElementById('hrFilterEmis').value.toLowerCase();
   const fKey  = document.getElementById('hrFilterKeyword').value.toLowerCase();
 
-  hrFilteredResults = cache.rows.filter(row => {
+  let filtered = cache.rows.filter(row => {
     // Smart column fallback: Checks standard names, then historical sheet prefixes
     const rDist = (row._district || row['District'] || row['To District'] || row['From District'] || '').toLowerCase();
     const rWing = (row._wing     || row['Wing']     || row['To Wing']     || row['From Wing']     || '').toLowerCase();
@@ -339,6 +340,27 @@ function runHrClientFilter(sheet) {
     if (fKey  && !(row._searchBlob || hrCurrentHeaders.map(h => row[h] || '').join(' ').toLowerCase()).includes(fKey)) return false;
     return true;
   });
+
+  // ★ NEW: Sort filtered results by:
+  // 1. Markaz Name (A → Z, case‑insensitive)
+  // 2. EMIS Code (ascending, numeric)
+  // 3. BPS (ascending, numeric)
+  filtered.sort((a, b) => {
+    const markazA = (a['MARKAZ NAME'] || a._markaz || '').toString().toLowerCase();
+    const markazB = (b['MARKAZ NAME'] || b._markaz || '').toString().toLowerCase();
+    if (markazA < markazB) return -1;
+    if (markazA > markazB) return 1;
+
+    const emisA = parseInt((a['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
+    const emisB = parseInt((b['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
+    if (emisA !== emisB) return emisA - emisB;
+
+    const bpsA = parseInt((a['BPS'] || '').toString(), 10) || 0;
+    const bpsB = parseInt((b['BPS'] || '').toString(), 10) || 0;
+    return bpsA - bpsB;
+  });
+
+  hrFilteredResults = filtered;
 
   // ── Summary cards are always based on the FILTERED results ──
   if (sheet === 'Staff') {
@@ -809,17 +831,17 @@ function openStaffFormModal(mode, row) {
   });
 
   if (mode === 'add') {
-    hrPnoStatus = 'unchecked'; // ← add this line
-    hrCnicStatus = 'unchecked'; // ← add this line
-    hrIbanStatus = 'unchecked'; // ← add this line
+    hrPnoStatus = 'unchecked';
+    hrCnicStatus = 'unchecked';
+    hrIbanStatus = 'unchecked';
     chip.textContent      = 'NEW';
     chip.style.background = 'rgba(16,185,129,0.35)';
     title.textContent     = 'Add New Staff Member';
     saveBtn.style.display = 'inline-flex';
     toggleRegularizationField();
   } else if (mode === 'edit') {
-    hrCnicStatus = 'unchecked'; // ← add this line
-    hrIbanStatus = 'unchecked'; // ← add this line
+    hrCnicStatus = 'unchecked';
+    hrIbanStatus = 'unchecked';
     chip.textContent      = 'EDIT';
     chip.style.background = 'rgba(245,158,11,0.35)';
     title.textContent     = 'Edit Staff Record';
@@ -937,7 +959,7 @@ function triggerEmisLookup(emisValue) {
 function triggerPnoCheck(pno) {
   const msg = document.getElementById('sf_pno_msg');
   msg.style.display = 'none';
-  hrPnoStatus = 'unchecked'; // ← reset on every call
+  hrPnoStatus = 'unchecked';
 
   if (!pno || sfmMode !== 'add') return;
   if (pno.length < 8) return;
@@ -973,7 +995,7 @@ function triggerPnoCheck(pno) {
   }
 
   if (foundIn) {
-    hrPnoStatus = 'duplicate'; // ← block submission
+    hrPnoStatus = 'duplicate';
     msg.textContent   = '⚠ Personal No. already exists in "' + foundIn + '".';
     msg.style.color   = '#D97706';
     msg.style.display = 'block';
@@ -981,7 +1003,7 @@ function triggerPnoCheck(pno) {
   }
 
   // ── 3. Server-side fallback ───────────────────────────────────
-  hrPnoStatus = 'checking'; // ← hold submission until resolved
+  hrPnoStatus = 'checking';
   msg.textContent   = '⏳ Verifying across all records…';
   msg.style.color   = '#475569';
   msg.style.display = 'block';
@@ -990,17 +1012,17 @@ function triggerPnoCheck(pno) {
     .withSuccessHandler(res => {
       if ((document.getElementById('sf_personalNo').value || '').trim() !== pno) return;
       if (res && res.found) {
-        hrPnoStatus = 'duplicate'; // ← block submission
+        hrPnoStatus = 'duplicate';
         msg.textContent = '⚠ Personal No. already exists in "' + res.sheet + '".';
         msg.style.color = '#D97706';
       } else {
-        hrPnoStatus = 'available'; // ← allow submission
+        hrPnoStatus = 'available';
         msg.textContent = '✓ Personal No. is available.';
         msg.style.color = '#059669';
       }
     })
     .withFailureHandler(() => {
-      hrPnoStatus = 'unchecked'; // ← don't block if check fails
+      hrPnoStatus = 'unchecked';
       msg.style.display = 'none';
     })
     .checkPersonalNoDuplicate(pno, null);
@@ -1011,7 +1033,7 @@ function triggerPnoCheck(pno) {
 function triggerCnicCheck(cnic) {
   const msg = document.getElementById('sf_cnic_msg');
   msg.style.display = 'none';
-  hrCnicStatus = 'unchecked'; // ← reset on every call
+  hrCnicStatus = 'unchecked';
 
   if (!cnic || cnic.length < 13) return;
   if (!/^\d{13}$/.test(cnic)) {
@@ -1059,7 +1081,7 @@ function triggerCnicCheck(cnic) {
   }
 
   if (foundIn) {
-    hrCnicStatus = 'duplicate'; // ← block submission
+    hrCnicStatus = 'duplicate';
     msg.textContent   = '⚠ CNIC already exists in "' + foundIn + '".';
     msg.style.color   = '#D97706';
     msg.style.display = 'block';
@@ -1067,7 +1089,7 @@ function triggerCnicCheck(cnic) {
   }
 
   // ── 3. Server-side fallback ───────────────────────────────────
-  hrCnicStatus = 'checking'; // ← hold submission until resolved
+  hrCnicStatus = 'checking';
   msg.textContent   = '⏳ Verifying CNIC across all records…';
   msg.style.color   = '#475569';
   msg.style.display = 'block';
@@ -1078,17 +1100,17 @@ function triggerCnicCheck(cnic) {
     .withSuccessHandler(res => {
       if ((document.getElementById('sf_cnic').value || '').trim() !== cnic) return;
       if (res && res.found) {
-        hrCnicStatus = 'duplicate'; // ← block submission
+        hrCnicStatus = 'duplicate';
         msg.textContent = '⚠ CNIC already exists in "' + res.sheet + '".';
         msg.style.color = '#D97706';
       } else {
-        hrCnicStatus = 'available'; // ← allow submission
+        hrCnicStatus = 'available';
         msg.textContent = '✓ CNIC is available.';
         msg.style.color = '#059669';
       }
     })
     .withFailureHandler(() => {
-      hrCnicStatus = 'unchecked'; // ← don't block if check fails
+      hrCnicStatus = 'unchecked';
       msg.style.display = 'none';
     })
     .checkCnicDuplicate(cnic, excludeSheet);
@@ -1097,7 +1119,7 @@ function triggerIbanCheck(iban) {
   const msg = document.getElementById('sf_iban_msg');
   if (!msg) return;
   msg.style.display = 'none';
-  hrIbanStatus = 'unchecked'; // ← reset on every call
+  hrIbanStatus = 'unchecked';
 
   if (!iban || iban.length < 24) return;
 
@@ -1134,7 +1156,7 @@ function triggerIbanCheck(iban) {
   });
 
   if (foundIn) {
-    hrIbanStatus = 'duplicate'; // ← block submission
+    hrIbanStatus = 'duplicate';
     msg.textContent   = '⚠ IBAN already exists in "' + foundIn + '".';
     msg.style.color   = '#D97706';
     msg.style.display = 'block';
@@ -1142,7 +1164,7 @@ function triggerIbanCheck(iban) {
   }
 
   // ── 2. Server-side fallback ───────────────────────────────────
-  hrIbanStatus = 'checking'; // ← hold submission until resolved
+  hrIbanStatus = 'checking';
   msg.textContent   = '⏳ Verifying IBAN across all records…';
   msg.style.color   = '#475569';
   msg.style.display = 'block';
@@ -1153,17 +1175,17 @@ function triggerIbanCheck(iban) {
     .withSuccessHandler(res => {
       if ((document.getElementById('sf_iban').value || '').trim().toUpperCase() !== iban) return;
       if (res && res.found) {
-        hrIbanStatus = 'duplicate'; // ← block submission
+        hrIbanStatus = 'duplicate';
         msg.textContent = '⚠ IBAN already exists in "' + res.sheet + '".';
         msg.style.color = '#D97706';
       } else {
-        hrIbanStatus = 'available'; // ← allow submission
+        hrIbanStatus = 'available';
         msg.textContent = '✓ IBAN is available.';
         msg.style.color = '#059669';
       }
     })
     .withFailureHandler(() => {
-      hrIbanStatus = 'unchecked'; // ← don't block if check fails
+      hrIbanStatus = 'unchecked';
       msg.style.display = 'none';
     })
     .checkIbanDuplicate(iban, excludeSheet);
