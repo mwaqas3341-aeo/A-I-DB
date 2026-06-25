@@ -16,9 +16,9 @@ let privSchoolHierarchy = [];
 // Header keys for cascade filters
 let privFHeaders = { district: '', tehsil: '', markaz: '', status: '', name: '', regNo: '' };
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 //  FIELD CONFIG — Columns A to AK
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 const PRIVATE_FIELD_CONFIG = [
   { header: 'Unique ID',                                                                                    id: 'priv_uid',         readonly: true,  placeholder: 'Auto-generated' },
   { header: 'District',                                                                                     id: 'priv_district',    readonly: true  },
@@ -261,6 +261,17 @@ function applyPrivFilters() {
   if (m  && privFHeaders.markaz)   fData = fData.filter(r => r[privFHeaders.markaz]   === m);
   if (st && privFHeaders.status)   fData = fData.filter(r => r[privFHeaders.status]   === st);
   if (q) fData = fData.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
+
+  // ★ NEW: Sort filtered results by School Name (A → Z) alphabetically
+  if (privFHeaders.name) {
+    fData.sort((a, b) => {
+      const nameA = (a[privFHeaders.name] || '').toString().toLowerCase();
+      const nameB = (b[privFHeaders.name] || '').toString().toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
+  }
 
   privFilteredCache = fData;
 
