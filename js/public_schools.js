@@ -9,6 +9,10 @@ let pubFilteredCache  = [];
 let pubModal;
 let pubDataLoaded     = false;
 
+// Pagination state
+let pubPageSize       = 50;
+let pubCurrentPage    = 1;
+
 // Master (read-only) column count A-I
 const PUB_MASTER_COUNT = 9;
 
@@ -59,6 +63,12 @@ let pubSchoolHierarchy = [];
 // ══════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
   pubModal = new bootstrap.Modal(document.getElementById('publicSchoolModal'));
+  // Page size dropdown
+  document.getElementById('pubPageSize').addEventListener('change', function() {
+    pubPageSize = parseInt(this.value);
+    pubCurrentPage = 1;
+    applyPubFilters();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -271,11 +281,18 @@ function applyPubFilters() {
 
   pubFilteredCache = fData;
 
+  // Pagination
+  const totalRecords = fData.length;
+  const totalPages = Math.ceil(totalRecords / pubPageSize);
+  if (pubCurrentPage > totalPages) pubCurrentPage = totalPages || 1;
+  const start = (pubCurrentPage - 1) * pubPageSize;
+  const pageData = fData.slice(start, start + pubPageSize);
+
   document.getElementById('pubEmptyState').style.display  = 'none';
   document.getElementById('pubTableWrap').style.display   = 'block';
 
   document.getElementById('pubRecordCount').innerHTML =
-    `<i class="bi bi-database"></i> ${fData.length} Records`;
+    `<i class="bi bi-database"></i> ${totalRecords} Records (Page ${pubCurrentPage}/${totalPages})`;
 
   if (!fData.length) {
     document.getElementById('pubTHead').innerHTML = '';
@@ -289,7 +306,7 @@ function applyPubFilters() {
   document.getElementById('pubTHead').innerHTML =
     `<tr><th>Actions</th>${pubHeaders.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr>`;
 
-  document.getElementById('pubTBody').innerHTML = fData.map(row => {
+  document.getElementById('pubTBody').innerHTML = pageData.map(row => {
     const keyVal = String(row[pubHeaders[0]] || '').replace(/'/g, "\\'");
     return `<tr>
       <td>
@@ -300,6 +317,31 @@ function applyPubFilters() {
       ${pubHeaders.map(h => `<td>${escHtml(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
   }).join('');
+
+  // Add pagination controls
+  const paginationHtml = totalPages > 1 ? `
+    <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:15px;">
+      <button class="btn btn-outline-secondary btn-sm" onclick="pubGoPage(${pubCurrentPage - 1})" ${pubCurrentPage === 1 ? 'disabled' : ''}>Previous</button>
+      <span>Page ${pubCurrentPage} of ${totalPages}</span>
+      <button class="btn btn-outline-secondary btn-sm" onclick="pubGoPage(${pubCurrentPage + 1})" ${pubCurrentPage === totalPages ? 'disabled' : ''}>Next</button>
+    </div>
+  ` : '';
+  const tblWrap = document.getElementById('pubTableWrap');
+  const existingPagination = tblWrap.querySelector('.pub-pagination');
+  if (existingPagination) existingPagination.remove();
+  if (paginationHtml) {
+    const div = document.createElement('div');
+    div.className = 'pub-pagination';
+    div.innerHTML = paginationHtml;
+    tblWrap.appendChild(div);
+  }
+}
+
+function pubGoPage(page) {
+  const total = Math.ceil(pubFilteredCache.length / pubPageSize);
+  if (page < 1 || page > total) return;
+  pubCurrentPage = page;
+  applyPubFilters();
 }
 
 // ══════════════════════════════════════════════════════════════════════
