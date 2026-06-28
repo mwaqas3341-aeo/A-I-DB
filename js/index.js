@@ -99,7 +99,13 @@ function parseExtraMarkazs(scopeType, scopeValue) {
  * save it to localStorage so enrollment.html can read it.
  */
 function saveJurisdiction(user) {
+  // Admin users get no jurisdiction lock — clear any old entry and return
+  if (String(user.role).toLowerCase() === 'admin') {
+    try { localStorage.removeItem('AEO_JURISDICTION'); } catch (e) {}
+    return;
+  }
   const jur = {
+    role:         user.role        || 'user',
     district:     user.district    || '',
     tehsil:       user.tehsil      || '',
     markaz:       user.markaz      || '',
@@ -111,7 +117,6 @@ function saveJurisdiction(user) {
     console.warn('Could not save jurisdiction:', e);
   }
 }
-
 /**
  * Clear jurisdiction on logout so the next user starts clean.
  */
