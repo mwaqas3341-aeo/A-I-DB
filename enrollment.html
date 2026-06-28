@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>SIS PESRP — School Enrollment</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+/* ── A-I-DB Portal CSS Variables (matching styles.css) ─────────────────── */
+:root {
+  --brand:       #1a56db;
+  --brand-dark:  #1239a0;
+  --brand-light: #eff6ff;
+  --ok:          #16a34a;
+  --ok-bg:       #f0fdf4;
+  --bad:         #dc2626;
+  --bad-bg:      #fef2f2;
+  --warn:        #d97706;
+  --warn-bg:     #fffbeb;
+  --teal:        #0d9488;
+  --teal-bg:     #f0fdfa;
+  --purple:      #7c3aed;
+  --purple-bg:   #f5f3ff;
+  --t1:          #0f172a;
+  --t2:          #334155;
+  --t3:          #64748b;
+  --b0:          #e2e8f0;
+  --s0:          #f8fafc;
+  --s1:          #f1f5f9;
+  --r1:          6px;
+  --r2:          10px;
+  --mono:        'JetBrains Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: var(--s0);
+  color: var(--t1);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Top Nav (matches A-I-DB top-nav) ─────────────────────────────────── */
+.top-nav {
+  background: #0f172a;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: .9rem;
+  color: white;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+.nav-brand i { color: var(--brand); font-size: 1.1rem; }
+.live-dot {
+  width: 7px; height: 7px;
+  background: var(--ok);
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.nav-badge {
+  font-size: .68rem;
+  font-weight: 700;
+  background: rgba(26,86,219,.25);
+  color: #93c5fd;
+  border: 1px solid rgba(26,86,219,.4);
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.nav-sep { flex: 1; }
+.nav-ts {
+  font-size: .72rem;
+  font-family: var(--mono);
+  color: #64748b;
+  white-space: nowrap;
+}
+.nav-dl-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px;
+  background: rgba(22,163,74,.15);
+  border: 1px solid rgba(22,163,74,.35);
+  border-radius: var(--r1);
+  color: #4ade80;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: .15s;
+  text-decoration: none;
+}
+.nav-dl-btn:hover { background: rgba(22,163,74,.3); color: #86efac; }
+
+/* ── Page layout ───────────────────────────────────────────────────────── */
+.page-wrap { max-width: 1380px; margin: 0 auto; padding: 18px 20px 60px; }
+
+/* ── Section heading (matches .dash-heading) ───────────────────────────── */
+.dash-heading {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--t1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.dash-heading i { color: var(--brand); font-size: 1.1rem; }
+.dash-heading .sub {
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--t3);
+  margin-left: auto;
+  font-family: var(--mono);
+}
+
+/* ── KPI Cards (matches .kpi-card style) ───────────────────────────────── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.kpi-card {
+  background: white;
+  border: 1px solid var(--b0);
+  border-radius: var(--r2);
+  padding: 14px 16px;
+  border-top: 3px solid var(--brand);
+  transition: box-shadow .15s;
+}
+.kpi-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+.kpi-card.ok   { border-top-color: var(--ok); }
+.kpi-card.bad  { border-top-color: var(--bad); }
+.kpi-card.warn { border-top-color: var(--warn); }
+.kpi-card.teal { border-top-color: var(--teal); }
+.kpi-card .kpi-label {
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--t3);
+  margin-bottom: 4px;
+}
+.kpi-card .kpi-val {
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-family: var(--mono);
+  color: var(--t1);
+  letter-spacing: -.02em;
+}
+.kpi-card .kpi-sub {
+  font-size: .7rem;
+  color: var(--t3);
+  margin-top: 2px;
+}
+
+/* ── Filter bar (matches .filter-bar exactly) ──────────────────────────── */
+.filter-bar {
+  background: white;
+  border: 1px solid var(--b0);
+  border-radius: var(--r2);
+  padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 130px;
+}
+.filter-group label {
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--t3);
+}
+.filter-group select,
+.filter-group input {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--b0);
+  border-radius: var(--r1);
+  font-size: .82rem;
+  color: var(--t1);
+  background: var(--s0);
+  font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
+  width: 100%;
+}
+.filter-group select:focus,
+.filter-group input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(26,86,219,.12);
+  background: white;
+}
+.filter-group select:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-filter {
+  height: 38px;
+  padding: 0 18px;
+  background: var(--brand);
+  color: white;
+  border: none;
+  border-radius: var(--r1);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  transition: background .15s;
+}
+.btn-filter:hover { background: var(--brand-dark); }
+.btn-reset {
+  height: 38px;
+  padding: 0 14px;
+  background: var(--bad-bg);
+  color: var(--bad);
+  border: 1px solid rgba(220,38,38,.3);
+  border-radius: var(--r1);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  transition: .15s;
+}
+.btn-reset:hover { background: var(--bad); color: white; }
+
+/* jurisdiction lock badge */
+.jurisdiction-info {
+  background: var(--warn-bg);
+  border: 1px solid rgba(217,119,6,.25);
+  border-radius: var(--r2);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: .8rem;
+  color: #92400e;
+  flex-wrap: wrap;
+}
+.jurisdiction-info i { color: var(--warn); font-size: 1rem; flex-shrink: 0; }
+.jurisdiction-info strong { color: var(--t1); }
+.jur-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(217,119,6,.1);
+  border: 1px solid rgba(217,119,6,.25);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: .72rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: #92400e;
+}
+
+/* ── Toolbar (matches .toolbar) ────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.search-box {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  max-width: 340px;
+}
+.search-box i {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--t3);
+  font-size: .85rem;
+  pointer-events: none;
+}
+.search-box input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px 0 32px;
+  border: 1px solid var(--b0);
+  border-radius: var(--r1);
+  font-size: .82rem;
+  background: var(--s0);
+  color: var(--t1);
+  font-family: inherit;
+}
+.search-box input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(26,86,219,.1);
+  background: white;
+}
+.btn-export-tbl {
+  height: 38px;
+  padding: 0 14px;
+  background: var(--ok-bg);
+  color: var(--ok);
+  border: 1px solid rgba(22,163,74,.3);
+  border-radius: var(--r1);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  transition: .15s;
+  white-space: nowrap;
+}
+.btn-export-tbl:hover { background: var(--ok); color: white; }
+
+/* Grade filter pills */
+.grade-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  background: white;
+  border: 1px solid var(--b0);
+  border-radius: var(--r2);
+  padding: 10px 14px;
+  align-items: center;
+}
+.grade-pills .gp-label {
+  font-size: .7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--t3);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.gpill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--b0);
+  background: var(--s0);
+  color: var(--t2);
+  font-size: .75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .12s;
+  font-family: var(--mono);
+}
+.gpill:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-light); }
+.gpill.active { background: var(--brand); color: white; border-color: var(--brand); }
+.gpill.all { background: var(--t1); color: white; border-color: var(--t1); }
+.gpill.all:hover { background: var(--t2); border-color: var(--t2); }
+
+/* ── Table wrapper (matches .tbl-wrap) ─────────────────────────────────── */
+.tbl-header-meta {
+  background: white;
+  border: 1px solid var(--b0);
+  border-bottom: none;
+  border-radius: var(--r2) var(--r2) 0 0;
+  padding: 11px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.active-sheet-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--t1);
+}
+.active-sheet-badge i { color: var(--brand); }
+.count-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--brand-light);
+  border: 1px solid rgba(26,86,219,.2);
+  border-radius: 20px;
+  padding: 3px 11px;
+  font-size: .72rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--brand);
+}
+
+.tbl-wrap {
+  background: white;
+  border: 1px solid var(--b0);
+  border-top: none;
+  border-radius: 0 0 var(--r2) var(--r2);
+  overflow: hidden;
+}
+.tbl-scroll { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .8rem;
+  min-width: 820px;
+}
+thead th {
+  text-align: left;
+  font-size: .67rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--t3);
+  font-weight: 700;
+  padding: 9px 12px;
+  border-bottom: 2px solid var(--b0);
+  background: #fafbfc;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+thead th:hover { color: var(--brand); }
+thead th.asc::after  { content: " ▲"; font-size: 9px; }
+thead th.desc::after { content: " ▼"; font-size: 9px; }
+tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--b0);
+  vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: #f0f9ff; }
+
+.emis-code {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--t3);
+}
+.dist-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: .68rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  background: var(--brand-light);
+  color: var(--brand);
+}
+.grade-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: .7rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  background: var(--teal-bg);
+  color: var(--teal);
+  border: 1px solid rgba(13,148,136,.2);
+}
+.grade-tag.pre { background: var(--purple-bg); color: var(--purple); border-color: rgba(124,58,237,.2); }
+.grade-tag.sec { background: var(--warn-bg); color: var(--warn); border-color: rgba(217,119,6,.2); }
+
+.bar-cell { display: flex; align-items: center; gap: 7px; }
+.mini-bar  { flex: 1; height: 5px; border-radius: 3px; background: var(--b0); overflow: hidden; min-width: 30px; }
+.mini-bar-f{ height: 100%; border-radius: 3px; }
+.mini-bar-f.boys  { background: var(--brand); }
+.mini-bar-f.girls { background: var(--bad); }
+.num-boys  { font-family: var(--mono); font-size: .78rem; font-weight: 700; color: var(--brand); }
+.num-girls { font-family: var(--mono); font-size: .78rem; font-weight: 700; color: var(--bad); }
+.num-tot   { font-family: var(--mono); font-size: .82rem; font-weight: 800; color: var(--t1); }
+.pct-tag   { font-size: .68rem; color: var(--t3); margin-left: 2px; }
+
+/* ── Pagination (matches portal pager) ─────────────────────────────────── */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px;
+  flex-wrap: wrap;
+  background: white;
+  border: 1px solid var(--b0);
+  border-top: none;
+  border-radius: 0 0 var(--r2) var(--r2);
+}
+.pb {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--b0);
+  border-radius: var(--r1);
+  background: var(--s0);
+  font-size: .78rem;
+  cursor: pointer;
+  color: var(--t2);
+  font-family: inherit;
+  font-weight: 600;
+  transition: .12s;
+}
+.pb:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-light); }
+.pb.on    { background: var(--brand); color: white; border-color: var(--brand); }
+.pb:disabled { opacity: .35; cursor: not-allowed; }
+.pg-info  { font-size: .72rem; color: var(--t3); font-family: var(--mono); padding: 0 6px; }
+
+/* ── Empty / loading states ─────────────────────────────────────────────── */
+.tbl-empty-state {
+  text-align: center;
+  padding: 52px 20px;
+  color: var(--t3);
+  background: white;
+  border: 1px solid var(--b0);
+  border-top: none;
+}
+.tbl-empty-state i { font-size: 2.2rem; display: block; margin-bottom: 10px; color: var(--b0); }
+.tbl-empty-state p { font-size: .85rem; }
+.spinner-wrap {
+  text-align: center;
+  padding: 52px;
+  background: white;
+  border: 1px solid var(--b0);
+  border-top: none;
+}
+
+/* ── Grade summary mini table inside expanded row ───────────────────────── */
+.expand-row td {
+  padding: 0 !important;
+  background: var(--s1) !important;
+}
+.grade-summary {
+  padding: 10px 16px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gs-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid var(--b0);
+  border-radius: var(--r1);
+  padding: 5px 10px;
+  font-size: .75rem;
+}
+.gs-pill .gn { font-family: var(--mono); font-weight: 700; color: var(--t2); min-width: 50px; }
+.gs-pill .gb { color: var(--brand); font-family: var(--mono); font-weight: 700; }
+.gs-pill .gg { color: var(--bad);   font-family: var(--mono); font-weight: 700; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .page-wrap { padding: 12px 10px 40px; }
+  .filter-group { min-width: 100%; }
+  .kpi-row { grid-template-columns: repeat(2,1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ NAV (matching A-I-DB top-nav style) ════════════════════════════════ -->
+<nav class="top-nav">
+  <button class="nav-brand" onclick="history.back()">
+    <i class="bi bi-building-fill"></i> AEO Portal
+    <span class="live-dot" title="Live data"></span>
+  </button>
+  <span class="nav-badge"><i class="bi bi-graph-up-arrow"></i> Enrollment</span>
+  <div class="nav-sep"></div>
+  <span class="nav-ts" id="navTs">Loading…</span>
+  <a id="dlBtn" href="#" onclick="dlFiltered(event)" class="nav-dl-btn">
+    <i class="bi bi-file-earmark-arrow-down"></i> Export Filtered
+  </a>
+</nav>
+
+<!-- ══ PAGE ════════════════════════════════════════════════════════════════ -->
+<div class="page-wrap">
+
+  <!-- Heading -->
+  <div class="dash-heading">
+    <i class="bi bi-bar-chart-fill"></i>
+    Current Enrollment — SIS PESRP
+    <span class="sub" id="scrapedAt">—</span>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi-card">
+      <div class="kpi-label">Schools</div>
+      <div class="kpi-val" id="kSchools">—</div>
+      <div class="kpi-sub">In view</div>
+    </div>
+    <div class="kpi-card ok">
+      <div class="kpi-label">Total Students</div>
+      <div class="kpi-val" id="kTotal">—</div>
+      <div class="kpi-sub">Enrolled</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Boys</div>
+      <div class="kpi-val" id="kBoys">—</div>
+      <div class="kpi-sub" id="kBoysPct">—</div>
+    </div>
+    <div class="kpi-card bad">
+      <div class="kpi-label">Girls</div>
+      <div class="kpi-val" id="kGirls">—</div>
+      <div class="kpi-sub" id="kGirlsPct">—</div>
+    </div>
+    <div class="kpi-card teal">
+      <div class="kpi-label">Grade Rows</div>
+      <div class="kpi-val" id="kRows">—</div>
+      <div class="kpi-sub">Visible records</div>
+    </div>
+  </div>
+
+  <!-- Jurisdiction notice -->
+  <div class="jurisdiction-info" id="jurInfo" style="display:none">
+    <i class="bi bi-lock-fill"></i>
+    <div>
+      <strong>Jurisdiction Filter Active</strong> — Showing data for your assigned area only.
+      <span id="jurTags"></span>
+    </div>
+  </div>
+
+  <!-- Filter bar — District → Tehsil → Markaz → EMIS Code cascade -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label><i class="bi bi-map"></i> District</label>
+      <select id="fDistrict" onchange="cascadeTehsil()">
+        <option value="">All Districts</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label><i class="bi bi-geo"></i> Tehsil</label>
+      <select id="fTehsil" onchange="cascadeMarkaz()" disabled>
+        <option value="">All Tehsils</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label><i class="bi bi-pin-map"></i> Markaz</label>
+      <select id="fMarkaz" onchange="cascadeEmis()" disabled>
+        <option value="">All Markazs</option>
+      </select>
+    </div>
+    <div class="filter-group" style="min-width:170px">
+      <label><i class="bi bi-upc-scan"></i> EMIS Code</label>
+      <input type="text" id="fEmis" placeholder="8-digit EMIS…" oninput="applyFilters()">
+    </div>
+    <div class="filter-group" style="min-width:90px; max-width:90px">
+      <label>Show</label>
+      <select id="fPageSize" onchange="applyFilters()">
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-end;padding-bottom:0">
+      <button class="btn-filter" onclick="applyFilters()">
+        <i class="bi bi-funnel-fill"></i> Filter
+      </button>
+      <button class="btn-reset" onclick="doReset()">
+        <i class="bi bi-x-lg"></i> Reset
+      </button>
+    </div>
+  </div>
+
+  <!-- Grade pills -->
+  <div class="grade-pills">
+    <span class="gp-label"><i class="bi bi-mortarboard"></i> Grade:</span>
+    <span class="gpill all" onclick="setGrade('')">All</span>
+    <span class="gpill" onclick="setGrade('ECE')">ECE</span>
+    <span class="gpill" onclick="setGrade('Nursery')">Nursery</span>
+    <span class="gpill" onclick="setGrade('1')">1</span>
+    <span class="gpill" onclick="setGrade('2')">2</span>
+    <span class="gpill" onclick="setGrade('3')">3</span>
+    <span class="gpill" onclick="setGrade('4')">4</span>
+    <span class="gpill" onclick="setGrade('5')">5</span>
+    <span class="gpill" onclick="setGrade('6')">6</span>
+    <span class="gpill" onclick="setGrade('7')">7</span>
+    <span class="gpill" onclick="setGrade('8')">8</span>
+    <span class="gpill" onclick="setGrade('9')">9</span>
+    <span class="gpill" onclick="setGrade('10')">10</span>
+    <span class="gpill" onclick="setGrade('11')">11</span>
+    <span class="gpill" onclick="setGrade('12')">12</span>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="search-box">
+      <i class="bi bi-search"></i>
+      <input type="text" id="qSearch" placeholder="Search school name…" oninput="applyFilters()">
+    </div>
+    <button class="btn-export-tbl" onclick="dlFiltered(null)">
+      <i class="bi bi-file-earmark-excel"></i> Export XLSX
+    </button>
+  </div>
+
+  <!-- Table header meta -->
+  <div class="tbl-header-meta">
+    <div class="active-sheet-badge">
+      <i class="bi bi-table"></i> Enrollment Records
+    </div>
+    <span class="count-chip" id="recCount">
+      <i class="bi bi-database"></i> —
+    </span>
+  </div>
+
+  <!-- Table body -->
+  <div id="tblState">
+    <div class="spinner-wrap">
+      <div class="spinner-border text-primary mb-3" style="width:2rem;height:2rem"></div>
+      <div style="color:var(--t3);font-size:.85rem">Loading enrollment data…</div>
+    </div>
+  </div>
+
+  <!-- Pager -->
+  <div class="pager" id="pager" style="display:none"></div>
+
+</div><!-- /.page-wrap -->
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let RAW = [];          // all rows from CSV (flat, tidy)
+let SCHOOLS = {};      // school_id → {meta, grades[]}
+let FLT = [];          // filtered school list
+let PG = 1, PER = 50;
+let SORT = 'tot_d';
+let GRADE_FILTER = '';
+let SORT_COL = null, SORT_DIR = 'desc';
+
+// Jurisdiction: populated from user session in A-I-DB integration
+// For standalone use, no restriction applied
+const JUR = window.AEO_JURISDICTION || null;
+
+const fmt  = n => Number(n||0).toLocaleString();
+const esc  = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fdt  = iso => {
+  try {
+    return new Date(iso).toLocaleString('en-PK',{
+      timeZone:'Asia/Karachi', day:'2-digit', month:'short',
+      year:'numeric', hour:'2-digit', minute:'2-digit'
+    }) + ' PKT';
+  } catch { return iso; }
+};
+
+// Grade display helpers
+function gradeClass(g) {
+  if (['ECE','Nursery'].includes(g)) return 'pre';
+  if (['11','12'].includes(g)) return 'sec';
+  return '';
+}
+
+// ── Load CSV ──────────────────────────────────────────────────────────────
+// Try local schools.csv first (same-origin), then GitHub raw
+const CSV_URL = typeof SIS_CSV_URL !== 'undefined'
+  ? SIS_CSV_URL
+  : 'schools.csv';
+
+fetch(CSV_URL + '?t=' + Date.now())
+  .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+  .then(text => parseCSV(text))
+  .catch(err => showErr(err.message));
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) { showErr('CSV is empty'); return; }
+
+  const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+  const idx = {};
+  headers.forEach((h,i) => idx[h] = i);
+
+  RAW = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+    if (cols.length < 5) continue;
+    const row = {};
+    headers.forEach((h, j) => row[h] = (cols[j] || '').replace(/^"|"$/g,'').trim());
+    RAW.push(row);
+  }
+
+  buildSchoolIndex();
+  buildDropdowns();
+  applyJurisdiction();
+  applyFilters();
+
+  // Timestamp
+  if (RAW.length) {
+    const ts = RAW[0].scraped_at || '';
+    document.getElementById('scrapedAt').textContent = ts ? 'Scraped: ' + fdt(ts) : '';
+    document.getElementById('navTs').textContent = ts ? fdt(ts) : '';
+  }
+}
+
+function splitCSVLine(line) {
+  const result = [], re = /("(?:[^"]|"")*"|[^,]*)/g;
+  let m;
+  while ((m = re.exec(line)) !== null) {
+    if (m.index === re.lastIndex) re.lastIndex++;
+    result.push(m[1]);
+  }
+  return result;
+}
+
+// ── Build school index from tidy rows ────────────────────────────────────
+function buildSchoolIndex() {
+  SCHOOLS = {};
+  for (const row of RAW) {
+    const sid = row.school_id;
+    if (!SCHOOLS[sid]) {
+      SCHOOLS[sid] = {
+        school_id:  sid,
+        emis_code:  row.emis_code,
+        school_name: row.school_name,
+        district_id: row.district_id,
+        district:    row.district,
+        tehsil_id:   row.tehsil_id,
+        tehsil:      row.tehsil,
+        markaz_id:   row.markaz_id,
+        markaz:      row.markaz,
+        total:   parseInt(row.total_school_students) || 0,
+        boys:    parseInt(row.total_school_boys)     || 0,
+        girls:   parseInt(row.total_school_girls)    || 0,
+        grades:  [],
+      };
+    }
+    if (row.grade_name && row.grade_name !== 'No Data') {
+      SCHOOLS[sid].grades.push({
+        grade:  row.grade_name,
+        male:   parseInt(row.male_students)   || 0,
+        female: parseInt(row.female_students) || 0,
+      });
+    }
+  }
+}
+
+// ── Cascade dropdowns: District → Tehsil → Markaz ────────────────────────
+function buildDropdowns() {
+  const allSchools = Object.values(SCHOOLS);
+  const dists = [...new Set(allSchools.map(s => s.district))].filter(Boolean).sort();
+  const dSel = document.getElementById('fDistrict');
+  dists.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d; o.textContent = d;
+    dSel.appendChild(o);
+  });
+}
+
+function cascadeTehsil() {
+  const dist = document.getElementById('fDistrict').value;
+  const tSel = document.getElementById('fTehsil');
+  const mSel = document.getElementById('fMarkaz');
+  tSel.innerHTML = '<option value="">All Tehsils</option>';
+  mSel.innerHTML = '<option value="">All Markazs</option>';
+  tSel.disabled = !dist;
+  mSel.disabled = true;
+  document.getElementById('fEmis').value = '';
+
+  if (dist) {
+    const tehs = [...new Set(
+      Object.values(SCHOOLS).filter(s => s.district === dist).map(s => s.tehsil)
+    )].filter(Boolean).sort();
+    tehs.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t; tSel.appendChild(o);
+    });
+  }
+  applyFilters();
+}
+
+function cascadeMarkaz() {
+  const dist = document.getElementById('fDistrict').value;
+  const teh  = document.getElementById('fTehsil').value;
+  const mSel = document.getElementById('fMarkaz');
+  mSel.innerHTML = '<option value="">All Markazs</option>';
+  mSel.disabled = !teh;
+
+  if (teh) {
+    const marks = [...new Set(
+      Object.values(SCHOOLS)
+        .filter(s => (!dist || s.district === dist) && s.tehsil === teh)
+        .map(s => s.markaz)
+    )].filter(Boolean).sort();
+    marks.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = m; mSel.appendChild(o);
+    });
+  }
+  applyFilters();
+}
+
+function cascadeEmis() {
+  document.getElementById('fEmis').value = '';
+  applyFilters();
+}
+
+// ── Jurisdiction lock (for A-I-DB integration) ────────────────────────────
+function applyJurisdiction() {
+  if (!JUR) return;
+  const info = document.getElementById('jurInfo');
+  const tags = document.getElementById('jurTags');
+  info.style.display = 'flex';
+
+  let html = '';
+  if (JUR.district) {
+    const dSel = document.getElementById('fDistrict');
+    dSel.value = JUR.district;
+    dSel.disabled = true;
+    html += `<span class="jur-tag ms-2"><i class="bi bi-map"></i> ${esc(JUR.district)}</span>`;
+    cascadeTehsil();
+  }
+  if (JUR.tehsil) {
+    const tSel = document.getElementById('fTehsil');
+    tSel.value = JUR.tehsil;
+    tSel.disabled = true;
+    html += `<span class="jur-tag ms-1"><i class="bi bi-geo"></i> ${esc(JUR.tehsil)}</span>`;
+    cascadeMarkaz();
+  }
+  if (JUR.markaz) {
+    const mSel = document.getElementById('fMarkaz');
+    mSel.value = JUR.markaz;
+    mSel.disabled = true;
+    html += `<span class="jur-tag ms-1"><i class="bi bi-pin-map"></i> ${esc(JUR.markaz)}</span>`;
+  }
+  // Extra markazs allowed
+  if (JUR.extraMarkazs && JUR.extraMarkazs.length) {
+    html += `<span style="font-size:.72rem;color:var(--t3);margin-left:6px">+${JUR.extraMarkazs.length} extra markaz(s)</span>`;
+  }
+  tags.innerHTML = html;
+}
+
+// ── Grade pill toggle ─────────────────────────────────────────────────────
+function setGrade(g) {
+  GRADE_FILTER = g;
+  document.querySelectorAll('.gpill').forEach(p => {
+    p.classList.remove('active');
+    if (g === '' && p.classList.contains('all')) p.classList.add('active');
+    else if (p.textContent.trim() === g) p.classList.add('active');
+  });
+  if (!g) document.querySelector('.gpill.all').classList.add('active');
+  applyFilters();
+}
+// default: All active
+document.querySelector('.gpill.all').classList.add('active');
+
+// ── Filter + sort ─────────────────────────────────────────────────────────
+function applyFilters() {
+  const dist  = document.getElementById('fDistrict').value;
+  const teh   = document.getElementById('fTehsil').value;
+  const mark  = document.getElementById('fMarkaz').value;
+  const emis  = document.getElementById('fEmis').value.trim().toLowerCase();
+  const q     = document.getElementById('qSearch').value.trim().toLowerCase();
+  PER = parseInt(document.getElementById('fPageSize').value) || 50;
+
+  let schools = Object.values(SCHOOLS);
+
+  // Jurisdiction: if JUR has extraMarkazs, only allow primary + extras
+  if (JUR && JUR.markaz) {
+    const allowed = new Set([JUR.markaz, ...(JUR.extraMarkazs || [])]);
+    schools = schools.filter(s => allowed.has(s.markaz));
+  }
+
+  // Cascade filters
+  if (dist)  schools = schools.filter(s => s.district === dist);
+  if (teh)   schools = schools.filter(s => s.tehsil   === teh);
+  if (mark)  schools = schools.filter(s => s.markaz   === mark);
+  if (emis)  schools = schools.filter(s => s.emis_code.toLowerCase().includes(emis));
+  if (q)     schools = schools.filter(s => s.school_name.toLowerCase().includes(q));
+
+  // Grade filter: only show schools that have this grade
+  if (GRADE_FILTER) {
+    schools = schools.filter(s => s.grades.some(g => g.grade === GRADE_FILTER));
+  }
+
+  // Sort
+  schools.sort((a, b) => {
+    if (SORT_COL === 'name')   return SORT_DIR === 'asc'
+      ? a.school_name.localeCompare(b.school_name)
+      : b.school_name.localeCompare(a.school_name);
+    if (SORT_COL === 'boys')   return SORT_DIR === 'asc' ? a.boys - b.boys   : b.boys  - a.boys;
+    if (SORT_COL === 'girls')  return SORT_DIR === 'asc' ? a.girls - b.girls : b.girls - a.girls;
+    // default: total desc
+    return b.total - a.total;
+  });
+
+  FLT = schools;
+  PG  = 1;
+  updateKpis();
+  draw();
+}
+
+function doReset() {
+  // Reset only non-locked dropdowns
+  if (!JUR || !JUR.district) { document.getElementById('fDistrict').value = ''; }
+  if (!JUR || !JUR.tehsil)   {
+    const t = document.getElementById('fTehsil');
+    t.innerHTML = '<option value="">All Tehsils</option>';
+    t.disabled = true;
+  }
+  if (!JUR || !JUR.markaz) {
+    const m = document.getElementById('fMarkaz');
+    m.innerHTML = '<option value="">All Markazs</option>';
+    m.disabled = true;
+  }
+  document.getElementById('fEmis').value = '';
+  document.getElementById('qSearch').value = '';
+  document.getElementById('fPageSize').value = '50';
+  SORT_COL = null; SORT_DIR = 'desc';
+  setGrade('');
+  applyFilters();
+}
+
+// ── Update KPI cards ──────────────────────────────────────────────────────
+function updateKpis() {
+  let tot = 0, boys = 0, girls = 0, rows = 0;
+  for (const s of FLT) {
+    tot   += s.total;
+    boys  += s.boys;
+    girls += s.girls;
+    const grades = GRADE_FILTER ? s.grades.filter(g => g.grade === GRADE_FILTER) : s.grades;
+    rows += grades.length || 1;
+  }
+  document.getElementById('kSchools').textContent  = fmt(FLT.length);
+  document.getElementById('kTotal').textContent    = fmt(tot);
+  document.getElementById('kBoys').textContent     = fmt(boys);
+  document.getElementById('kGirls').textContent    = fmt(girls);
+  document.getElementById('kRows').textContent     = fmt(rows);
+  const bPct = tot ? Math.round(boys/tot*100) : 0;
+  const gPct = tot ? Math.round(girls/tot*100) : 0;
+  document.getElementById('kBoysPct').textContent  = bPct + '% of total';
+  document.getElementById('kGirlsPct').textContent = gPct + '% of total';
+}
+
+// ── Draw table ────────────────────────────────────────────────────────────
+function draw() {
+  const pages = Math.ceil(FLT.length / PER) || 1;
+  PG = Math.min(PG, pages);
+  const start = (PG - 1) * PER;
+  const slice = FLT.slice(start, start + PER);
+
+  document.getElementById('recCount').innerHTML =
+    `<i class="bi bi-database"></i> ${fmt(FLT.length)} school${FLT.length !== 1 ? 's' : ''} · pg ${PG}/${pages}`;
+
+  if (!slice.length) {
+    document.getElementById('tblState').innerHTML = `
+      <div class="tbl-empty-state">
+        <i class="bi bi-funnel"></i>
+        <p>No schools match your filters. Try changing district or clearing the grade filter.</p>
+      </div>`;
+    document.getElementById('pager').style.display = 'none';
+    return;
+  }
+
+  const maxTot = Math.max(...slice.map(s => s.total), 1);
+
+  // Sort indicators
+  const si = (col) => SORT_COL === col
+    ? (SORT_DIR === 'asc' ? ' class="asc"' : ' class="desc"') : '';
+
+  const rows = slice.map((s, i) => {
+    const grades = GRADE_FILTER
+      ? s.grades.filter(g => g.grade === GRADE_FILTER)
+      : s.grades;
+    const bw = s.total ? Math.round(s.total / maxTot * 100) : 0;
+    const bPct = s.total ? Math.round(s.boys / s.total * 100) : 0;
+    const gPct = s.total ? Math.round(s.girls / s.total * 100) : 0;
+
+    const gradePills = grades.slice(0, 5).map(g =>
+      `<span class="grade-tag ${gradeClass(g.grade)}">${esc(g.grade)}</span>`
+    ).join(' ') + (grades.length > 5 ? ` <span style="font-size:.68rem;color:var(--t3)">+${grades.length - 5} more</span>` : '');
+
+    return `<tr class="school-row" data-sid="${esc(s.school_id)}" onclick="toggleGrades(this,'${esc(s.school_id)}')" style="cursor:pointer">
+      <td style="color:var(--t3);font-family:var(--mono);font-size:.7rem">${start + i + 1}</td>
+      <td>
+        <div style="font-weight:700;font-size:.82rem">${esc(s.school_name)}</div>
+        <div class="emis-code">${esc(s.emis_code || '—')}</div>
+      </td>
+      <td><span class="dist-badge">${esc(s.district)}</span></td>
+      <td style="font-size:.75rem;color:var(--t3)">${esc(s.tehsil)}</td>
+      <td style="font-size:.75rem;color:var(--t3)">${esc(s.markaz)}</td>
+      <td>
+        <div class="bar-cell">
+          <div class="mini-bar"><div class="mini-bar-f boys" style="width:${bw}%"></div></div>
+          <span class="num-tot">${fmt(s.total)}</span>
+        </div>
+      </td>
+      <td><span class="num-boys">${fmt(s.boys)}</span> <span class="pct-tag">${bPct}%</span></td>
+      <td><span class="num-girls">${fmt(s.girls)}</span> <span class="pct-tag">${gPct}%</span></td>
+      <td>${gradePills || '<span style="color:var(--t3);font-size:.72rem">No data</span>'}</td>
+      <td style="color:var(--t3);font-size:.75rem"><i class="bi bi-chevron-down"></i></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tblState').innerHTML = `
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="cursor:default;width:36px">#</th>
+            <th onclick="colSort('name')"${si('name')}>School</th>
+            <th style="cursor:default">District</th>
+            <th style="cursor:default">Tehsil</th>
+            <th style="cursor:default">Markaz</th>
+            <th onclick="colSort('total')"${si('total')}>Total</th>
+            <th onclick="colSort('boys')"${si('boys')}>Boys</th>
+            <th onclick="colSort('girls')"${si('girls')}>Girls</th>
+            <th style="cursor:default">Grades</th>
+            <th style="cursor:default;width:28px"></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  drawPager(pages);
+}
+
+// ── Expand row to show grade breakdown ────────────────────────────────────
+let openSid = null;
+function toggleGrades(tr, sid) {
+  // Remove any existing expand row
+  const prev = document.getElementById('expand-' + openSid);
+  if (prev) prev.remove();
+  if (openSid === sid) { openSid = null; return; }
+
+  openSid = sid;
+  const s = SCHOOLS[sid];
+  if (!s) return;
+
+  const grades = GRADE_FILTER
+    ? s.grades.filter(g => g.grade === GRADE_FILTER)
+    : s.grades;
+
+  const pills = grades.length
+    ? grades.map(g => `
+        <div class="gs-pill">
+          <span class="gn">${esc(g.grade)}</span>
+          <span class="gb"><i class="bi bi-gender-male" style="font-size:.65rem"></i> ${fmt(g.male)}</span>
+          <span class="gg"><i class="bi bi-gender-female" style="font-size:.65rem"></i> ${fmt(g.female)}</span>
+          <span style="font-family:var(--mono);font-size:.72rem;color:var(--t3)">${fmt(g.male + g.female)} total</span>
+        </div>`).join('')
+    : '<span style="color:var(--t3);font-size:.8rem;padding:8px 0">No grade data available</span>';
+
+  const expandRow = document.createElement('tr');
+  expandRow.id = 'expand-' + sid;
+  expandRow.className = 'expand-row';
+  expandRow.innerHTML = `<td colspan="10">
+    <div class="grade-summary">${pills}</div>
+  </td>`;
+
+  tr.parentNode.insertBefore(expandRow, tr.nextSibling);
+
+  // Rotate chevron
+  const chevron = tr.querySelector('.bi-chevron-down, .bi-chevron-up');
+  if (chevron) {
+    chevron.classList.remove('bi-chevron-down');
+    chevron.classList.add('bi-chevron-up');
+  }
+}
+
+// ── Column sort ───────────────────────────────────────────────────────────
+function colSort(col) {
+  if (SORT_COL === col) {
+    SORT_DIR = SORT_DIR === 'asc' ? 'desc' : 'asc';
+  } else {
+    SORT_COL = col;
+    SORT_DIR = col === 'name' ? 'asc' : 'desc';
+  }
+  applyFilters();
+}
+
+// ── Pager ─────────────────────────────────────────────────────────────────
+function drawPager(pages) {
+  const pg = document.getElementById('pager');
+  if (pages <= 1) { pg.style.display = 'none'; return; }
+  pg.style.display = 'flex';
+
+  let h = `<button class="pb" onclick="go(${PG-1})" ${PG<=1?'disabled':''}>‹</button>`;
+  const lo = Math.max(1, PG-2), hi = Math.min(pages, PG+2);
+  if (lo > 1) h += `<button class="pb" onclick="go(1)">1</button>${lo>2?'<span class="pg-info">…</span>':''}`;
+  for (let p = lo; p <= hi; p++)
+    h += `<button class="pb${p===PG?' on':''}" onclick="go(${p})">${p}</button>`;
+  if (hi < pages) h += `${hi<pages-1?'<span class="pg-info">…</span>':''}<button class="pb" onclick="go(${pages})">${pages}</button>`;
+  h += `<button class="pb" onclick="go(${PG+1})" ${PG>=pages?'disabled':''}>›</button>`;
+  h += `<span class="pg-info">${fmt(FLT.length)} total</span>`;
+  pg.innerHTML = h;
+}
+
+function go(p) {
+  openSid = null;
+  PG = p;
+  draw();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Export filtered data as XLSX ──────────────────────────────────────────
+function dlFiltered(e) {
+  if (e) e.preventDefault();
+  if (!FLT.length) return;
+
+  const hdrs = ['School ID','EMIS Code','School Name','District','Tehsil','Markaz',
+                'Total Students','Boys','Girls','Grade','Male in Grade','Female in Grade'];
+  const data = [hdrs];
+
+  for (const s of FLT) {
+    const grades = GRADE_FILTER
+      ? s.grades.filter(g => g.grade === GRADE_FILTER)
+      : s.grades;
+
+    if (!grades.length) {
+      data.push([s.school_id, s.emis_code, s.school_name, s.district,
+                 s.tehsil, s.markaz, s.total, s.boys, s.girls, 'No Data', 0, 0]);
+    } else {
+      for (const g of grades) {
+        data.push([s.school_id, s.emis_code, s.school_name, s.district,
+                   s.tehsil, s.markaz, s.total, s.boys, s.girls,
+                   g.grade, g.male, g.female]);
+      }
+    }
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Enrollment');
+  XLSX.writeFile(wb, `SIS_PESRP_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── Error state ───────────────────────────────────────────────────────────
+function showErr(msg) {
+  document.getElementById('tblState').innerHTML = `
+    <div style="background:var(--bad-bg);border:1px solid rgba(220,38,38,.3);border-radius:var(--r2);
+      padding:16px 20px;color:var(--bad);font-size:.85rem;border-top:none">
+      <strong><i class="bi bi-exclamation-triangle-fill"></i> Cannot load schools.csv</strong> — ${esc(msg)}<br><br>
+      Run the GitHub Actions workflow to generate data, or check the CSV URL path.
+    </div>`;
+  document.getElementById('recCount').innerHTML = '<i class="bi bi-database"></i> 0 rows';
+}
+</script>
+</body>
+</html>
