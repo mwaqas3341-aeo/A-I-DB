@@ -15,18 +15,17 @@ let RAW = [];          // all rows from CSV (flat, tidy)
 let SCHOOLS = {};      // school_id → {meta, grades[]}
 let FLT = [];          // filtered school list
 let PG = 1, PER = 50;
-let SORT = 'tot_d';
 let GRADE_FILTER = '';
 let SORT_COL = null, SORT_DIR = 'desc';
 
-// Jurisdiction: populated from localStorage via A-I-DB login
-// Admin users have no jurisdiction lock (JUR stays null)
+// Jurisdiction: admin (no stored JUR) gets null → no lock
+// User gets their district/tehsil/markaz locked
 const _jurRaw = window.AEO_JURISDICTION || null;
-const JUR = (_jurRaw && _jurRaw.role === 'admin') ? null : _jurRaw;
+const JUR = (_jurRaw && String(_jurRaw.role).toLowerCase() === 'admin') ? null : _jurRaw;
 
-const fmt  = n => Number(n||0).toLocaleString();
-const esc  = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const fdt  = iso => {
+const fmt = n => Number(n||0).toLocaleString();
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fdt = iso => {
   try {
     return new Date(iso).toLocaleString('en-PK', {
       timeZone: 'Asia/Karachi', day: '2-digit', month: 'short',
@@ -35,7 +34,6 @@ const fdt  = iso => {
   } catch { return iso; }
 };
 
-// Grade display helpers
 function gradeClass(g) {
   if (['ECE','Nursery'].includes(g)) return 'pre';
   if (['11','12'].includes(g)) return 'sec';
@@ -58,8 +56,6 @@ function parseCSV(text) {
   if (lines.length < 2) { showErr('CSV is empty'); return; }
 
   const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
-  const idx = {};
-  headers.forEach((h,i) => idx[h] = i);
 
   RAW = [];
   for (let i = 1; i < lines.length; i++) {
@@ -73,9 +69,9 @@ function parseCSV(text) {
   buildSchoolIndex();
   buildDropdowns();
   applyJurisdiction();
+  // Show all data on load — no auto-filter
   applyFilters();
 
-  // Timestamp
   if (RAW.length) {
     const ts = RAW[0].scraped_at || '';
     document.getElementById('scrapedAt').textContent = ts ? 'Scraped: ' + fdt(ts) : '';
@@ -93,7 +89,7 @@ function splitCSVLine(line) {
   return result;
 }
 
-// ── Build school index from tidy rows ────────────────────────────────────
+// ── Build school index ────────────────────────────────────────────────────
 function buildSchoolIndex() {
   SCHOOLS = {};
   for (const row of RAW) {
@@ -125,7 +121,7 @@ function buildSchoolIndex() {
   }
 }
 
-// ── Cascade dropdowns: District → Tehsil → Markaz ────────────────────────
+// ── Build district dropdown only (tehsil/markaz cascade on demand) ────────
 function buildDropdowns() {
   const allSchools = Object.values(SCHOOLS);
   const dists = [...new Set(allSchools.map(s => s.district))].filter(Boolean).sort();
@@ -137,6 +133,7 @@ function buildDropdowns() {
   });
 }
 
+// ── Cascade: only populate child dropdown, NO auto-filter ────────────────
 function cascadeTehsil() {
   const dist = document.getElementById('fDistrict').value;
   const tSel = document.getElementById('fTehsil');
@@ -156,7 +153,7 @@ function cascadeTehsil() {
       o.value = t; o.textContent = t; tSel.appendChild(o);
     });
   }
-  applyFilters();
+  // No applyFilters() — user must click Filter button
 }
 
 function cascadeMarkaz() {
@@ -177,15 +174,15 @@ function cascadeMarkaz() {
       o.value = m; o.textContent = m; mSel.appendChild(o);
     });
   }
-  applyFilters();
+  // No applyFilters() — user must click Filter button
 }
 
 function cascadeEmis() {
   document.getElementById('fEmis').value = '';
-  applyFilters();
+  // No applyFilters() — user must click Filter button
 }
 
-// ── Jurisdiction lock (populated from localStorage via A-I-DB login) ──────
+// ── Jurisdiction lock ─────────────────────────────────────────────────────
 function applyJurisdiction() {
   if (!JUR) return;
   const info = document.getElementById('jurInfo');
@@ -219,7 +216,7 @@ function applyJurisdiction() {
   tags.innerHTML = html;
 }
 
-// ── Grade pill toggle ─────────────────────────────────────────────────────
+// ── Grade pill toggle — still instant (no server call needed) ────────────
 function setGrade(g) {
   GRADE_FILTER = g;
   document.querySelectorAll('.gpill').forEach(p => {
@@ -228,46 +225,42 @@ function setGrade(g) {
     else if (p.textContent.trim() === g) p.classList.add('active');
   });
   if (!g) document.querySelector('.gpill.all').classList.add('active');
-  applyFilters();
+  applyFilters();   // grade pills still filter instantly (client-side only)
 }
 
-// ── Filter + sort ─────────────────────────────────────────────────────────
+// ── Apply filters (called by Filter button, Reset, grade pills, search) ───
 function applyFilters() {
-  const dist  = document.getElementById('fDistrict').value;
-  const teh   = document.getElementById('fTehsil').value;
-  const mark  = document.getElementById('fMarkaz').value;
-  const emis  = document.getElementById('fEmis').value.trim().toLowerCase();
-  const q     = document.getElementById('qSearch').value.trim().toLowerCase();
+  const dist = document.getElementById('fDistrict').value;
+  const teh  = document.getElementById('fTehsil').value;
+  const mark = document.getElementById('fMarkaz').value;
+  const emis = document.getElementById('fEmis').value.trim().toLowerCase();
+  const q    = document.getElementById('qSearch').value.trim().toLowerCase();
   PER = parseInt(document.getElementById('fPageSize').value) || 50;
 
   let schools = Object.values(SCHOOLS);
 
-  // Jurisdiction: if JUR has markaz, only allow primary + extras
+  // Jurisdiction scope for non-admin users
   if (JUR && JUR.markaz) {
     const allowed = new Set([JUR.markaz, ...(JUR.extraMarkazs || [])]);
     schools = schools.filter(s => allowed.has(s.markaz));
   }
 
-  // Cascade filters
   if (dist)  schools = schools.filter(s => s.district === dist);
   if (teh)   schools = schools.filter(s => s.tehsil   === teh);
   if (mark)  schools = schools.filter(s => s.markaz   === mark);
   if (emis)  schools = schools.filter(s => s.emis_code.toLowerCase().includes(emis));
   if (q)     schools = schools.filter(s => s.school_name.toLowerCase().includes(q));
 
-  // Grade filter: only show schools that have this grade
   if (GRADE_FILTER) {
     schools = schools.filter(s => s.grades.some(g => g.grade === GRADE_FILTER));
   }
 
-  // Sort
   schools.sort((a, b) => {
     if (SORT_COL === 'name')  return SORT_DIR === 'asc'
       ? a.school_name.localeCompare(b.school_name)
       : b.school_name.localeCompare(a.school_name);
     if (SORT_COL === 'boys')  return SORT_DIR === 'asc' ? a.boys  - b.boys  : b.boys  - a.boys;
     if (SORT_COL === 'girls') return SORT_DIR === 'asc' ? a.girls - b.girls : b.girls - a.girls;
-    // default: total desc
     return b.total - a.total;
   });
 
@@ -278,7 +271,6 @@ function applyFilters() {
 }
 
 function doReset() {
-  // Reset only non-locked dropdowns
   if (!JUR || !JUR.district) { document.getElementById('fDistrict').value = ''; }
   if (!JUR || !JUR.tehsil) {
     const t = document.getElementById('fTehsil');
@@ -298,7 +290,7 @@ function doReset() {
   applyFilters();
 }
 
-// ── Update KPI cards ──────────────────────────────────────────────────────
+// ── KPI cards ─────────────────────────────────────────────────────────────
 function updateKpis() {
   let tot = 0, boys = 0, girls = 0, rows = 0;
   for (const s of FLT) {
@@ -340,8 +332,6 @@ function draw() {
   }
 
   const maxTot = Math.max(...slice.map(s => s.total), 1);
-
-  // Sort indicators
   const si = (col) => SORT_COL === col
     ? (SORT_DIR === 'asc' ? ' class="asc"' : ' class="desc"') : '';
 
@@ -405,10 +395,9 @@ function draw() {
   drawPager(pages);
 }
 
-// ── Expand row to show grade breakdown ────────────────────────────────────
+// ── Expand row for grade breakdown ────────────────────────────────────────
 let openSid = null;
 function toggleGrades(tr, sid) {
-  // Remove any existing expand row
   const prev = document.getElementById('expand-' + openSid);
   if (prev) prev.remove();
   if (openSid === sid) { openSid = null; return; }
@@ -434,13 +423,9 @@ function toggleGrades(tr, sid) {
   const expandRow = document.createElement('tr');
   expandRow.id = 'expand-' + sid;
   expandRow.className = 'expand-row';
-  expandRow.innerHTML = `<td colspan="10">
-    <div class="grade-summary">${pills}</div>
-  </td>`;
-
+  expandRow.innerHTML = `<td colspan="10"><div class="grade-summary">${pills}</div></td>`;
   tr.parentNode.insertBefore(expandRow, tr.nextSibling);
 
-  // Rotate chevron
   const chevron = tr.querySelector('.bi-chevron-down, .bi-chevron-up');
   if (chevron) {
     chevron.classList.remove('bi-chevron-down');
@@ -483,7 +468,7 @@ function go(p) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ── Export filtered data as XLSX ──────────────────────────────────────────
+// ── Export XLSX ───────────────────────────────────────────────────────────
 function dlFiltered(e) {
   if (e) e.preventDefault();
   if (!FLT.length) return;
@@ -496,7 +481,6 @@ function dlFiltered(e) {
     const grades = GRADE_FILTER
       ? s.grades.filter(g => g.grade === GRADE_FILTER)
       : s.grades;
-
     if (!grades.length) {
       data.push([s.school_id, s.emis_code, s.school_name, s.district,
                  s.tehsil, s.markaz, s.total, s.boys, s.girls, 'No Data', 0, 0]);
@@ -526,7 +510,7 @@ function showErr(msg) {
   document.getElementById('recCount').innerHTML = '<i class="bi bi-database"></i> 0 rows';
 }
 
-// ── Init grade pill default (All active) ─────────────────────────────────
+// ── Init: set All grade pill active ──────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const allPill = document.querySelector('.gpill.all');
   if (allPill) allPill.classList.add('active');
