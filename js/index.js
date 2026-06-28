@@ -26,10 +26,6 @@ function renderNotes() {
 document.addEventListener('DOMContentLoaded', renderNotes);
 
 // ── Seed the login history entry immediately on page load ─────────
-// This puts a { page:'login' } entry at the bottom of the in-app
-// history stack.  When the user presses back from any app view they
-// eventually land here and the popstate handler shows the login screen
-// instead of whatever site the user came from (e.g. GitHub).
 document.addEventListener('DOMContentLoaded', () => {
   history.replaceState({ page: 'login' }, '', location.href);
 });
@@ -74,6 +70,55 @@ function toggleKpiCards(showNested) {
   document.getElementById('subKpiContainer').style.display  = showNested ? 'block' : 'none';
 }
 
+// ═══════════════════════════════════════════════════
+//  JURISDICTION HELPERS
+//  Reads the user's assigned area and stores it in
+//  localStorage so enrollment.html (opened in a new
+//  tab) can read it and lock its dropdowns.
+// ═══════════════════════════════════════════════════
+
+/**
+ * Parse extra markazs from the user's scope_value field (Col L).
+ * The admin sets scope_type = "Markaz" and scope_value as a
+ * comma-separated list of extra markaz names beyond their primary one.
+ * e.g.  "MARKAZ SHAH SADAR DIN, MARKAZ FATEHPUR"
+ *
+ * Returns [] if scope_type is not "Markaz" or value is empty.
+ */
+function parseExtraMarkazs(scopeType, scopeValue) {
+  if (!scopeType || String(scopeType).trim().toLowerCase() !== 'markaz') return [];
+  if (!scopeValue) return [];
+  return String(scopeValue)
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Build the jurisdiction object from the logged-in user and
+ * save it to localStorage so enrollment.html can read it.
+ */
+function saveJurisdiction(user) {
+  const jur = {
+    district:     user.district    || '',
+    tehsil:       user.tehsil      || '',
+    markaz:       user.markaz      || '',
+    extraMarkazs: parseExtraMarkazs(user.scope_type, user.scope_value),
+  };
+  try {
+    localStorage.setItem('AEO_JURISDICTION', JSON.stringify(jur));
+  } catch (e) {
+    console.warn('Could not save jurisdiction:', e);
+  }
+}
+
+/**
+ * Clear jurisdiction on logout so the next user starts clean.
+ */
+function clearJurisdiction() {
+  try { localStorage.removeItem('AEO_JURISDICTION'); } catch (e) {}
+}
+
 // ─── Login ────────────────────────────────────────
 function doLogin() {
   const btn  = document.getElementById('loginBtn');
@@ -103,6 +148,10 @@ function enterApp(user) {
   currentUser = user;
   localStorage.setItem('userMarkaz', user.markaz || 'All');
 
+  // ── Save jurisdiction so enrollment.html can read it ──────────
+  saveJurisdiction(user);
+  // ──────────────────────────────────────────────────────────────
+
   document.getElementById('userName').textContent       = user.name;
   document.getElementById('userMarkaz').textContent     = user.markaz || 'N/A';
   document.getElementById('dashMarkazName').textContent = user.markaz || 'All';
@@ -117,14 +166,10 @@ function enterApp(user) {
   loadDashboardLinksApps();
   loadDashboardKpiCards();
 
-  // ── Push a history entry for the app so back leads to login, not an external site ──
-  // We PUSH (not replace) so the { page:'login' } entry seeded on load stays beneath
-  // this one.  Pressing back from #home therefore fires popstate with { page:'login' }
-  // and the handler below shows the login screen.
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
-  history.pushState({ route: 'home' }, '', '#home');     // push home on top of login
+  history.pushState({ route: 'home' }, '', '#home');
   if (startRoute !== 'home') {
-    navigateTo(startRoute, true);                         // push the deep-linked view on top
+    navigateTo(startRoute, true);
   }
 }
 
@@ -146,13 +191,19 @@ function doLogout() {
   currentUser = null;
   localStorage.removeItem('userMarkaz');
   localStorage.removeItem(CONFIG.SESSION_KEY);
+
+  // ── Clear jurisdiction on logout ───────────────
+  clearJurisdiction();
+  // ──────────────────────────────────────────────
+
   document.getElementById('appWrapper').style.display = 'none';
   document.getElementById('loginView').style.display  = 'flex';
   document.getElementById('pass').value = '';
-  // Clear the hash so back/forward history resets cleanly at login
   history.replaceState(null, '', location.pathname);
   showToast('Logged out successfully', true);
-}// ─── Load KPIs ────────────────────────────────────
+}
+
+// ─── Load KPIs ────────────────────────────────────
 function loadKPIs() {
   google.script.run.withSuccessHandler(res => {
     if (res.success) {
@@ -288,10 +339,6 @@ function escHtml(str) {
 
 // ═══════════════════════════════════════════════════
 //  DYNAMIC DASHBOARD KPI / MODULE CARDS
-//  (driven by Admin Panel → Dashboard Cards manager)
-//  Does NOT touch the hardcoded entry-card or the 3
-//  hardcoded Portal Modules cards above — this only
-//  adds an optional "Quick Access" section beneath them.
 // ═══════════════════════════════════════════════════
 function loadDashboardKpiCards() {
   google.script.run
@@ -319,7 +366,6 @@ function renderDashboardKpiCards(cards) {
   const section = document.getElementById('dynamicKpiSection');
   if (!grid || !section) return;
 
-  // Sort by Display Order ascending (lowest first), same convention as admin panel
   const sorted = [...cards].sort((a, b) =>
     (parseInt(a['Display Order']) || 99) - (parseInt(b['Display Order']) || 99)
   );
@@ -385,25 +431,10 @@ function openToolsView() {
     `).join('');
   }).getToolsUser();
 }
-// ═══════════════════════════════════════════════════════════════════
-//  ROUTER — hash-based navigation (back/forward button support)
-//
-//  HOW IT WORKS
-//  ────────────
-//  • Every view change pushes a history entry (#home, #hr, etc.)
-//  • Browser back/forward fires popstate → we switch views in-app
-//  • On login we seed the stack:  [#home]  so back never exits the app
-//  • Module functions (openHrModule, openPublicModule …) are wrapped
-//    ONCE after DOMContentLoaded so ANY caller (nav buttons, KPI cards,
-//    onclick attributes in HTML) automatically records the navigation —
-//    no changes to index.html or other JS files are needed.
-//
-//  _navInFlight flag prevents the wrapper from double-pushing state
-//  when the route is triggered by the router itself (popstate path).
-// ═══════════════════════════════════════════════════════════════════
 
-// Raw route handlers — these call the actual view functions.
-// navigateTo() uses these; the wrappers below call the raw originals.
+// ═══════════════════════════════════════════════════════════════════
+//  ROUTER — hash-based navigation
+// ═══════════════════════════════════════════════════════════════════
 const ROUTES = {
   home:                () => switchGlobalTab('homeView', document.getElementById('navHomeBtn')),
   admin:               () => { if (typeof _rawOpenAdmin   === 'function') _rawOpenAdmin();          },
@@ -415,11 +446,8 @@ const ROUTES = {
   'private-Inactive':  () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Inactive'); },
 };
 
-// Set to true while the router is driving a navigation so wrappers
-// know not to push a second history entry for the same action.
 let _navInFlight = false;
 
-// Core navigate function — all navigation should flow through here.
 function navigateTo(routeKey, push = true) {
   const fn = ROUTES[routeKey];
   if (!fn) return;
@@ -428,33 +456,20 @@ function navigateTo(routeKey, push = true) {
   if (push) history.pushState({ route: routeKey }, '', '#' + routeKey);
 }
 
-// Back / Forward button handler
 window.addEventListener('popstate', e => {
-  // Popped back to the login history entry → show login screen
-  // (state is null, or was tagged { page:'login' } by us on load / after logout)
   if (!e.state || e.state.page === 'login') {
     if (currentUser) {
-      // User was logged in — slide back to login screen without fully clearing
-      // their session (they can log back in immediately).  We deliberately do NOT
-      // call the full doLogout() here because that calls history.replaceState which
-      // would discard the current popstate position.
       currentUser = null;
       document.getElementById('appWrapper').style.display = 'none';
       document.getElementById('loginView').style.display  = 'flex';
     }
     return;
   }
-
-  // Normal in-app navigation (all other views)
   if (!currentUser) return;
   const routeKey = e.state.route || 'home';
-  navigateTo(routeKey, false);   // false = don't push, we're already here
+  navigateTo(routeKey, false);
 });
 
-// ── Wrap module-opener functions so ANY call (from onclick attrs,
-//    KPI cards, sidebar buttons) automatically records history.
-//    Called once from DOMContentLoaded after all scripts have loaded.
-// ─────────────────────────────────────────────────────────────────
 let _rawOpenPublic  = null;
 let _rawOpenPrivate = null;
 let _rawOpenHr      = null;
@@ -462,14 +477,12 @@ let _rawOpenAdmin   = null;
 let _rawOpenTools   = null;
 
 function _installRouterWrappers() {
-  // Save references to the originals (defined in other JS files)
   _rawOpenPublic  = window.openPublicModule;
   _rawOpenPrivate = window.openPrivateModule;
   _rawOpenHr      = window.openHrModule;
   _rawOpenAdmin   = window.openAdminModule;
   _rawOpenTools   = window.openToolsView;
 
-  // openPublicModule(sheetName)
   if (typeof _rawOpenPublic === 'function') {
     window.openPublicModule = function(sheetName) {
       _rawOpenPublic(sheetName);
@@ -480,7 +493,6 @@ function _installRouterWrappers() {
     };
   }
 
-  // openPrivateModule(sheetName)
   if (typeof _rawOpenPrivate === 'function') {
     window.openPrivateModule = function(sheetName) {
       _rawOpenPrivate(sheetName);
@@ -491,7 +503,6 @@ function _installRouterWrappers() {
     };
   }
 
-  // openHrModule()
   if (typeof _rawOpenHr === 'function') {
     window.openHrModule = function() {
       _rawOpenHr();
@@ -499,7 +510,6 @@ function _installRouterWrappers() {
     };
   }
 
-  // openAdminModule()
   if (typeof _rawOpenAdmin === 'function') {
     window.openAdminModule = function() {
       _rawOpenAdmin();
@@ -507,7 +517,6 @@ function _installRouterWrappers() {
     };
   }
 
-  // openToolsView()
   if (typeof _rawOpenTools === 'function') {
     window.openToolsView = function() {
       _rawOpenTools();
@@ -515,8 +524,6 @@ function _installRouterWrappers() {
     };
   }
 
-  // Home button — intercept click so navigating home is also tracked.
-  // Works alongside any existing onclick on the button.
   const homeBtn = document.getElementById('navHomeBtn');
   if (homeBtn) {
     homeBtn.addEventListener('click', () => {
@@ -525,7 +532,4 @@ function _installRouterWrappers() {
   }
 }
 
-// Install wrappers after all scripts have parsed.
-// 'load' fires after DOMContentLoaded and after all <script> tags finish,
-// so the module functions from other JS files are guaranteed to exist.
 window.addEventListener('load', _installRouterWrappers);
