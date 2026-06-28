@@ -6,11 +6,16 @@
 //  existing module file) inside your main project's /js folder.
 //
 //  WHAT THIS DOES
-//  Builds a jurisdiction dropdown scoped to the LOGGED-IN USER
-//  (Primary + Assigned jurisdictions) by calling the new server-side
-//  function getMyAllowedJurisdictions() — see Code_ScraperJurisdiction.gs.
-//  Then lets the user pick a jurisdiction and download the scraper's
-//  results filtered to that selection.
+//  Builds a jurisdiction dropdown scoped to the LOGGED-IN USER by
+//  calling getMyAllowedJurisdictions() — see Code_ScraperJurisdiction.gs.
+//  That function reuses _userMatchesSchool() (Code_HR.gs), the same
+//  rule your app already uses to filter real data rows, so this
+//  dropdown can never show a jurisdiction the user couldn't actually
+//  download data for. A user sees a jurisdiction if it matches their
+//  PRIMARY fields (District/Wing/Tehsil/Markaz) OR their separately
+//  ASSIGNED scope (Scope Type/Value) — it's a union of the two, not
+//  an intersection. Then lets the user pick a jurisdiction and
+//  download the scraper's results filtered to that selection.
 //
 //  ASSUMES (matches your existing core.js / admin.js patterns):
 //    - `currentUser` is a global already set after login
@@ -102,6 +107,11 @@ function setSelectOptions(id, values, placeholder) {
 }
 
 // ── Cascading filters: Markaz options narrow as District/Wing/Tehsil change ──
+// NOTE: this is pure UI convenience for narrowing the Markaz list as the
+// user picks values. It does NOT enforce access control — jMap already
+// only contains rows the user is allowed to see (filtered server-side by
+// _userMatchesSchool via getMyAllowedJurisdictions). This function can
+// only ever narrow further within that already-safe set, never widen it.
 function onScraperFilterChange() {
   const d = document.getElementById('scrDistrict').value;
   const w = document.getElementById('scrWing').value;
