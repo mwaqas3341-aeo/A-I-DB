@@ -20,7 +20,9 @@ let GRADE_FILTER = '';
 let SORT_COL = null, SORT_DIR = 'desc';
 
 // Jurisdiction: populated from localStorage via A-I-DB login
-const JUR = window.AEO_JURISDICTION || null;
+// Admin users have no jurisdiction lock (JUR stays null)
+const _jurRaw = window.AEO_JURISDICTION || null;
+const JUR = (_jurRaw && _jurRaw.role === 'admin') ? null : _jurRaw;
 
 const fmt  = n => Number(n||0).toLocaleString();
 const esc  = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
