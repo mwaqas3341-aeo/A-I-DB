@@ -162,6 +162,28 @@ function _getUser() {
 }
 
 /**
+ * Calls the admin-user-management Edge Function for privileged
+ * operations (create/delete user, reset password) that need the
+ * service_role key — which never lives in frontend code.
+ */
+async function _callAdminFunction(action, payload) {
+  const { data: sessionData } = await _sb.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) return { success: false, message: 'Not logged in.' };
+
+  const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/admin-user-management`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'apikey': CONFIG.SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ action, payload }),
+  });
+  return res.json();
+}
+
+/**
  * Fetch ALL rows from a table, bypassing Supabase/PostgREST's default
  * 1000-row-per-request cap. Pages through in batches using .range().
  * Use this for any table that can plausibly exceed 1000 rows
@@ -726,28 +748,56 @@ async function apiCall(action, payload) {
       if (id) {
         const { error } = await _sb.from('app_users').update(fields).eq('id', id);
         if (error) return { success: false, message: error.message };
-        // Optional: if a new password was entered, this would need an
-        // admin-privileged Auth API call (service_role), which can't run
-        // safely from the frontend. For now, password resets should go
-        // through the user's own "reset password" flow instead.
         if (newPassword) {
-          return { success: true, message: 'User profile saved. Note: password changes must be done via the password reset flow, not the admin form.' };
+          const pwResult = await _callAdminFunction('resetPassword', { userId: id, newPassword });
+          if (!pwResult.success) {
+            return { success: true, message: 'Profile saved, but password reset failed: ' + pwResult.message };
+          }
+          return { success: true, message: 'User saved and password reset successfully.' };
         }
       } else {
-        return {
-          success: false,
-          message: 'Creating new users from this panel is not yet supported — it requires a secure backend step. New users currently need to be added via Supabase directly. Ask your developer to set this up.'
-        };
+        // New user — needs a real Auth account, which requires the
+        // service_role key. Routed through the Edge Function.
+        const result = await _callAdminFunction('createUser', {
+          cnic:        fields.cnic,
+          personal_no: fields.personal_no,
+          name:        fields.name,
+          role:        fields.role,
+          markaz_name: fields.markaz_name,
+          cell_no:     fields.cell_no,
+          district:    fields.district,
+          wing:        fields.wing,
+          tehsil:      fields.tehsil,
+          scope_type:  fields.scope_type,
+          scope_value: fields.scope_value,
+          access_type: fields.access_type,
+        });
+        return result;
       }
       return { success: true, message: 'User saved.' };
     }
 
     case 'deleteUser': {
       const p = Array.isArray(payload) ? payload[0] : payload;
-      const cnic = p['CNIC'] || p.cnic;
-      const { error } = await _sb.from('app_users').delete().eq('cnic', cnic);
-      if (error) return { success: false, message: error.message };
-      return { success: true, message: 'User removed.' };
+      const userId = p?.id || p?._id;
+      if (!userId) {
+        // Fallback: look up by CNIC if no id was passed
+        const cnic = p['CNIC'] || p.cnic;
+        const { data: row } = await _sb.from('app_users').select('id').eq('cnic', cnic).single();
+        if (!row) return { success: false, message: 'User not found.' };
+        return await _callAdminFunction('deleteUser', { userId: row.id });
+      }
+      return await _callAdminFunction('deleteUser', { userId });
+    }
+
+    case 'resetUserPassword': {
+      const p = Array.isArray(payload) ? payload[0] : payload;
+      const userId = p?.id || p?._id || p?.userId;
+      const newPassword = p?.newPassword || p?.password;
+      if (!userId || !newPassword) {
+        return { success: false, message: 'User and new password are required.' };
+      }
+      return await _callAdminFunction('resetPassword', { userId, newPassword });
     }
 
     // ── ADMIN — JURISDICTION DROPDOWNS ────────────────────────────────
