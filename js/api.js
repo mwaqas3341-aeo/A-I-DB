@@ -734,8 +734,10 @@ async function apiCall(action, payload) {
           return { success: true, message: 'User profile saved. Note: password changes must be done via the password reset flow, not the admin form.' };
         }
       } else {
-        const { error } = await _sb.from('app_users').insert([fields]);
-        if (error) return { success: false, message: error.message };
+        return {
+          success: false,
+          message: 'Creating new users from this panel is not yet supported — it requires a secure backend step. New users currently need to be added via Supabase directly. Ask your developer to set this up.'
+        };
       }
       return { success: true, message: 'User saved.' };
     }
