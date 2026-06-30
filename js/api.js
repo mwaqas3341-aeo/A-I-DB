@@ -625,7 +625,11 @@ async function apiCall(action, payload) {
 
     // ── PUBLIC SCHOOLS ────────────────────────────────────────────────
     case 'getPublicDashboardData': {
-      const status = Array.isArray(payload) ? payload[1] : (payload?.status || 'Active');
+      // The frontend sends the SHEET NAME the user clicked ('Public' /
+      // 'Out Sourced School'), not the actual DB status value — map it
+      // the same way exportSheetData already does below.
+      const sheetName = Array.isArray(payload) ? payload[1] : (payload?.status || 'Public');
+      const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
       const data = await _fetchAllRows('public_schools', '*',
         q => q.order('school_name'), q => q.eq('status', status));
       return { success: true, ..._toHeadersData(data, PUB_COL_MAP) };
@@ -685,7 +689,11 @@ async function apiCall(action, payload) {
 
     // ── PRIVATE SCHOOLS ───────────────────────────────────────────────
     case 'getPrivateDashboardData': {
-      const status = Array.isArray(payload) ? payload[1] : (payload?.status || 'Active');
+      // Same fix as getPublicDashboardData: 'Private' sheet → Active rows,
+      // 'Inactive' sheet → Inactive rows. Previously this filtered on the
+      // literal sheet name, so almost nothing matched.
+      const sheetName = Array.isArray(payload) ? payload[1] : (payload?.status || 'Private');
+      const status = sheetName === 'Inactive' ? 'Inactive' : 'Active';
       const data = await _fetchAllRows('private_schools', '*',
         q => q.order('school_name'), q => q.eq('status', status));
       return { success: true, ..._toHeadersData(data, PRIV_COL_MAP) };
@@ -757,8 +765,21 @@ async function apiCall(action, payload) {
       }
 
       if (existingId) {
-        const { error } = await _sb.from('app_users').update(dbRow).eq('id', existingId);
+        // IMPORTANT: .select() here is required — without it, Supabase
+        // returns no error AND no row count even when Row Level Security
+        // silently blocks the update (0 rows actually changed). That was
+        // previously causing "User saved." to show even though nothing
+        // was written. With .select(), we can tell the two cases apart.
+        const { data: updated, error } = await _sb.from('app_users').update(dbRow).eq('id', existingId).select();
         if (error) return { success: false, message: error.message };
+        if (!updated || updated.length === 0) {
+          return {
+            success: false,
+            message: 'Save blocked: no row was updated. This is almost always a Row Level Security (RLS) ' +
+                     'policy on app_users that does not allow this account to UPDATE other users\u2019 rows. ' +
+                     'Add/adjust an UPDATE policy for the admin role on app_users in Supabase.',
+          };
+        }
         if (newPassword) {
           const pwResult = await _callAdminFunction('resetPassword', { userId: existingId, newPassword });
           if (!pwResult.success) {
@@ -790,10 +811,10 @@ async function apiCall(action, payload) {
 
     case 'deleteUser': {
       const p = Array.isArray(payload) ? payload[0] : payload;
-      const userId = p?.id || p?._id;
+      let userId = (p && typeof p === 'object') ? (p.id || p._id) : p;
       if (!userId) {
         // Fallback: look up by CNIC if no id was passed
-        const cnic = p['CNIC'] || p.cnic;
+        const cnic = (p && typeof p === 'object') ? (p['CNIC'] || p.cnic) : null;
         const { data: row } = await _sb.from('app_users').select('id').eq('cnic', cnic).single();
         if (!row) return { success: false, message: 'User not found.' };
         return await _callAdminFunction('deleteUser', { userId: row.id });
@@ -855,7 +876,9 @@ async function apiCall(action, payload) {
     }
 
     case 'saveKpiCard': {
-      const p = Array.isArray(payload) ? payload[0] : payload;
+      const arr = Array.isArray(payload) ? payload : [payload];
+      const p = arr[0] || {};
+      const id = p._id || arr[1] || null;   // admin.js sends (rowData, rowId, currentUser)
       const dbRow = {
         card_title:       p['Card Title']       || '',
         card_icon:        p['Card Icon']        || '',
@@ -866,8 +889,8 @@ async function apiCall(action, payload) {
         display_order:    parseInt(p['Display Order']) || 99,
         active:           true,
       };
-      if (p._id) {
-        const { error } = await _sb.from('kpi_cards').update(dbRow).eq('id', p._id);
+      if (id) {
+        const { error } = await _sb.from('kpi_cards').update(dbRow).eq('id', id);
         if (error) return { success: false, message: error.message };
       } else {
         const { error } = await _sb.from('kpi_cards').insert([dbRow]);
@@ -902,7 +925,9 @@ async function apiCall(action, payload) {
     }
 
     case 'saveLinksAppsRow': {
-      const p = Array.isArray(payload) ? payload[0] : payload;
+      const arr = Array.isArray(payload) ? payload : [payload];
+      const p = arr[0] || {};
+      const id = p._id || arr[1] || null;   // admin.js sends (obj, rowId, currentUser)
       const dbRow = {
         link_name:     p['Link Name']     || p[0] || '',
         link_url:      p['Link URL']      || p[1] || '',
@@ -911,8 +936,8 @@ async function apiCall(action, payload) {
         app_category:  p['App Category']  || p[4] || '',
         link_category: p['Link Category'] || p[5] || '',
       };
-      if (p._id) {
-        const { error } = await _sb.from('links_apps').update(dbRow).eq('id', p._id);
+      if (id) {
+        const { error } = await _sb.from('links_apps').update(dbRow).eq('id', id);
         if (error) return { success: false, message: error.message };
       } else {
         const { error } = await _sb.from('links_apps').insert([dbRow]);
@@ -943,13 +968,15 @@ async function apiCall(action, payload) {
     }
 
     case 'saveToolRow': {
-      const p = Array.isArray(payload) ? payload[0] : payload;
+      const arr = Array.isArray(payload) ? payload : [payload];
+      const p = arr[0] || {};
+      const id = p._id || arr[1] || null;   // admin.js sends (obj, rowId, currentUser)
       const dbRow = {
         tool_name: p['Tool Name'] || p[0] || '',
         tool_url:  p['Tool URL']  || p[1] || '',
       };
-      if (p._id) {
-        const { error } = await _sb.from('tools').update(dbRow).eq('id', p._id);
+      if (id) {
+        const { error } = await _sb.from('tools').update(dbRow).eq('id', id);
         if (error) return { success: false, message: error.message };
       } else {
         const { error } = await _sb.from('tools').insert([dbRow]);
