@@ -208,6 +208,38 @@ async function _fetchAllRows(table, selectCols, queryBuilderFn, filterFn) {
   return allRows;
 }
 
+/**
+ * Run an UPDATE and tell the difference between "no error, but RLS
+ * silently blocked it (0 rows changed)" and a real success. Without
+ * .select() here, Supabase returns no error AND no row count for an
+ * RLS-blocked update, so callers were reporting false "success".
+ */
+async function _checkedUpdate(table, dbRow, matchCol, matchVal) {
+  const { data, error } = await _sb.from(table).update(dbRow).eq(matchCol, matchVal).select();
+  if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      message: `Save blocked: no row was updated in "${table}". This is almost always a missing/too-strict ` +
+               `Row Level Security UPDATE policy for this table in Supabase — check Authentication → Policies.`,
+    };
+  }
+  return { ok: true, data };
+}
+
+async function _checkedDelete(table, matchCol, matchVal) {
+  const { data, error } = await _sb.from(table).delete().eq(matchCol, matchVal).select();
+  if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      message: `Delete blocked: no row was deleted in "${table}". This is almost always a missing/too-strict ` +
+               `Row Level Security DELETE policy for this table in Supabase — check Authentication → Policies.`,
+    };
+  }
+  return { ok: true, data };
+}
+
 // =====================================================================
 //  MAIN API DISPATCHER
 // =====================================================================
@@ -431,8 +463,8 @@ async function apiCall(action, payload) {
       dbRow.changes_made_at = new Date().toISOString();
       delete dbRow.personal_no;  // don't overwrite the PK
 
-      const { error } = await _sb.from('staff').update(dbRow).eq('personal_no', pno);
-      if (error) return { success: false, error: error.message };
+      const r = await _checkedUpdate('staff', dbRow, 'personal_no', pno);
+      if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
         personal_no:   pno,
@@ -449,13 +481,12 @@ async function apiCall(action, payload) {
       const reason = Array.isArray(payload) ? payload[1] : payload?.reason;
       const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
 
-      const { error } = await _sb.from('staff').update({
+      const r = await _checkedUpdate('staff', {
         status: 'deleted',
         changes_made_by: user?.name || '',
         changes_made_at: new Date().toISOString(),
-      }).eq('personal_no', pno);
-
-      if (error) return { success: false, error: error.message };
+      }, 'personal_no', pno);
+      if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
         personal_no:   pno,
@@ -472,7 +503,7 @@ async function apiCall(action, payload) {
       const pno = p['PERSONAL NO.'] || p.personal_no;
       const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
 
-      const { error } = await _sb.from('staff').update({
+      const r = await _checkedUpdate('staff', {
         school_emis_code:              p.to_emis              || p['To EMIS'] || '',
         markaz_name:                   p.to_markaz            || p['To Markaz'] || '',
         tehsil:                        p.to_tehsil            || p['To Tehsil'] || '',
@@ -482,9 +513,8 @@ async function apiCall(action, payload) {
         status:                        'active',
         changes_made_by:               user?.name || '',
         changes_made_at:               new Date().toISOString(),
-      }).eq('personal_no', pno);
-
-      if (error) return { success: false, error: error.message };
+      }, 'personal_no', pno);
+      if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
         personal_no:   pno,
@@ -509,15 +539,14 @@ async function apiCall(action, payload) {
       const pno = p['PERSONAL NO.'] || p.personal_no;
       const { data: s } = await _sb.from('staff').select('name_of_teacher, designation, bps').eq('personal_no', pno).single();
 
-      const { error } = await _sb.from('staff').update({
+      const r = await _checkedUpdate('staff', {
         designation:                  p.new_designation || p['New Designation'] || '',
         bps:                          p.new_bps         || p['New BPS'] || '',
         date_of_joining_present_scale:p.effective_date  || '',
         changes_made_by:              user?.name || '',
         changes_made_at:              new Date().toISOString(),
-      }).eq('personal_no', pno);
-
-      if (error) return { success: false, error: error.message };
+      }, 'personal_no', pno);
+      if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
         personal_no:    pno,
@@ -553,13 +582,12 @@ async function apiCall(action, payload) {
       }[newStatus] || '';
 
       const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
-      const { error } = await _sb.from('staff').update({
+      const r = await _checkedUpdate('staff', {
         status: newStatus,
         changes_made_by: user?.name || '',
         changes_made_at: new Date().toISOString(),
-      }).eq('personal_no', pno);
-
-      if (error) return { success: false, errors: [error.message] };
+      }, 'personal_no', pno);
+      if (!r.ok) return { success: false, errors: [r.message] };
 
       await _sb.from('staff_events').insert([{
         personal_no:    pno,
@@ -577,13 +605,12 @@ async function apiCall(action, payload) {
       const pno = p['PERSONAL NO.'] || p.personal_no;
       const { data: s } = await _sb.from('staff').select('name_of_teacher, status').eq('personal_no', pno).single();
 
-      const { error } = await _sb.from('staff').update({
+      const r = await _checkedUpdate('staff', {
         status: 'active',
         changes_made_by: user?.name || '',
         changes_made_at: new Date().toISOString(),
-      }).eq('personal_no', pno);
-
-      if (error) return { success: false, error: error.message };
+      }, 'personal_no', pno);
+      if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
         personal_no:   pno,
@@ -647,8 +674,8 @@ async function apiCall(action, payload) {
       }
       dbRow.updated_at = new Date().toISOString();
       delete dbRow.emis;  // don't overwrite PK
-      const { error } = await _sb.from('public_schools').update(dbRow).eq('emis', emis);
-      if (error) return { success: false, message: error.message };
+      const r = await _checkedUpdate('public_schools', dbRow, 'emis', emis);
+      if (!r.ok) return { success: false, message: r.message };
       return { success: true, message: 'School record updated.' };
     }
 
@@ -711,8 +738,8 @@ async function apiCall(action, payload) {
       dbRow.updated_at = new Date().toISOString();
       if (uid) {
         delete dbRow.unique_id;
-        const { error } = await _sb.from('private_schools').update(dbRow).eq('unique_id', uid);
-        if (error) return { success: false, message: error.message };
+        const r = await _checkedUpdate('private_schools', dbRow, 'unique_id', uid);
+        if (!r.ok) return { success: false, message: r.message };
       } else {
         dbRow.status = dbRow.status || 'Active';
         const { error } = await _sb.from('private_schools').insert([dbRow]);
@@ -890,8 +917,8 @@ async function apiCall(action, payload) {
         active:           true,
       };
       if (id) {
-        const { error } = await _sb.from('kpi_cards').update(dbRow).eq('id', id);
-        if (error) return { success: false, message: error.message };
+        const r = await _checkedUpdate('kpi_cards', dbRow, 'id', id);
+        if (!r.ok) return { success: false, message: r.message };
       } else {
         const { error } = await _sb.from('kpi_cards').insert([dbRow]);
         if (error) return { success: false, message: error.message };
@@ -902,8 +929,8 @@ async function apiCall(action, payload) {
     case 'deleteKpiCard': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const id = p?._id || p?.id || p;
-      const { error } = await _sb.from('kpi_cards').delete().eq('id', id);
-      if (error) return { success: false, message: error.message };
+      const r = await _checkedDelete('kpi_cards', 'id', id);
+      if (!r.ok) return { success: false, message: r.message };
       return { success: true, message: 'KPI card deleted.' };
     }
 
@@ -937,8 +964,8 @@ async function apiCall(action, payload) {
         link_category: p['Link Category'] || p[5] || '',
       };
       if (id) {
-        const { error } = await _sb.from('links_apps').update(dbRow).eq('id', id);
-        if (error) return { success: false, message: error.message };
+        const r = await _checkedUpdate('links_apps', dbRow, 'id', id);
+        if (!r.ok) return { success: false, message: r.message };
       } else {
         const { error } = await _sb.from('links_apps').insert([dbRow]);
         if (error) return { success: false, message: error.message };
@@ -949,8 +976,8 @@ async function apiCall(action, payload) {
     case 'deleteLinksAppsRow': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const id = p?._id || p?.id || p;
-      const { error } = await _sb.from('links_apps').delete().eq('id', id);
-      if (error) return { success: false, message: error.message };
+      const r = await _checkedDelete('links_apps', 'id', id);
+      if (!r.ok) return { success: false, message: r.message };
       return { success: true, message: 'Link/App deleted.' };
     }
 
@@ -976,8 +1003,8 @@ async function apiCall(action, payload) {
         tool_url:  p['Tool URL']  || p[1] || '',
       };
       if (id) {
-        const { error } = await _sb.from('tools').update(dbRow).eq('id', id);
-        if (error) return { success: false, message: error.message };
+        const r = await _checkedUpdate('tools', dbRow, 'id', id);
+        if (!r.ok) return { success: false, message: r.message };
       } else {
         const { error } = await _sb.from('tools').insert([dbRow]);
         if (error) return { success: false, message: error.message };
@@ -988,8 +1015,8 @@ async function apiCall(action, payload) {
     case 'deleteToolRow': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const id = p?._id || p?.id || p;
-      const { error } = await _sb.from('tools').delete().eq('id', id);
-      if (error) return { success: false, message: error.message };
+      const r = await _checkedDelete('tools', 'id', id);
+      if (!r.ok) return { success: false, message: r.message };
       return { success: true, message: 'Tool deleted.' };
     }
 
