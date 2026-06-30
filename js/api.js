@@ -716,13 +716,23 @@ async function apiCall(action, payload) {
       const reverseMap = Object.fromEntries(Object.entries(USER_COL_MAP).map(([c,h])=>[h,c]));
       const dbRow = {};
       for (const [h, v] of Object.entries(p)) {
+        if (h === 'Password') continue;  // never write plaintext passwords to app_users
         const col = reverseMap[h] || h;
         dbRow[col] = v;
       }
       const { id, ...fields } = dbRow;
+      const newPassword = p['Password'] || '';
+
       if (id) {
         const { error } = await _sb.from('app_users').update(fields).eq('id', id);
         if (error) return { success: false, message: error.message };
+        // Optional: if a new password was entered, this would need an
+        // admin-privileged Auth API call (service_role), which can't run
+        // safely from the frontend. For now, password resets should go
+        // through the user's own "reset password" flow instead.
+        if (newPassword) {
+          return { success: true, message: 'User profile saved. Note: password changes must be done via the password reset flow, not the admin form.' };
+        }
       } else {
         const { error } = await _sb.from('app_users').insert([fields]);
         if (error) return { success: false, message: error.message };
