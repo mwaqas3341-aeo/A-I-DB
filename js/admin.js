@@ -487,7 +487,7 @@ function renderUserTable() {
   document.getElementById('userTHead').innerHTML =
     `<tr><th style="min-width:90px">Actions</th>${cols.map(h => `<th>${h}</th>`).join('')}</tr>`;
   document.getElementById('userTBody').innerHTML = userData.map(row => {
-    const ri   = row._rowIndex;
+    const ri   = row._id;
     const cnic = row[UH.CNIC] || '';
     const name = row[UH.NAME] || 'Unknown';
     const scope  = row[UH.SCOPE_TYPE]  || 'Markaz';
@@ -501,7 +501,7 @@ function renderUserTable() {
           </button>
           <button class="tbl-btn" title="Delete"
             style="border-color:var(--bad);color:var(--bad);background:var(--bad-bg)"
-            onclick="confirmDeleteUser(${ri},'${name.replace(/'/g,"\\'")}')">
+            onclick="confirmDeleteUser('${ri}','${name.replace(/'/g,"\\'")}')">
             <i class="bi bi-trash"></i>
           </button>
         </div>
@@ -559,7 +559,7 @@ function editUser(cnic) {
   document.getElementById('userModalTitle').textContent = 'Edit User: ' + cnic;
   const doEdit = () => {
     clearUserForm();
-    setVal('u_row_index',   row._rowIndex || '');
+    setVal('u_row_index',   row._id || '');
     setVal('u_personal_no', row[UH.PERSONAL_NO] || '');
     setVal('u_name',        row[UH.NAME]         || '');
     setVal('u_cell',        row[UH.CELL]         || '');
@@ -611,6 +611,7 @@ function submitUser() {
   if (!name) { showToast('Name is required.', false); return; }
 
   const dataObj = {
+    _id:               document.getElementById('u_row_index').value.trim() || undefined,
     [UH.PERSONAL_NO]: document.getElementById('u_personal_no').value.trim(),
     [UH.NAME]:        name,
     [UH.MARKAZ]:      document.getElementById('u_markaz').value.trim(),
@@ -672,12 +673,12 @@ function renderLinksTable() {
   document.getElementById('linksTHead').innerHTML =
     `<tr><th>Actions</th>${linksHeaders.map(h => `<th>${h}</th>`).join('')}</tr>`;
   document.getElementById('linksTBody').innerHTML = linksData.map(row => {
-    const ri = row._rowIndex;
+    const ri = row._id;
     return `<tr>
       <td style="display:flex;gap:4px">
-        <button class="tbl-btn btn-edit" onclick="editLinksRow(${ri})"><i class="bi bi-pencil"></i></button>
+        <button class="tbl-btn btn-edit" onclick="editLinksRow('${ri}')"><i class="bi bi-pencil"></i></button>
         <button class="tbl-btn" style="border-color:var(--bad);color:var(--bad);background:var(--bad-bg)"
-          onclick="confirmDeleteLinksRow(${ri})"><i class="bi bi-trash"></i></button>
+          onclick="confirmDeleteLinksRow('${ri}')"><i class="bi bi-trash"></i></button>
       </td>
       ${linksHeaders.map(h => {
         const v = row[h] || '';
@@ -699,7 +700,7 @@ function openLinksModal() {
 }
 
 function editLinksRow(ri) {
-  const row = linksData.find(r => r._rowIndex === ri);
+  const row = linksData.find(r => String(r._id) === String(ri));
   if (!row) return;
   const g = ci => row[linksHeaders[ci]] || '';
   document.getElementById('linksModalTitle').textContent = 'Edit Row';
@@ -727,7 +728,7 @@ function submitLinksRow() {
   const hasApp  = document.getElementById('la_appName').value.trim()  || document.getElementById('la_appUrl').value.trim();
   if (!hasLink && !hasApp) { showToast('Fill in at least a link or app.', false); return; }
 
-  const ri  = parseInt(document.getElementById('la_rowIndex').value) || null;
+  const ri  = document.getElementById('la_rowIndex').value || null;
   const btn = document.getElementById('saveLinksBtn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
   google.script.run
@@ -773,13 +774,13 @@ function renderToolsTable() {
   document.getElementById('toolsTHead').innerHTML =
     `<tr><th>Actions</th>${toolsHeaders.map(h => `<th>${h}</th>`).join('')}</tr>`;
   document.getElementById('toolsTBody').innerHTML = toolsData.map(row => {
-    const ri = row._rowIndex;
+    const ri = row._id;
     return `<tr>
       <td style="display:flex;gap:4px">
         <button class="tbl-btn btn-edit" style="border-color:var(--purple);color:var(--purple);background:var(--purple-bg)"
-          onclick="editToolRow(${ri})"><i class="bi bi-pencil"></i></button>
+          onclick="editToolRow('${ri}')"><i class="bi bi-pencil"></i></button>
         <button class="tbl-btn" style="border-color:var(--bad);color:var(--bad);background:var(--bad-bg)"
-          onclick="confirmDeleteToolRow(${ri})"><i class="bi bi-trash"></i></button>
+          onclick="confirmDeleteToolRow('${ri}')"><i class="bi bi-trash"></i></button>
       </td>
       ${toolsHeaders.map(h => {
         const v = row[h] || '';
@@ -800,7 +801,7 @@ function openToolModal() {
 }
 
 function editToolRow(ri) {
-  const row = toolsData.find(r => r._rowIndex === ri);
+  const row = toolsData.find(r => String(r._id) === String(ri));
   if (!row) return;
   document.getElementById('toolModalTitle').textContent = 'Edit Tool';
   document.getElementById('tool_name').value     = row[toolsHeaders[0]] || '';
@@ -815,7 +816,7 @@ function submitToolRow() {
   if (toolsHeaders[1]) obj[toolsHeaders[1]] = document.getElementById('tool_url').value.trim();
   if (!obj[toolsHeaders[0]] || !obj[toolsHeaders[1]]) { showToast('Name and URL required.', false); return; }
 
-  const ri  = parseInt(document.getElementById('tool_rowIndex').value) || null;
+  const ri  = document.getElementById('tool_rowIndex').value || null;
   const btn = document.getElementById('saveToolBtn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
   google.script.run
@@ -872,7 +873,7 @@ function renderKpiCardsTable(headers, data) {
     </tr>`;
 
   document.getElementById('kpiTBody').innerHTML = data.map(row => {
-    const ri      = row._rowIndex;
+    const ri      = row._id;
     const color   = row['Card Color'] || 'brand';
     const icon    = row['Card Icon']  || 'grid-fill';
     const active  = String(row['Active'] || 'Yes').trim();
@@ -886,11 +887,11 @@ function renderKpiCardsTable(headers, data) {
       <td>
         <div style="display:flex;gap:4px">
           <button class="tbl-btn btn-edit" style="border-color:#0f766e;color:#0f766e;background:#f0fdfa"
-            onclick="editKpiCard(${ri})" title="Edit">
+            onclick="editKpiCard('${ri}')" title="Edit">
             <i class="bi bi-pencil"></i>
           </button>
           <button class="tbl-btn" style="border-color:var(--bad);color:var(--bad);background:var(--bad-bg)"
-            onclick="confirmDeleteKpiCard(${ri})" title="Delete">
+            onclick="confirmDeleteKpiCard('${ri}')" title="Delete">
             <i class="bi bi-trash"></i>
           </button>
         </div>
@@ -932,7 +933,7 @@ function openKpiCardModal() {
 
 // ── Open KPI modal: edit ─────────────────────────────────────────
 function editKpiCard(ri) {
-  const row = kpiCardsData.find(r => r._rowIndex === ri);
+  const row = kpiCardsData.find(r => String(r._id) === String(ri));
   if (!row) return;
   document.getElementById('kpiCardModalTitle').textContent = 'Edit Dashboard Card';
   document.getElementById('kc_title').value    = row['Card Title']       || '';
@@ -1006,7 +1007,7 @@ function submitKpiCard() {
     'Display Order':    document.getElementById('kc_order').value.trim() || '10'
   };
 
-  const ri  = parseInt(document.getElementById('kc_rowIndex').value) || null;
+  const ri  = document.getElementById('kc_rowIndex').value || null;
   const btn = document.getElementById('saveKpiBtn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
 
