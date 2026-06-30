@@ -171,7 +171,7 @@ async function _callAdminFunction(action, payload) {
   const token = sessionData?.session?.access_token;
   if (!token) return { success: false, message: 'Not logged in.' };
 
-  const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/admin-user-management`, {
+  const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/hyper-action`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
