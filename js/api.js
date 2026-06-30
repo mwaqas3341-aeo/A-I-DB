@@ -161,6 +161,31 @@ function _getUser() {
   } catch { return null; }
 }
 
+/**
+ * Fetch ALL rows from a table, bypassing Supabase/PostgREST's default
+ * 1000-row-per-request cap. Pages through in batches using .range().
+ * Use this for any table that can plausibly exceed 1000 rows
+ * (schools: 38k+, public_schools: 38k+, staff: 7k+, etc).
+ */
+async function _fetchAllRows(table, selectCols, queryBuilderFn, filterFn) {
+  const PAGE = 1000;
+  let allRows = [];
+  let from = 0;
+  while (true) {
+    let q = _sb.from(table).select(selectCols);
+    if (queryBuilderFn) q = queryBuilderFn(q);
+    if (filterFn) q = filterFn(q);
+    q = q.range(from, from + PAGE - 1);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allRows = allRows.concat(data);
+    if (data.length < PAGE) break;  // last page
+    from += PAGE;
+  }
+  return allRows;
+}
+
 // =====================================================================
 //  MAIN API DISPATCHER
 // =====================================================================
@@ -244,12 +269,10 @@ async function apiCall(action, payload) {
 
     // ── DASHBOARD KPIs ─────────────────────────────────────────────────
     case 'getSummaryCounts': {
-      const [pubRes, privRes] = await Promise.all([
-        _sb.from('public_schools').select('status'),
-        _sb.from('private_schools').select('status'),
+      const [pub, priv] = await Promise.all([
+        _fetchAllRows('public_schools', 'status'),
+        _fetchAllRows('private_schools', 'status'),
       ]);
-      const pub  = pubRes.data  || [];
-      const priv = privRes.data || [];
       return {
         success:        true,
         publicCount:    pub.filter(r => r.status === 'Active').length,
@@ -310,11 +333,8 @@ async function apiCall(action, payload) {
     // ── SCHOOL HIERARCHY (dropdown cascade) ───────────────────────────
     case 'getSchoolHierarchy':
     case 'getSchoolHierarchyForUser': {
-      const { data, error } = await _sb
-        .from('schools')
-        .select('district, wing, tehsil, markaz, emis')
-        .order('district').order('wing').order('tehsil').order('markaz');
-      if (error) throw error;
+      const data = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, emis',
+        q => q.order('district').order('wing').order('tehsil').order('markaz'));
       // Shape: [{d, w, t, m, e}] — exactly what core.js schoolCache expects
       return (data || []).map(r => ({
         d: r.district,
@@ -339,13 +359,8 @@ async function apiCall(action, payload) {
       };
       const status = statusMap[sheetName] || 'active';
 
-      const { data, error } = await _sb
-        .from('staff')
-        .select('*')
-        .eq('status', status)
-        .order('name_of_teacher');
-
-      if (error) return { error: error.message };
+      const data = await _fetchAllRows('staff', '*',
+        q => q.order('name_of_teacher'), q => q.eq('status', status));
 
       const { headers, rows } = _toHeadersRows(data, STAFF_COL_MAP);
       return { headers, rows };
@@ -589,9 +604,8 @@ async function apiCall(action, payload) {
     // ── PUBLIC SCHOOLS ────────────────────────────────────────────────
     case 'getPublicDashboardData': {
       const status = Array.isArray(payload) ? payload[1] : (payload?.status || 'Active');
-      const { data, error } = await _sb
-        .from('public_schools').select('*').eq('status', status).order('school_name');
-      if (error) return { success: false, message: error.message };
+      const data = await _fetchAllRows('public_schools', '*',
+        q => q.order('school_name'), q => q.eq('status', status));
       return { success: true, ..._toHeadersData(data, PUB_COL_MAP) };
     }
 
@@ -617,8 +631,7 @@ async function apiCall(action, payload) {
       const sheetName = Array.isArray(payload) ? payload[0] : (payload?.sheet || payload);
       if (sheetName === 'Public' || sheetName === 'Out Sourced School') {
         const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
-        const { data, error } = await _sb.from('public_schools').select('*').eq('status', status);
-        if (error) return { success: false, message: error.message };
+        const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status));
         const hdrs = _headers(PUB_COL_MAP);
         const rows2d = (data||[]).map(r => hdrs.map(h => {
           const col = Object.entries(PUB_COL_MAP).find(([,v])=>v===h)?.[0];
@@ -628,8 +641,7 @@ async function apiCall(action, payload) {
       }
       if (sheetName === 'Private' || sheetName === 'Inactive') {
         const status = sheetName === 'Inactive' ? 'Inactive' : 'Active';
-        const { data, error } = await _sb.from('private_schools').select('*').eq('status', status);
-        if (error) return { success: false, message: error.message };
+        const data = await _fetchAllRows('private_schools', '*', null, q => q.eq('status', status));
         const hdrs = _headers(PRIV_COL_MAP);
         const rows2d = (data||[]).map(r => hdrs.map(h => {
           const col = Object.entries(PRIV_COL_MAP).find(([,v])=>v===h)?.[0];
@@ -640,8 +652,7 @@ async function apiCall(action, payload) {
       // Staff sheet export
       const statusMap3 = { Staff:'active', Termination:'terminated', Retirement:'retired', Resignation:'resigned', Deceased:'deceased', Deleted_Archive:'deleted' };
       const st = statusMap3[sheetName] || 'active';
-      const { data, error } = await _sb.from('staff').select('*').eq('status', st);
-      if (error) return { success: false, message: error.message };
+      const data = await _fetchAllRows('staff', '*', null, q => q.eq('status', st));
       const hdrs = _headers(STAFF_COL_MAP);
       const rows2d = (data||[]).map(r => hdrs.map(h => {
         const col = Object.entries(STAFF_COL_MAP).find(([,v])=>v===h)?.[0];
@@ -653,9 +664,8 @@ async function apiCall(action, payload) {
     // ── PRIVATE SCHOOLS ───────────────────────────────────────────────
     case 'getPrivateDashboardData': {
       const status = Array.isArray(payload) ? payload[1] : (payload?.status || 'Active');
-      const { data, error } = await _sb
-        .from('private_schools').select('*').eq('status', status).order('school_name');
-      if (error) return { success: false, message: error.message };
+      const data = await _fetchAllRows('private_schools', '*',
+        q => q.order('school_name'), q => q.eq('status', status));
       return { success: true, ..._toHeadersData(data, PRIV_COL_MAP) };
     }
 
@@ -730,12 +740,8 @@ async function apiCall(action, payload) {
 
     // ── ADMIN — JURISDICTION DROPDOWNS ────────────────────────────────
     case 'getJurisdictionDropdownData': {
-      const { data, error } = await _sb
-        .from('schools')
-        .select('district, wing, tehsil, markaz, emis')
-        .order('district').order('wing').order('tehsil').order('markaz');
-      if (error) return { success: false, message: error.message };
-      const rows = data || [];
+      const rows = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, emis',
+        q => q.order('district').order('wing').order('tehsil').order('markaz'));
       return {
         success:   true,
         districts: [...new Set(rows.map(r=>r.district).filter(Boolean))].sort(),
@@ -749,11 +755,11 @@ async function apiCall(action, payload) {
 
     case 'getSchoolsListForScope': {
       const [pub, priv] = await Promise.all([
-        _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name, status'),
-        _sb.from('private_schools').select('unique_id, school_name, district, tehsil, markaz_name, status'),
+        _fetchAllRows('public_schools', 'emis, school_name, district, wing, tehsil, markaz_name, status'),
+        _fetchAllRows('private_schools', 'unique_id, school_name, district, tehsil, markaz_name, status'),
       ]);
-      const pubSchools  = (pub.data||[]).map(r => ({ emis:r.emis,   name:r.school_name, district:r.district, wing:r.wing,  tehsil:r.tehsil, markaz:r.markaz_name, sheet:'Public',  status:r.status }));
-      const privSchools = (priv.data||[]).map(r => ({ uid:r.unique_id, name:r.school_name, district:r.district, wing:null, tehsil:r.tehsil, markaz:r.markaz_name, sheet:'Private', status:r.status }));
+      const pubSchools  = pub.map(r => ({ emis:r.emis,   name:r.school_name, district:r.district, wing:r.wing,  tehsil:r.tehsil, markaz:r.markaz_name, sheet:'Public',  status:r.status }));
+      const privSchools = priv.map(r => ({ uid:r.unique_id, name:r.school_name, district:r.district, wing:null, tehsil:r.tehsil, markaz:r.markaz_name, sheet:'Private', status:r.status }));
       return { success: true, schools: [...pubSchools, ...privSchools] };
     }
 
