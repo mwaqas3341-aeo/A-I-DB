@@ -174,18 +174,17 @@ async function apiCall(action, payload) {
       const cnic = Array.isArray(payload) ? payload[0] : payload?.cnic ?? payload;
       const pass = Array.isArray(payload) ? payload[1] : payload?.password ?? payload;
 
-      // Find the user's placeholder email via their CNIC
-      const { data: profile, error: profileErr } = await _sb
-        .from('app_users')
-        .select('cnic, id')
-        .eq('cnic', String(cnic).trim())
-        .single();
+      // Find the user's placeholder email via their CNIC.
+      // Uses a security-definer DB function since the user isn't
+      // authenticated yet, so normal RLS would block a direct table read.
+      const { data: loginEmail, error: profileErr } = await _sb
+        .rpc('get_login_email', { p_cnic: String(cnic).trim() });
 
-      if (profileErr || !profile) {
+      if (profileErr || !loginEmail) {
         return { success: false, message: 'CNIC not found. Please check and try again.' };
       }
 
-      const placeholderEmail = `${profile.cnic}@placeholder.internal`;
+      const placeholderEmail = loginEmail;
       const { data: authData, error: authErr } = await _sb.auth
         .signInWithPassword({ email: placeholderEmail, password: String(pass) });
 
