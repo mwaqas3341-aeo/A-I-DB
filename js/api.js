@@ -729,7 +729,7 @@ async function apiCall(action, payload) {
       const { data, error } = await _sb.from('app_users').select('*').order('name');
       if (error) return { success: false, message: error.message };
       const headers = Object.values(USER_COL_MAP);
-      const mapped  = (data||[]).map(r => _remap(r, USER_COL_MAP));
+      const mapped  = (data||[]).map(r => ({ ..._remap(r, USER_COL_MAP), _id: r.id }));
       return { success: true, headers, data: mapped };
     }
 
@@ -739,42 +739,53 @@ async function apiCall(action, payload) {
       const dbRow = {};
       for (const [h, v] of Object.entries(p)) {
         if (h === 'Password') continue;  // never write plaintext passwords to app_users
+        if (h === '_id') continue;       // internal field, not a real column
         const col = reverseMap[h] || h;
         dbRow[col] = v;
       }
-      const { id, ...fields } = dbRow;
       const newPassword = p['Password'] || '';
+      const cnic = dbRow.cnic;
 
-      if (id) {
-        const { error } = await _sb.from('app_users').update(fields).eq('id', id);
+      // Reliable edit-vs-create detection: look up by CNIC (always present,
+      // unique) rather than trusting an id/_id field the frontend form
+      // may not be sending back (it wasn't, originally — Apps Script-era
+      // forms used row index instead of a real id).
+      let existingId = p._id || p.id || null;
+      if (!existingId && cnic) {
+        const { data: existing } = await _sb.from('app_users').select('id').eq('cnic', cnic).maybeSingle();
+        if (existing) existingId = existing.id;
+      }
+
+      if (existingId) {
+        const { error } = await _sb.from('app_users').update(dbRow).eq('id', existingId);
         if (error) return { success: false, message: error.message };
         if (newPassword) {
-          const pwResult = await _callAdminFunction('resetPassword', { userId: id, newPassword });
+          const pwResult = await _callAdminFunction('resetPassword', { userId: existingId, newPassword });
           if (!pwResult.success) {
             return { success: true, message: 'Profile saved, but password reset failed: ' + pwResult.message };
           }
           return { success: true, message: 'User saved and password reset successfully.' };
         }
+        return { success: true, message: 'User saved.' };
       } else {
-        // New user — needs a real Auth account, which requires the
-        // service_role key. Routed through the Edge Function.
+        // Genuinely new user — needs a real Auth account, routed through
+        // the Edge Function since it requires the service_role key.
         const result = await _callAdminFunction('createUser', {
-          cnic:        fields.cnic,
-          personal_no: fields.personal_no,
-          name:        fields.name,
-          role:        fields.role,
-          markaz_name: fields.markaz_name,
-          cell_no:     fields.cell_no,
-          district:    fields.district,
-          wing:        fields.wing,
-          tehsil:      fields.tehsil,
-          scope_type:  fields.scope_type,
-          scope_value: fields.scope_value,
-          access_type: fields.access_type,
+          cnic:        dbRow.cnic,
+          personal_no: dbRow.personal_no,
+          name:        dbRow.name,
+          role:        dbRow.role,
+          markaz_name: dbRow.markaz_name,
+          cell_no:     dbRow.cell_no,
+          district:    dbRow.district,
+          wing:        dbRow.wing,
+          tehsil:      dbRow.tehsil,
+          scope_type:  dbRow.scope_type,
+          scope_value: dbRow.scope_value,
+          access_type: dbRow.access_type,
         });
         return result;
       }
-      return { success: true, message: 'User saved.' };
     }
 
     case 'deleteUser': {
