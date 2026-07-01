@@ -364,13 +364,18 @@ async function apiCall(action, payload) {
       const rows = data || [];
       return {
         success:       true,
-        importantLinks: rows.filter(r => r.link_category === 'Important' || r.link_name)
+        importantLinks: rows.filter(r => r.link_category === 'Important Link' || r.link_name)
                             .filter(r => r.link_name && r.link_url)
                             .map(r => ({ name: r.link_name, url: r.link_url })),
-        officialApps:   rows.filter(r => r.app_category === 'Official' || (!r.app_category && r.app_name))
+        // NOTE: the Admin Panel's "App Category" dropdown actually saves
+        // 'Official/Departmental' and 'By Team AEOs' (see index.html),
+        // not the plain 'Official'/'Team' this used to check for — that
+        // mismatch meant every categorized app fell through and showed
+        // in neither section.
+        officialApps:   rows.filter(r => r.app_category === 'Official/Departmental' || (!r.app_category && r.app_name))
                             .filter(r => r.app_name && r.app_url)
                             .map(r => ({ name: r.app_name, url: r.app_url })),
-        teamApps:       rows.filter(r => r.app_category === 'Team')
+        teamApps:       rows.filter(r => r.app_category === 'By Team AEOs')
                             .filter(r => r.app_name && r.app_url)
                             .map(r => ({ name: r.app_name, url: r.app_url })),
       };
