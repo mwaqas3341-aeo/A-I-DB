@@ -28,12 +28,12 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'District',                                                                                     id: 'priv_district',    readonly: true  },
   { header: 'Tehsil',                                                                                      id: 'priv_tehsil',      readonly: true  },
   { header: 'Markaz Name',                                                                                  id: 'priv_markaz',      readonly: true  },
-  { header: 'School Category (Private,Pef,Piema)',                                                          id: 'priv_cat',         type: 'select', options: ['Private', 'Pef', 'Piema'] },
+  { header: 'School Category',   hint: 'School Category (Private,Pef,Piema)',                               id: 'priv_cat',         type: 'select', options: ['Private', 'Pef', 'Piema'] },
   { header: 'School Name',                                                                                  id: 'priv_name',        wide: true },
-  { header: 'Registeration Status Registered/Non Registered Pepris',                                       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
-  { header: 'Registeration No in Case of registered (EMIS Code) pepris',                                   id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
-  { header: 'Date of Expiry of Registeration on Pepris',                                                   id: 'priv_reg_exp',     type: 'date'   },
-  { header: 'Level (Primary,Middle,High,Higher Secondary)',                                                 id: 'priv_level',       type: 'select', options: ['Primary', 'Middle', 'High', 'Higher Secondary'] },
+  { header: 'Registeration Status', hint: 'Registeration Status (Registered/Non Registered/Expired)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
+  { header: 'Registeration No',  hint: 'Registeration No in Case of registered (EMIS Code)',                id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
+  { header: 'Date of Expiry of Registeration', hint: 'Date of Expiry of Registeration',                     id: 'priv_reg_exp',     type: 'date'   },
+  { header: 'Level',             hint: 'Level (Primary,Middle,High,Higher Secondary)',                      id: 'priv_level',       type: 'select', options: ['Primary', 'Middle', 'High', 'Higher Secondary'] },
   { header: 'School Gender',                                                                               id: 'priv_gender',      type: 'select', options: ['Male', 'Female', 'Both'] },
   { header: 'School Physical Address',                                                                      id: 'priv_addr'        },
   { header: 'Zebra Crossing',                                                                              id: 'priv_zebra',       type: 'select', options: ['Painted', 'Not Needed', 'Needed But not Painted'] },
@@ -46,22 +46,22 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'Principal CNIC',                                                                             id: 'priv_prin_cnic',   type: 'number', placeholder: '13 digits', onblur: 'validateCNIC(this)' },
   { header: 'Principal Cell No',                                                                          id: 'priv_prin_cell',   type: 'number' },
   { header: 'Building Certificate Expirey',                                                               id: 'priv_bldg_exp',    type: 'date'   },
-  { header: 'Heallth and hygiene Certificate Expirey',                                                    id: 'priv_health_exp',  type: 'date'   },
+  { header: 'Health and hygiene Certificate Expirey', hint: 'Health and hygiene Certificate Expirey',      id: 'priv_health_exp',  type: 'date'   },
   { header: 'Total Rooms',                                                                                id: 'priv_rooms',       type: 'number' },
   { header: 'Total Teaching Staff',                                                                       id: 'priv_teach_staff', type: 'number' },
   { header: 'Total Non Teaching Staff',                                                                   id: 'priv_non_teach',   type: 'number' },
   { header: 'Total Enrolment',                                                                            id: 'priv_enrol',       type: 'number', oninput: 'calcPrivCategory()' },
   { header: 'Security Category',                                                                          id: 'priv_sec_cat',     readonly: true },
-  { header: 'Entry Gates (No.)',                                                                          id: 'priv_gates',       type: 'number' },
-  { header: 'Operational Gates (No.)',                                                                    id: 'priv_op_gates',    type: 'number' },
-  { header: 'CCTV Cameras (No.)',                                                                         id: 'priv_cctv',        type: 'number' },
-  { header: 'Security Guards (No.)',                                                                      id: 'priv_guards',      type: 'number' },
-  { header: 'Height of boundary walls (ft)',                                                              id: 'priv_wall_h',      type: 'number' },
-  { header: 'Barbed wires on boundary walls (Yes/No)',                                                    id: 'priv_barbed',      type: 'select', options: ['Yes', 'No'] },
-  { header: 'Fire fighting system Yes / No',                                                              id: 'priv_fire',        type: 'select', options: ['Yes', 'No'] },
-  { header: 'Nearby key installations No.',                                                               id: 'priv_ki_no',       type: 'number', oninput: 'generateKICascades()' },
+  { header: 'Entry Gates',       hint: 'Entry Gates (No.)',                                                id: 'priv_gates',       type: 'number' },
+  { header: 'Operational Gates', hint: 'Operational Gates (No.)',                                          id: 'priv_op_gates',    type: 'number' },
+  { header: 'CCTV Cameras',      hint: 'CCTV Cameras (No.)',                                               id: 'priv_cctv',        type: 'number' },
+  { header: 'Security Guards',   hint: 'Security Guards (No.)',                                            id: 'priv_guards',      type: 'number' },
+  { header: 'Height of boundary walls', hint: 'Height of boundary walls (ft)',                             id: 'priv_wall_h',      type: 'number' },
+  { header: 'Barbed wires',      hint: 'Barbed wires on boundary walls (Yes/No)',                          id: 'priv_barbed',      type: 'select', options: ['Yes', 'No'] },
+  { header: 'Fire fighting system', hint: 'Fire fighting system (Yes/No)',                                 id: 'priv_fire',        type: 'select', options: ['Yes', 'No'] },
+  { header: 'Nearby key installations', hint: 'Nearby key installations (No.)',                            id: 'priv_ki_no',       type: 'number', oninput: 'generateKICascades()' },
   { header: 'Name of Key Installation',                                                                   id: 'priv_ki_names',    hidden: true   },
-  { header: 'Gate facing KI, if any Yes/No',                                                              id: 'priv_ki_gate',     type: 'select', options: ['Yes', 'No'] },
+  { header: 'Gate facing KI',    hint: 'Gate facing KI, if any (Yes/No)',                                  id: 'priv_ki_gate',     type: 'select', options: ['Yes', 'No'] },
   { header: 'Status',                                                                                     id: 'priv_status',      type: 'select', options: ['Active', 'Inactive'] }
 ];
 
@@ -416,7 +416,7 @@ function buildPrivateForm() {
     const width = f.wide ? 'grid-column:1/-1;' : '';
     pGrid.innerHTML += `
       <div class="ff${f.readonly ? ' ff-locked' : ''}" id="wrap_${f.id}" style="${width}">
-        <span class="flabel" title="${f.header}">${f.header}</span>
+        <span class="flabel" title="${f.hint || f.header}">${f.hint || f.header}</span>
         ${inputHTML}
         <div class="field-error">Invalid</div>
       </div>`;
