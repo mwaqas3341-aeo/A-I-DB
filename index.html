@@ -780,6 +780,10 @@
             <input type="text" id="u_cnic" placeholder="13 digits, no dashes" maxlength="13">
           </div>
           <div class="ff">
+            <span class="flabel">Email</span>
+            <input type="email" id="u_email" placeholder="user@example.com">
+          </div>
+          <div class="ff">
             <span class="flabel">Password (Col F)</span>
             <input type="text" id="u_password" placeholder="Set a password">
           </div>
@@ -804,13 +808,13 @@
         <div class="form-grid" style="margin-bottom:20px">
           <div class="ff">
             <span class="flabel">District (Col H)</span>
-            <select id="u_district" onchange="filterMarkazDropdown()">
+            <select id="u_district" onchange="filterMarkazDropdown(); filterTehsilDropdown()">
               <option value="">Select District</option>
             </select>
           </div>
           <div class="ff">
             <span class="flabel">Wing (Col I)</span>
-            <select id="u_wing" onchange="filterMarkazDropdown()">
+            <select id="u_wing" onchange="filterMarkazDropdown(); filterTehsilDropdown()">
               <option value="">Select Wing</option>
               <option value="M-EE">M-EE (Male Elementary Education)</option>
               <option value="W-EE">W-EE (Female Elementary Education)</option>
@@ -825,7 +829,7 @@
           </div>
           <div class="ff">
             <span class="flabel">Markaz Name (Col C)</span>
-            <select id="u_markaz">
+            <select id="u_markaz" onchange="filterTehsilDropdown()">
               <option value="">Select Markaz</option>
             </select>
           </div>
