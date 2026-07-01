@@ -27,7 +27,8 @@ const UH = {
   TEHSIL:      'Tehsil',
   SCOPE_TYPE:  'Scope Type',
   SCOPE_VALUE: 'Scope Value',
-  ACCESS_TYPE: 'Access Type'
+  ACCESS_TYPE: 'Access Type',
+  EMAIL:       'Email'
 };
 const LA_COL = { LINK_NAME:0, LINK_URL:1, APP_NAME:2, APP_URL:3, APP_CATEGORY:4, LINK_CATEGORY:5 };
 
@@ -165,6 +166,37 @@ function filterMarkazDropdown() {
   markazEl.innerHTML = '<option value="">Select Markaz</option>' +
     optionsList.map(m => `<option value="${m}">${m}</option>`).join('');
   if (optionsList.includes(currentVal)) markazEl.value = currentVal;
+}
+
+// Markaz-wise Tehsil filtering: once a Markaz is picked, narrow the
+// Tehsil dropdown to only the tehsil(s) that Markaz actually belongs
+// to (almost always exactly one) and auto-fill it if unambiguous.
+function filterTehsilDropdown() {
+  if (!jDropdowns || !jDropdowns.jMap) return;
+  const selDistrict = document.getElementById('u_district').value;
+  const selWing     = document.getElementById('u_wing').value;
+  const selMarkaz   = document.getElementById('u_markaz').value;
+
+  const filteredMap = jDropdowns.jMap.filter(item => {
+    return (!selDistrict || item.district === selDistrict) &&
+           (!selWing     || item.wing === selWing) &&
+           (!selMarkaz   || item.markaz === selMarkaz);
+  });
+
+  const validTehsils = [...new Set(filteredMap.map(i => i.tehsil))].sort();
+  const tehsilEl    = document.getElementById('u_tehsil');
+  const currentVal  = tehsilEl.value;
+  const optionsList = (selDistrict || selWing || selMarkaz) ? validTehsils : jDropdowns.tehsils;
+
+  tehsilEl.innerHTML = '<option value="">Select Tehsil</option>' +
+    optionsList.map(t => `<option value="${t}">${t}</option>`).join('');
+
+  if (selMarkaz && validTehsils.length === 1) {
+    // Markaz uniquely determines its tehsil — fill it in automatically.
+    tehsilEl.value = validTehsils[0];
+  } else if (optionsList.includes(currentVal)) {
+    tehsilEl.value = currentVal;
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -564,6 +596,7 @@ function editUser(cnic) {
     setVal('u_name',        row[UH.NAME]         || '');
     setVal('u_cell',        row[UH.CELL]         || '');
     setVal('u_cnic',        row[UH.CNIC]         || '');
+    setVal('u_email',       row[UH.EMAIL]        || '');
     setVal('u_password',    row[UH.PASSWORD]     || '');
     setVal('u_role',        row[UH.ROLE]         || '');
     setVal('u_access_type', row[UH.ACCESS_TYPE]  || 'Editor');
@@ -583,7 +616,7 @@ function editUser(cnic) {
 function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
 
 function clearUserForm() {
-  ['u_row_index','u_personal_no','u_name','u_cell','u_cnic','u_password'].forEach(id => setVal(id, ''));
+  ['u_row_index','u_personal_no','u_name','u_cell','u_cnic','u_email','u_password'].forEach(id => setVal(id, ''));
   ['u_role','u_district','u_wing','u_tehsil','u_markaz','u_access_type','u_scope_type'].forEach(id => {
     const el = document.getElementById(id);
     if (el && el.options && el.options.length) el.value = el.options[0].value;
@@ -607,8 +640,13 @@ function submitUser() {
   const scopeH = document.getElementById('scope_value_hidden');
   const cnic = document.getElementById('u_cnic').value.trim();
   const name = document.getElementById('u_name').value.trim();
+  const email = document.getElementById('u_email').value.trim();
   if (!cnic) { showToast('CNIC is required.', false); return; }
   if (!name) { showToast('Name is required.', false); return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('Please enter a valid email address.', false);
+    return;
+  }
 
   const dataObj = {
     _id:               document.getElementById('u_row_index').value.trim() || undefined,
@@ -617,6 +655,7 @@ function submitUser() {
     [UH.MARKAZ]:      document.getElementById('u_markaz').value.trim(),
     [UH.CELL]:        document.getElementById('u_cell').value.trim(),
     [UH.CNIC]:        cnic,
+    [UH.EMAIL]:       email,
     [UH.PASSWORD]:    document.getElementById('u_password').value.trim(),
     [UH.ROLE]:        document.getElementById('u_role').value.trim(),
     [UH.DISTRICT]:    document.getElementById('u_district').value.trim(),
