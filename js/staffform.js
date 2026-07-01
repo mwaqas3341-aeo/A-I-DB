@@ -27,7 +27,7 @@ var SF_FIELD_MAP = {
   sf_bps:                  'BPS',
   sf_pps:                  'PPS',
   sf_natureOfJob:          'NATURE OF JOB',
-  sf_regularizationDate:   'date of regularizaton',
+  sf_regularizationDate:   'date of regularization',
   sf_govtEntry:            'DATE OF ENTRY IN GOVT- SERVICE',
   sf_firstPosting:         'FIRST PLACE OF POSTING',
   sf_presentSchoolPosting: 'DATE OF POSTING IN PRESENT SCHOOL',
