@@ -18,38 +18,38 @@ const PUB_MASTER_COUNT = 9;
 
 // Editable field definitions J → AO
 const PUB_EDITABLE_FIELDS = [
-  { header: 'Physical Address of School',                                                                                              id: 'pub_PA' },
-  { header: 'Latitude (Number Only)',                                                                                                   id: 'pub_Lat',         type: 'number' },
-  { header: 'Longitude (Number Only)',                                                                                                  id: 'pub_Long',        type: 'number' },
-  { header: 'Uc Name',                                                                                                                  id: 'pub_UCName' },
-  { header: 'Uc No. (Number Only)',                                                                                                     id: 'pub_UCNo',        type: 'number' },
-  { header: 'Na (Number Only)',                                                                                                         id: 'pub_NA',          type: 'number' },
-  { header: 'Pp (Number Only)',                                                                                                         id: 'pub_PP',          type: 'number' },
-  { header: 'Kanal (Number Only)',                                                                                                      id: 'pub_Kanal',       type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'Marlas (Number Only)',                                                                                                     id: 'pub_Marla',       type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'Sarsai (Number Only)',                                                                                                     id: 'pub_Sarsai',      type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'Total Area Square Feet (Auto Calculated by converting Kanal to Square Feets,marlas To square feet and sarsar and adding them togather', id: 'pub_TotalArea', readonly: true },
-  { header: 'Total Covered Area Square Feet (Number Only)',                                                                             id: 'pub_Covered',     type: 'number',  oninput: 'calcPubUncovered()' },
-  { header: 'Total Uncovered Area Square Feet (Number Only) Auto Calculated',                                                           id: 'pub_Uncovered',   readonly: true },
-  { header: 'Total rooms (Number Only)',                                                                                                id: 'pub_Rooms',       type: 'number',  oninput: 'calcPubRooms()' },
-  { header: 'Used For Teaching (Number Only)',                                                                                          id: 'pub_Teaching',    type: 'number',  oninput: 'calcPubRooms()' },
-  { header: 'Non Teaching Activities (Number Only)',                                                                                    id: 'pub_NonTeaching', readonly: true },
-  { header: 'Total Washrooms (Number Only)',                                                                                            id: 'pub_Washrooms',   type: 'number' },
-  { header: 'Electricity Source Wapda,Solar Both, Check boxes',                                                                        id: 'pub_Elect',       type: 'select',  options: ['Wapda', 'Solar', 'Both'] },
-  { header: 'Boundary Wall Complete/Partial Casade tow options Complete,Partial',                                                      id: 'pub_BWStatus',    type: 'select',  options: ['Complete', 'Partial'], onchange: 'handlePubBW()' },
-  { header: 'Required Boundary Wall (Number Only)',                                                                                    id: 'pub_BWFeet',      type: 'number',  hidden: true },
-  { header: 'Total Furniture (Write no of students for which available) (Number Only)',                                                 id: 'pub_Furniture',   type: 'number' },
-  { header: 'Total Enrollment (Number Only)',                                                                                           id: 'pub_Enroll',      type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'School Category Auto Calculated on Front End',                                                                            id: 'pub_Category',    readonly: true },
-  { header: 'Grade 16 Sanctioned Seats (Number Only)',                                                                                 id: 'pub_G16',         type: 'number' },
-  { header: 'Grade 15 Sancitoned Seats (Number Only)',                                                                                 id: 'pub_G15',         type: 'number' },
-  { header: 'Grade 14 Sanctioned Seats (Number Only)',                                                                                 id: 'pub_G14',         type: 'number' },
-  { header: 'Grade 1-12 All Non Teaching Sanctioned Seats (Number Only)',                                                              id: 'pub_GNon',        type: 'number' },
-  { header: 'Bank Name',                                                                                                               id: 'pub_Bank' },
-  { header: 'Address',                                                                                                                 id: 'pub_BankAddr' },
-  { header: 'Branch Code',                                                                                                             id: 'pub_Branch' },
-  { header: 'IBAN NO.',                                                                                                                id: 'pub_IBAN' },
-  { header: 'Status (Active/Out Sourced)',                                                                                             id: 'pub_Status',      type: 'select',  options: ['Active', 'Out Sourced'] }
+  { header: 'Physical Address of School',            id: 'pub_PA' },
+  { header: 'Latitude',            hint: 'Latitude (Number Only)',                                                                        id: 'pub_Lat',         type: 'number' },
+  { header: 'Longitude',           hint: 'Longitude (Number Only)',                                                                        id: 'pub_Long',        type: 'number' },
+  { header: 'Uc Name',                                                                                                                     id: 'pub_UCName' },
+  { header: 'Uc No.',              hint: 'Uc No. (Number Only)',                                                                           id: 'pub_UCNo',        type: 'number' },
+  { header: 'Na',                  hint: 'Na (Number Only)',                                                                               id: 'pub_NA',          type: 'number' },
+  { header: 'Pp',                  hint: 'Pp (Number Only)',                                                                               id: 'pub_PP',          type: 'number' },
+  { header: 'Kanal',               hint: 'Kanal (Number Only)',                                                                            id: 'pub_Kanal',       type: 'number',  oninput: 'calcPubLand()' },
+  { header: 'Marlas',              hint: 'Marlas (Number Only)',                                                                           id: 'pub_Marla',       type: 'number',  oninput: 'calcPubLand()' },
+  { header: 'Sarsai',              hint: 'Sarsai (Number Only)',                                                                           id: 'pub_Sarsai',      type: 'number',  oninput: 'calcPubLand()' },
+  { header: 'Total Area Square Feet', hint: 'Total Area Square Feet (Auto Calculated by converting Kanal to Square Feets, marlas To square feet and sarsai and adding them together)', id: 'pub_TotalArea', readonly: true },
+  { header: 'Total Covered Area Square Feet', hint: 'Total Covered Area Square Feet (Number Only)',                                        id: 'pub_Covered',     type: 'number',  oninput: 'calcPubUncovered()' },
+  { header: 'Total Uncovered Area Square Feet', hint: 'Total Uncovered Area Square Feet (Number Only) Auto Calculated',                    id: 'pub_Uncovered',   readonly: true },
+  { header: 'Total rooms',         hint: 'Total rooms (Number Only)',                                                                      id: 'pub_Rooms',       type: 'number',  oninput: 'calcPubRooms()' },
+  { header: 'Used For Teaching',   hint: 'Used For Teaching (Number Only)',                                                                id: 'pub_Teaching',    type: 'number',  oninput: 'calcPubRooms()' },
+  { header: 'Non Teaching Activities', hint: 'Non Teaching Activities (Number Only)',                                                      id: 'pub_NonTeaching', readonly: true },
+  { header: 'Total Washrooms',     hint: 'Total Washrooms (Number Only)',                                                                  id: 'pub_Washrooms',   type: 'number' },
+  { header: 'Electricity Source',  hint: 'Electricity Source (Wapda, Solar, Both)',                                                        id: 'pub_Elect',       type: 'select',  options: ['Wapda', 'Solar', 'Both'] },
+  { header: 'Boundary Wall',       hint: 'Boundary Wall (Complete/Partial)',                                                               id: 'pub_BWStatus',    type: 'select',  options: ['Complete', 'Partial'], onchange: 'handlePubBW()' },
+  { header: 'Required Boundary Wall', hint: 'Required Boundary Wall (Number Only) — only applies if Partial',                              id: 'pub_BWFeet',      type: 'number',  hidden: true },
+  { header: 'Total Furniture',     hint: 'Total Furniture (Write no of students for which available) (Number Only)',                       id: 'pub_Furniture',   type: 'number' },
+  { header: 'Total Enrollment',    hint: 'Total Enrollment (Number Only)',                                                                 id: 'pub_Enroll',      type: 'number',  oninput: 'calcPubLand()' },
+  { header: 'School Category',     hint: 'School Category (Auto Calculated on Front End)',                                                 id: 'pub_Category',    readonly: true },
+  { header: 'Grade16',             hint: 'Grade 16 Sanctioned Seats (Number Only)',                                                        id: 'pub_G16',         type: 'number' },
+  { header: 'Grade15',             hint: 'Grade 15 Sanctioned Seats (Number Only)',                                                        id: 'pub_G15',         type: 'number' },
+  { header: 'Grade14',             hint: 'Grade 14 Sanctioned Seats (Number Only)',                                                        id: 'pub_G14',         type: 'number' },
+  { header: 'Grade1-12 Non Teaching', hint: 'Grade 1-12 All Non Teaching Sanctioned Seats (Number Only)',                                  id: 'pub_GNon',        type: 'number' },
+  { header: 'Bank Name',                                                                                                                   id: 'pub_Bank' },
+  { header: 'Address',                                                                                                                     id: 'pub_BankAddr' },
+  { header: 'Branch Code',                                                                                                                 id: 'pub_Branch' },
+  { header: 'IBAN NO.',                                                                                                                    id: 'pub_IBAN' },
+  { header: 'Status',              hint: 'Status (Active/Out Sourced)',                                                                    id: 'pub_Status',      type: 'select',  options: ['Active', 'Out Sourced'] }
 ];
 
 // Header key tracking for cascade filters
@@ -380,7 +380,7 @@ function buildPublicForm() {
 
     eGrid.innerHTML +=
       `<div class="ff${f.readonly ? ' ff-locked' : ''}" id="wrap_${f.id}" ${f.hidden ? 'style="display:none"' : ''}>
-         <span class="flabel" title="${f.header}">${f.header}</span>
+         <span class="flabel" title="${f.hint || f.header}">${f.hint || f.header}</span>
          ${input}
          <div class="field-error">Invalid value</div>
        </div>`;
