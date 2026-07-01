@@ -70,6 +70,7 @@ const USER_COL_MAP = {
   scope_type:   'Scope Type',
   scope_value:  'Scope Value',
   access_type:  'Access Type',
+  email:        'Email',
 };
 
 // Public school: Supabase column → display header
@@ -831,7 +832,17 @@ async function apiCall(action, payload) {
           scope_type:  dbRow.scope_type,
           scope_value: dbRow.scope_value,
           access_type: dbRow.access_type,
+          email:       dbRow.email,
         });
+        // Fallback: if the Edge Function doesn't (yet) persist the email
+        // column itself, write it directly here as the admin — this only
+        // runs if creation succeeded and gives us a new user id back.
+        if (result && result.success && dbRow.email) {
+          const newId = result.userId || result.id || (result.user && result.user.id);
+          if (newId) {
+            await _sb.from('app_users').update({ email: dbRow.email }).eq('id', newId);
+          }
+        }
         return result;
       }
     }
