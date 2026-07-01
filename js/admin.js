@@ -246,6 +246,33 @@ function renderScopeValueUI(existingValue) {
     `;
   }
 
+  // Helper: build a THREE-select paired tag input — used by Tehsil
+  // scope type. District narrows the Tehsil list; only Tehsil+Wing end
+  // up in the stored value (District is just for filtering the pick).
+  function buildDistrictFilteredTehsilInput(districts, wings) {
+    return `
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <select id="scope_tehsil_district" onchange="filterScopeTehsilOptions()" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+          <option value="">— Pick District —</option>
+          ${districts.map(v => `<option value="${v}">${v}</option>`).join('')}
+        </select>
+        <select id="scope_pair_primary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+          <option value="">— Pick District first —</option>
+        </select>
+        <select id="scope_pair_secondary" style="flex:1;height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem">
+          <option value="">— Pick Wing —</option>
+          ${wings.map(v => `<option value="${v}">${v}</option>`).join('')}
+        </select>
+        <button type="button" onclick="addScopePairTag()"
+          style="height:38px;padding:0 14px;background:var(--brand);color:#fff;border:none;border-radius:6px;font-size:.82rem;cursor:pointer">
+          <i class="bi bi-plus-lg"></i> Add
+        </button>
+      </div>
+      <div id="scope_tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
+      <input type="hidden" id="scope_value_hidden">
+    `;
+  }
+
   // Helper: build a TWO-select paired tag input — used by Wing / Tehsil
   // scope types, which now store "Primary:Secondary" pairs (e.g.
   // "Layyah:M-EE" for Wing scope, "Kot Addu:W-EE" for Tehsil scope).
@@ -280,11 +307,12 @@ function renderScopeValueUI(existingValue) {
     }
 
   } else if (type === 'Tehsil') {
-    // Paired: Tehsil + Wing — admin picks both per tag.
-    // System-wide tehsil list (not narrowed to primary district), since
-    // a Tehsil-charge can be granted in any wing, anywhere in the system.
+    // Cascading: District (picked first) → Tehsil (filtered to that
+    // district) → Wing. Only Tehsil+Wing are stored ("Tehsil:Wing"),
+    // District is just there to narrow the pick since tehsil names can
+    // repeat across districts.
     const wings = ['M-EE', 'W-EE', 'SE'];
-    area.innerHTML = buildPairTagInput(jDropdowns.tehsils, wings, 'Tehsil', 'Wing');
+    area.innerHTML = buildDistrictFilteredTehsilInput(jDropdowns.districts, wings);
     if (existingValue) {
       existingValue.split(',').map(s => s.trim()).filter(Boolean).forEach(pair => {
         const parts = pair.split(':').map(p => p.trim());
@@ -441,6 +469,27 @@ function _addScopePairTag(rawValue, displayLabel) {
   tags.appendChild(d);
   updateScopeValue();
 }
+
+// Narrows #scope_pair_primary (Tehsil) to the tehsils that belong to
+// the district picked in #scope_tehsil_district — used only by the
+// Tehsil scope-charge picker.
+window.filterScopeTehsilOptions = function() {
+  const districtEl = document.getElementById('scope_tehsil_district');
+  const tehsilEl   = document.getElementById('scope_pair_primary');
+  if (!districtEl || !tehsilEl || !jDropdowns || !jDropdowns.jMap) return;
+
+  const selDistrict = districtEl.value;
+  if (!selDistrict) {
+    tehsilEl.innerHTML = '<option value="">— Pick District first —</option>';
+    return;
+  }
+  const tehsils = [...new Set(
+    jDropdowns.jMap.filter(i => i.district === selDistrict).map(i => i.tehsil)
+  )].sort();
+
+  tehsilEl.innerHTML = '<option value="">— Pick Tehsil —</option>' +
+    tehsils.map(t => `<option value="${t}">${t}</option>`).join('');
+};
 
 window.addScopePairTag = function() {
   const primaryEl   = document.getElementById('scope_pair_primary');
