@@ -782,6 +782,8 @@ function openHrMenu(btn, idx) {
   let items = `<button type="button" class="hr-action-item" onclick="openStaffFormModal('view', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">👁 View Details</button>`;
 
   if (isStaff) {
+    const isAdminUser = typeof currentUser !== 'undefined' && currentUser &&
+      String(currentUser.role || '').toLowerCase() === 'admin';
     items += `
       <button type="button" class="hr-action-item" onclick="openStaffFormModal('edit', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✏️ Edit Record</button>
       <button type="button" class="hr-action-item" onclick="openTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Transfer</button>
@@ -790,7 +792,7 @@ function openHrMenu(btn, idx) {
       <button type="button" class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>
       <button type="button" class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
       <button type="button" class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
-      <button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>`;
+      ${isAdminUser ? `<button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>` : ''}`;
   } else if (isRevert) {
     const revertLabel = hrCurrentSheetView === 'Transfer_History'  ? '↩ Undo Transfer'
                       : hrCurrentSheetView === 'Promotions_History' ? '↩ Undo Promotion'
