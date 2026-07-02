@@ -241,6 +241,52 @@ async function _checkedDelete(table, matchCol, matchVal) {
   return { ok: true, data };
 }
 
+/**
+ * Form inputs send '' for any field the user left blank — including
+ * numeric and date columns. Postgres rejects an empty string for those
+ * column types ("invalid input syntax for type integer/numeric/date"),
+ * so every empty string needs to become a real null before it reaches
+ * the database. Text columns are fine either way, so this is safe to
+ * apply blanket across an entire row.
+ */
+function _sanitizeEmpty(dbRow) {
+  const out = { ...dbRow };
+  for (const k of Object.keys(out)) {
+    if (out[k] === '') out[k] = null;
+  }
+  return out;
+}
+
+// Columns that are numeric/integer in the database. HTML number inputs
+// still submit plain strings, and Postgres will throw "invalid input
+// syntax for type integer/numeric" if it receives anything that isn't
+// a clean number (including a lone '-' or stray text). Coerce these to
+// real numbers (or null) before they ever reach Supabase, instead of
+// trusting the raw string.
+const _NUMERIC_COLUMNS = new Set([
+  // public_schools
+  'latitude', 'longitude', 'uc_no', 'na_no', 'pp_no', 'kanal', 'marlas', 'sarsai',
+  'total_area_sqft', 'total_covered_area_sqft', 'total_uncovered_area_sqft',
+  'total_rooms', 'used_for_teaching', 'non_teaching_activities', 'total_washrooms',
+  'required_boundary_wall', 'total_furniture', 'total_enrollment',
+  'grade16_sanctioned', 'grade15_sanctioned', 'grade14_sanctioned', 'grade1_12_nonteaching_sanctioned',
+  // private_schools
+  'latitude', 'longitude', 'total_rooms', 'total_teaching_staff', 'total_non_teaching_staff',
+  'total_enrollment', 'entry_gates', 'operational_gates', 'cctv_cameras', 'security_guards',
+  'boundary_wall_height_ft', 'nearby_key_installations',
+]);
+
+function _coerceNumericColumns(dbRow) {
+  const out = { ...dbRow };
+  for (const k of Object.keys(out)) {
+    if (!_NUMERIC_COLUMNS.has(k)) continue;
+    if (out[k] === null || out[k] === undefined || out[k] === '') { out[k] = null; continue; }
+    const n = Number(out[k]);
+    out[k] = Number.isFinite(n) ? n : null;
+  }
+  return out;
+}
+
 // =====================================================================
 //  MAIN API DISPATCHER
 // =====================================================================
@@ -324,17 +370,21 @@ async function apiCall(action, payload) {
 
     // ── DASHBOARD KPIs ─────────────────────────────────────────────────
     case 'getSummaryCounts': {
-      const [pub, priv] = await Promise.all([
-        _fetchAllRows('public_schools', 'status'),
-        _fetchAllRows('private_schools', 'status'),
-      ]);
-      return {
-        success:        true,
-        publicCount:    pub.filter(r => r.status === 'Active').length,
-        outsourcedCount:pub.filter(r => r.status === 'Out Sourced').length,
-        privateCount:   priv.filter(r => r.status === 'Active').length,
-        inactiveCount:  priv.filter(r => r.status === 'Inactive').length,
-      };
+      try {
+        const [pub, priv] = await Promise.all([
+          _fetchAllRows('public_schools', 'status'),
+          _fetchAllRows('private_schools', 'status'),
+        ]);
+        return {
+          success:        true,
+          publicCount:    pub.filter(r => r.status === 'Active').length,
+          outsourcedCount:pub.filter(r => r.status === 'Out Sourced').length,
+          privateCount:   priv.filter(r => r.status === 'Active').length,
+          inactiveCount:  priv.filter(r => r.status === 'Inactive').length,
+        };
+      } catch (e) {
+        return { success: false, message: e && e.message ? e.message : 'Failed to load summary counts.' };
+      }
     }
 
     case 'getKpiCards': {
@@ -393,16 +443,25 @@ async function apiCall(action, payload) {
     // ── SCHOOL HIERARCHY (dropdown cascade) ───────────────────────────
     case 'getSchoolHierarchy':
     case 'getSchoolHierarchyForUser': {
-      const data = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, emis',
-        q => q.order('district').order('wing').order('tehsil').order('markaz'));
-      // Shape: [{d, w, t, m, e}] — exactly what core.js schoolCache expects
-      return (data || []).map(r => ({
-        d: r.district,
-        w: r.wing,
-        t: r.tehsil,
-        m: r.markaz,
-        e: r.emis,
-      }));
+      try {
+        const data = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, emis',
+          q => q.order('district').order('wing').order('tehsil').order('markaz'));
+        // Shape: [{d, w, t, m, e}] — exactly what core.js schoolCache expects
+        return (data || []).map(r => ({
+          d: r.district,
+          w: r.wing,
+          t: r.tehsil,
+          m: r.markaz,
+          e: r.emis,
+        }));
+      } catch (e) {
+        // Surface a clear, specific message instead of letting a raw
+        // Postgres/RLS error string reach the UI unexplained. This is
+        // most commonly caused by a malformed scope_value/tehsil/district
+        // on this specific user's app_users profile — check that row if
+        // this keeps happening for one particular user only.
+        throw new Error('Could not load the school list (possibly a jurisdiction/scope configuration issue on this user\u2019s profile): ' + (e && e.message ? e.message : 'Unknown error'));
+      }
     }
 
     // ── STAFF (HR) ────────────────────────────────────────────────────
@@ -509,7 +568,7 @@ async function apiCall(action, payload) {
       const pno = p['PERSONAL NO.'] || p.personal_no;
       const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
 
-      const r = await _checkedUpdate('staff', {
+      const r = await _checkedUpdate('staff', _sanitizeEmpty({
         school_emis_code:              p.to_emis              || p['To EMIS'] || '',
         markaz_name:                   p.to_markaz            || p['To Markaz'] || '',
         tehsil:                        p.to_tehsil            || p['To Tehsil'] || '',
@@ -519,7 +578,7 @@ async function apiCall(action, payload) {
         status:                        'active',
         changes_made_by:               user?.name || '',
         changes_made_at:               new Date().toISOString(),
-      }, 'personal_no', pno);
+      }), 'personal_no', pno);
       if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
@@ -545,13 +604,13 @@ async function apiCall(action, payload) {
       const pno = p['PERSONAL NO.'] || p.personal_no;
       const { data: s } = await _sb.from('staff').select('name_of_teacher, designation, bps').eq('personal_no', pno).single();
 
-      const r = await _checkedUpdate('staff', {
+      const r = await _checkedUpdate('staff', _sanitizeEmpty({
         designation:                  p.new_designation || p['New Designation'] || '',
         bps:                          p.new_bps         || p['New BPS'] || '',
         date_of_joining_present_scale:p.effective_date  || '',
         changes_made_by:              user?.name || '',
         changes_made_at:              new Date().toISOString(),
-      }, 'personal_no', pno);
+      }), 'personal_no', pno);
       if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
@@ -608,7 +667,7 @@ async function apiCall(action, payload) {
 
     case 'revertToActiveStaff': {
       const p = Array.isArray(payload) ? payload[0] : payload;
-      const pno = p['PERSONAL NO.'] || p.personal_no;
+      const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
       const { data: s } = await _sb.from('staff').select('name_of_teacher, status').eq('personal_no', pno).single();
 
       const r = await _checkedUpdate('staff', {
@@ -670,15 +729,33 @@ async function apiCall(action, payload) {
 
     case 'savePublicSchool': {
       const p = Array.isArray(payload) ? payload[0] : payload;
+      const isNew = !!p._isNew;
       const emis = p['Emis'] || p.emis;
+      if (!emis) return { success: false, message: 'Emis code is required.' };
       // Convert display keys back to db columns
       const reverseMap = Object.fromEntries(Object.entries(PUB_COL_MAP).map(([c,h])=>[h,c]));
-      const dbRow = {};
+      let dbRow = {};
       for (const [h, v] of Object.entries(p)) {
-        const col = reverseMap[h] || h;
-        dbRow[col] = v;
+        const col = reverseMap[h];
+        if (col) dbRow[col] = v;  // silently drop any key with no matching column
       }
+      dbRow = _sanitizeEmpty(dbRow);
+      dbRow = _coerceNumericColumns(dbRow);
       dbRow.updated_at = new Date().toISOString();
+
+      if (isNew) {
+        // Guard against accidentally overwriting an existing school if
+        // the Emis the admin typed already exists.
+        const { data: existing } = await _sb.from('public_schools').select('emis').eq('emis', emis).maybeSingle();
+        if (existing) {
+          return { success: false, message: `A school with Emis "${emis}" already exists. Use Edit instead, or check the Emis code.` };
+        }
+        dbRow.status = dbRow.status || 'Active';
+        const { error } = await _sb.from('public_schools').insert([dbRow]);
+        if (error) return { success: false, message: error.message };
+        return { success: true, message: 'School added.' };
+      }
+
       delete dbRow.emis;  // don't overwrite PK
       const r = await _checkedUpdate('public_schools', dbRow, 'emis', emis);
       if (!r.ok) return { success: false, message: r.message };
@@ -736,11 +813,13 @@ async function apiCall(action, payload) {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const uid = p['Unique ID'] || p.unique_id;
       const reverseMap = Object.fromEntries(Object.entries(PRIV_COL_MAP).map(([c,h])=>[h,c]));
-      const dbRow = {};
+      let dbRow = {};
       for (const [h, v] of Object.entries(p)) {
-        const col = reverseMap[h] || h;
-        dbRow[col] = v;
+        const col = reverseMap[h];
+        if (col) dbRow[col] = v;  // silently drop any key with no matching column
       }
+      dbRow = _sanitizeEmpty(dbRow);
+      dbRow = _coerceNumericColumns(dbRow);
       dbRow.updated_at = new Date().toISOString();
       if (uid) {
         delete dbRow.unique_id;
