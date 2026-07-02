@@ -476,7 +476,11 @@ function _ensureAllSchoolCache(callback) {
       hrAllSchoolCache = data || [];
       callback();
     })
-    .withFailureHandler(err => hrShowToast('Error loading school data: ' + err.message, false))
+    .withFailureHandler(err => {
+      hrShowToast('Error loading school data: ' + err.message, false);
+      hrAllSchoolCache = hrAllSchoolCache || [];
+      callback();  // still resolve the caller so it doesn't hang waiting forever
+    })
     .getSchoolHierarchy();
 }
 
@@ -908,7 +912,7 @@ function _sfmFillForm(row) {
     const el  = document.getElementById(id);
     const key = SF_MAP[id];
     if (!el) return;
-    let val = row[key] !== undefined ? row[key].toString() : '';
+    let val = (row[key] !== undefined && row[key] !== null) ? row[key].toString() : '';
     if (el.type === 'date' && val) {
       const cv = _toDateInput(val);
       if (cv) val = cv;
