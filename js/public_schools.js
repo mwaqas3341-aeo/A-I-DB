@@ -1,235 +1,243 @@
-// ── Public module JS ──
+// ── Private module JS ──
 // ══════════════════════════════════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════════════════════════════════
-let pubHeaders        = [];
-let pubData           = [];
-let currentPubSheet   = '';
-let pubFilteredCache  = [];
-let pubModal;
-let pubDataLoaded     = false;
+let privHeaders          = [];
+let privData             = [];
+let privFilteredCache    = [];
+let currentPrivSheet     = '';
+let privDataLoaded       = false;
+let privModal;
+let nameCheckModalInstance;
 
 // Pagination state
-let pubPageSize       = 50;
-let pubCurrentPage    = 1;
+let privPageSize         = 50;
+let privCurrentPage      = 1;
 
-// Master (read-only) column count A-I
-const PUB_MASTER_COUNT = 9;
+// ★ NEW: Store filtered school hierarchy for dropdowns
+let privSchoolHierarchy = [];
 
-// Editable field definitions J → AO
-const PUB_EDITABLE_FIELDS = [
-  { header: 'Physical Address of School',            id: 'pub_PA' },
-  { header: 'Latitude',            hint: 'Latitude (Number Only)',                                                                        id: 'pub_Lat',         type: 'number' },
-  { header: 'Longitude',           hint: 'Longitude (Number Only)',                                                                        id: 'pub_Long',        type: 'number' },
-  { header: 'Uc Name',                                                                                                                     id: 'pub_UCName' },
-  { header: 'Uc No.',              hint: 'Uc No. (Number Only)',                                                                           id: 'pub_UCNo',        type: 'number' },
-  { header: 'Na',                  hint: 'Na (Number Only)',                                                                               id: 'pub_NA',          type: 'number' },
-  { header: 'Pp',                  hint: 'Pp (Number Only)',                                                                               id: 'pub_PP',          type: 'number' },
-  { header: 'Kanal',               hint: 'Kanal (Number Only)',                                                                            id: 'pub_Kanal',       type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'Marlas',              hint: 'Marlas (Number Only)',                                                                           id: 'pub_Marla',       type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'Sarsai',              hint: 'Sarsai (Number Only)',                                                                           id: 'pub_Sarsai',      type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'Total Area Square Feet', hint: 'Total Area Square Feet (Auto Calculated by converting Kanal to Square Feets, marlas To square feet and sarsai and adding them together)', id: 'pub_TotalArea', readonly: true },
-  { header: 'Total Covered Area Square Feet', hint: 'Total Covered Area Square Feet (Number Only)',                                        id: 'pub_Covered',     type: 'number',  oninput: 'calcPubUncovered()' },
-  { header: 'Total Uncovered Area Square Feet', hint: 'Total Uncovered Area Square Feet (Number Only) Auto Calculated',                    id: 'pub_Uncovered',   readonly: true },
-  { header: 'Total rooms',         hint: 'Total rooms (Number Only)',                                                                      id: 'pub_Rooms',       type: 'number',  oninput: 'calcPubRooms()' },
-  { header: 'Used For Teaching',   hint: 'Used For Teaching (Number Only)',                                                                id: 'pub_Teaching',    type: 'number',  oninput: 'calcPubRooms()' },
-  { header: 'Non Teaching Activities', hint: 'Non Teaching Activities (Number Only)',                                                      id: 'pub_NonTeaching', readonly: true },
-  { header: 'Total Washrooms',     hint: 'Total Washrooms (Number Only)',                                                                  id: 'pub_Washrooms',   type: 'number' },
-  { header: 'Electricity Source',  hint: 'Electricity Source (Wapda, Solar, Both)',                                                        id: 'pub_Elect',       type: 'select',  options: ['Wapda', 'Solar', 'Both'] },
-  { header: 'Boundary Wall',       hint: 'Boundary Wall (Complete/Partial)',                                                               id: 'pub_BWStatus',    type: 'select',  options: ['Complete', 'Partial'], onchange: 'handlePubBW()' },
-  { header: 'Required Boundary Wall', hint: 'Required Boundary Wall (Number Only) — only applies if Partial',                              id: 'pub_BWFeet',      type: 'number',  hidden: true },
-  { header: 'Total Furniture',     hint: 'Total Furniture (Write no of students for which available) (Number Only)',                       id: 'pub_Furniture',   type: 'number' },
-  { header: 'Total Enrollment',    hint: 'Total Enrollment (Number Only)',                                                                 id: 'pub_Enroll',      type: 'number',  oninput: 'calcPubLand()' },
-  { header: 'School Category',     hint: 'School Category (Auto Calculated on Front End)',                                                 id: 'pub_Category',    readonly: true },
-  { header: 'Grade16',             hint: 'Grade 16 Sanctioned Seats (Number Only)',                                                        id: 'pub_G16',         type: 'number' },
-  { header: 'Grade15',             hint: 'Grade 15 Sanctioned Seats (Number Only)',                                                        id: 'pub_G15',         type: 'number' },
-  { header: 'Grade14',             hint: 'Grade 14 Sanctioned Seats (Number Only)',                                                        id: 'pub_G14',         type: 'number' },
-  { header: 'Grade1-12 Non Teaching', hint: 'Grade 1-12 All Non Teaching Sanctioned Seats (Number Only)',                                  id: 'pub_GNon',        type: 'number' },
-  { header: 'Bank Name',                                                                                                                   id: 'pub_Bank' },
-  { header: 'Address',                                                                                                                     id: 'pub_BankAddr' },
-  { header: 'Branch Code',                                                                                                                 id: 'pub_Branch' },
-  { header: 'IBAN NO.',                                                                                                                    id: 'pub_IBAN' },
-  { header: 'Status',              hint: 'Status (Active/Out Sourced)',                                                                    id: 'pub_Status',      type: 'select',  options: ['Active', 'Out Sourced'] }
+// Header keys for cascade filters
+let privFHeaders = { district: '', tehsil: '', markaz: '', status: '', name: '', regNo: '' };
+
+// ═══════════════════════════════════════════════════════════════════
+//  FIELD CONFIG — Columns A to AK
+// ═══════════════════════════════════════════════════════════════════
+const PRIVATE_FIELD_CONFIG = [
+  { header: 'Unique ID',                                                                                    id: 'priv_uid',         readonly: true,  placeholder: 'Auto-generated' },
+  { header: 'District',                                                                                     id: 'priv_district',    readonly: true  },
+  { header: 'Tehsil',                                                                                      id: 'priv_tehsil',      readonly: true  },
+  { header: 'Markaz Name',                                                                                  id: 'priv_markaz',      readonly: true  },
+  { header: 'School Category',   hint: 'School Category (Private,Pef,Piema)',                               id: 'priv_cat',         type: 'select', options: ['Private', 'Pef', 'Piema'] },
+  { header: 'School Name',                                                                                  id: 'priv_name',        wide: true },
+  { header: 'Registeration Status', hint: 'Registeration Status (Registered/Non Registered/Expired)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
+  { header: 'Registeration No',  hint: 'Registeration No in Case of registered (EMIS Code)',                id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
+  { header: 'Date of Expiry of Registeration', hint: 'Date of Expiry of Registeration',                     id: 'priv_reg_exp',     type: 'date'   },
+  { header: 'Level',             hint: 'Level (Primary,Middle,High,Higher Secondary)',                      id: 'priv_level',       type: 'select', options: ['Primary', 'Middle', 'High', 'Higher Secondary'] },
+  { header: 'School Gender',                                                                               id: 'priv_gender',      type: 'select', options: ['Male', 'Female', 'Both'] },
+  { header: 'School Physical Address',                                                                      id: 'priv_addr'        },
+  { header: 'Zebra Crossing',                                                                              id: 'priv_zebra',       type: 'select', options: ['Painted', 'Not Needed', 'Needed But not Painted'] },
+  { header: 'Longitude',                                                                                   id: 'priv_long',        type: 'number' },
+  { header: 'Latitude',                                                                                    id: 'priv_lat',         type: 'number' },
+  { header: 'Owner name',                                                                                  id: 'priv_noval'       },
+  { header: 'Owner CNIC',                                                                                  id: 'priv_own_cnic',    type: 'number', placeholder: '13 digits', onblur: 'validateCNIC(this)' },
+  { header: 'Owner Cell No',                                                                               id: 'priv_own_cell',    type: 'number', placeholder: '11 digits' },
+  { header: 'Principal Name',                                                                              id: 'priv_prin_name'   },
+  { header: 'Principal CNIC',                                                                             id: 'priv_prin_cnic',   type: 'number', placeholder: '13 digits', onblur: 'validateCNIC(this)' },
+  { header: 'Principal Cell No',                                                                          id: 'priv_prin_cell',   type: 'number' },
+  { header: 'Building Certificate Expirey',                                                               id: 'priv_bldg_exp',    type: 'date'   },
+  { header: 'Health and hygiene Certificate Expirey', hint: 'Health and hygiene Certificate Expirey',      id: 'priv_health_exp',  type: 'date'   },
+  { header: 'Total Rooms',                                                                                id: 'priv_rooms',       type: 'number' },
+  { header: 'Total Teaching Staff',                                                                       id: 'priv_teach_staff', type: 'number' },
+  { header: 'Total Non Teaching Staff',                                                                   id: 'priv_non_teach',   type: 'number' },
+  { header: 'Total Enrolment',                                                                            id: 'priv_enrol',       type: 'number', oninput: 'calcPrivCategory()' },
+  { header: 'Security Category',                                                                          id: 'priv_sec_cat',     readonly: true },
+  { header: 'Entry Gates',       hint: 'Entry Gates (No.)',                                                id: 'priv_gates',       type: 'number' },
+  { header: 'Operational Gates', hint: 'Operational Gates (No.)',                                          id: 'priv_op_gates',    type: 'number' },
+  { header: 'CCTV Cameras',      hint: 'CCTV Cameras (No.)',                                               id: 'priv_cctv',        type: 'number' },
+  { header: 'Security Guards',   hint: 'Security Guards (No.)',                                            id: 'priv_guards',      type: 'number' },
+  { header: 'Height of boundary walls', hint: 'Height of boundary walls (ft)',                             id: 'priv_wall_h',      type: 'number' },
+  { header: 'Barbed wires',      hint: 'Barbed wires on boundary walls (Yes/No)',                          id: 'priv_barbed',      type: 'select', options: ['Yes', 'No'] },
+  { header: 'Fire fighting system', hint: 'Fire fighting system (Yes/No)',                                 id: 'priv_fire',        type: 'select', options: ['Yes', 'No'] },
+  { header: 'Nearby key installations', hint: 'Nearby key installations (No.)',                            id: 'priv_ki_no',       type: 'number', oninput: 'generateKICascades()' },
+  { header: 'Name of Key Installation',                                                                   id: 'priv_ki_names',    hidden: true   },
+  { header: 'Gate facing KI',    hint: 'Gate facing KI, if any (Yes/No)',                                  id: 'priv_ki_gate',     type: 'select', options: ['Yes', 'No'] },
+  { header: 'Status',                                                                                     id: 'priv_status',      type: 'select', options: ['Active', 'Inactive'] }
 ];
-
-// Header key tracking for cascade filters
-let pubFHeaders = { district: '', tehsil: '', wing: '', markaz: '', emis: '' };
-
-// ── NEW: Store filtered school hierarchy for dropdowns ──────────────
-let pubSchoolHierarchy = [];
 
 // ══════════════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
-  pubModal = new bootstrap.Modal(document.getElementById('publicSchoolModal'));
+  privModal              = new bootstrap.Modal(document.getElementById('privateSchoolModal'));
+  nameCheckModalInstance = new bootstrap.Modal(document.getElementById('nameCheckModal'));
   // Page size dropdown
-  document.getElementById('pubPageSize').addEventListener('change', function() {
-    pubPageSize = parseInt(this.value);
-    pubCurrentPage = 1;
-    applyPubFilters();
+  document.getElementById('privPageSize').addEventListener('change', function() {
+    privPageSize = parseInt(this.value);
+    privCurrentPage = 1;
+    applyPrivFilters();
   });
 });
 
 // ══════════════════════════════════════════════════════════════════════
 //  OPEN MODULE
-//  sheetName: 'Public'  → Active schools
-//             'Out Sourced School' → Outsourced schools
+//  sheetName: 'Private'  → Private
+//             'Inactive' → Inactive
 // ══════════════════════════════════════════════════════════════════════
-function openPublicModule(sheetName) {
-  currentPubSheet   = sheetName;
-  pubDataLoaded     = false;
-  pubData           = [];
-  pubHeaders        = [];
-  pubFilteredCache  = [];
-  pubSchoolHierarchy = [];
+function openPrivateModule(sheetName) {
+  try {
+    currentPrivSheet = sheetName;
+    privDataLoaded   = false;
+    privData         = [];
+    privHeaders      = [];
+    privFilteredCache = [];
+    privSchoolHierarchy = [];
 
-  document.getElementById('pubCurrentSheet').textContent = sheetName;
-  document.getElementById('pubRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
+    document.getElementById('privCurrentSheet').textContent = sheetName;
+    document.getElementById('privRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
 
-  // ★ HIDE THE ADD SCHOOL BUTTON ALWAYS (removed from public module)
-  document.getElementById('btnPubAdd').style.display = 'none';
+    // Hide Add button for Inactive sheet
+    document.getElementById('btnPrivAdd').style.display =
+      (sheetName === 'Inactive') ? 'none' : 'flex';
 
-  if (typeof switchGlobalTab === 'function') switchGlobalTab('publicDataView', null);
+    if (typeof switchGlobalTab === 'function') switchGlobalTab('privateDataView', null);
 
-  _pubShowEmptyState('Loading data…', true);
+    // Reset to empty state
+    _privShowEmptyState('Loading data…', true);
 
-  ['pubFltDistrict','pubFltTehsil','pubFltWing','pubFltMarkaz','pubFltEmis','pubSearchInput']
-    .forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.tagName === 'SELECT' ? (el.innerHTML = '<option value="">All</option>') : (el.value = '');
-    });
+    // Reset filter dropdowns
+    ['privFltDistrict','privFltTehsil','privFltMarkaz','privFltStatus','privFltSearch','privSearchInput']
+      .forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.tagName === 'SELECT') {
+          if (id === 'privFltStatus') { el.value = ''; return; }
+          el.innerHTML = '<option value="">All</option>';
+        } else {
+          el.value = '';
+        }
+      });
 
-  // Step 1: Load filtered school hierarchy for dropdowns
-  google.script.run
-    .withSuccessHandler(function(schools) {
-      pubSchoolHierarchy = schools || [];
-      // Step 2: Load the actual data rows
-      google.script.run
-        .withSuccessHandler(res => {
-          if (!res || !res.success) {
-            _pubShowEmptyState('Error loading data. Please try again.', false);
-            return;
-          }
-          pubHeaders       = res.headers;
-          pubData          = res.data;
-          pubDataLoaded    = true;
+    const activeUser = (typeof currentUser !== 'undefined') ? currentUser : null;
 
-          setupPubFilterHeaders();
-          // Populate dropdowns from schoolHierarchy (not from pubData)
-          populatePubFiltersFromHierarchy();
+    // ★ Step 1: Load filtered school hierarchy for dropdowns
+    google.script.run
+      .withSuccessHandler(function(schools) {
+        privSchoolHierarchy = schools || [];
+        // ★ Step 2: Load the actual data rows
+        google.script.run
+          .withSuccessHandler(res => {
+            if (!res || !res.success) {
+              _privShowEmptyState('Error loading data: ' + (res ? res.message : 'Unknown'), false);
+              return;
+            }
+            privHeaders   = res.headers;
+            privData      = res.data;
+            privDataLoaded = true;
 
-          buildPublicForm();
+            setupPrivFilterHeaders();
+            // ★ Populate dropdowns from schoolHierarchy (not from privData)
+            populatePrivFiltersFromHierarchy();
 
-          _pubShowEmptyState('Select your filters above and click Filter Data to load records.', false);
-          document.getElementById('pubRecordCount').innerHTML =
-            `<i class="bi bi-database"></i> ${pubData.length} Total`;
-        })
-        .withFailureHandler(err => {
-          _pubShowEmptyState('Server error: ' + err.message, false);
-        })
-        .getPublicDashboardData(currentUser, sheetName);
-    })
-    .withFailureHandler(err => {
-      _pubShowEmptyState('Error loading school hierarchy: ' + err.message, false);
-    })
-    .getSchoolHierarchyForUser(currentUser);
+            buildPrivateForm();
+
+            // Show "apply filter" prompt — do NOT render rows yet
+            _privShowEmptyState('Select your filters above and click Filter Data to load records.', false);
+            document.getElementById('privRecordCount').innerHTML =
+              `<i class="bi bi-database"></i> ${privData.length} Total`;
+          })
+          .withFailureHandler(err => {
+            _privShowEmptyState('Server error: ' + err.message, false);
+          })
+          .getPrivateDashboardData(activeUser, sheetName);
+      })
+      .withFailureHandler(err => {
+        _privShowEmptyState('Error loading school hierarchy: ' + err.message, false);
+      })
+      .getSchoolHierarchyForUser(activeUser);
+  } catch (e) {
+    alert('openPrivateModule crash: ' + e.message);
+  }
 }
 
-// Helper: toggle between empty-state div and table
-function _pubShowEmptyState(msg, isLoading) {
-  const empty = document.getElementById('pubEmptyState');
-  const wrap  = document.getElementById('pubTableWrap');
+// Toggle empty state vs table
+function _privShowEmptyState(msg, isLoading) {
+  const empty = document.getElementById('privEmptyState');
+  const wrap  = document.getElementById('privTableWrap');
   if (empty) {
     empty.style.display = 'block';
     empty.innerHTML = isLoading
-      ? `<span class="spinner-border spinner-border-sm"></span> <span style="margin-left:8px">${msg}</span>`
+      ? `<span class="spinner-border spinner-border-sm"></span><span style="margin-left:8px">${msg}</span>`
       : `<i class="bi bi-funnel"></i><p>${msg}</p>`;
   }
   if (wrap) wrap.style.display = 'none';
-  document.getElementById('pubTHead').innerHTML = '';
-  document.getElementById('pubTBody').innerHTML = '';
+  const th = document.getElementById('privTHead');
+  const tb = document.getElementById('privTBody');
+  if (th) th.innerHTML = '';
+  if (tb) tb.innerHTML = '';
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  FILTER HEADER MAPPING
+//  FILTER HEADER MAPPING & DROPDOWN POPULATION (NEW)
 // ══════════════════════════════════════════════════════════════════════
-function setupPubFilterHeaders() {
+function setupPrivFilterHeaders() {
   const findH = (keys) =>
-    pubHeaders.find(h => keys.some(k => String(h).toLowerCase().includes(k))) || '';
-  pubFHeaders.district = findH(['district', 'distr']);
-  pubFHeaders.tehsil   = findH(['tehsil']);
-  pubFHeaders.wing     = findH(['wing']);
-  pubFHeaders.markaz   = findH(['markaz name', 'markaz']);
-  pubFHeaders.emis     = findH(['emis', 'reg no']);
+    privHeaders.find(h => keys.some(k => String(h).toLowerCase().includes(k))) || '';
+  privFHeaders.district = findH(['district']);
+  privFHeaders.tehsil   = findH(['tehsil']);
+  privFHeaders.markaz   = findH(['markaz name', 'markaz']);
+  privFHeaders.status   = findH(['status']);
+  privFHeaders.name     = findH(['school name']);
+  privFHeaders.regNo    = findH(['emis code', 'reg no', 'registeration no']);
 }
 
-// ── NEW: Populate filters from schoolHierarchy ──────────────────────
-function populatePubFiltersFromHierarchy() {
-  const dists = [...new Set(pubSchoolHierarchy.map(s => s.d).filter(Boolean))].sort();
-  const wings = [...new Set(pubSchoolHierarchy.map(s => s.w).filter(Boolean))].sort();
-  const tehsils = [...new Set(pubSchoolHierarchy.map(s => s.t).filter(Boolean))].sort();
-  const markazs = [...new Set(pubSchoolHierarchy.map(s => s.m).filter(Boolean))].sort();
+// ★ NEW: Populate dropdowns from schoolHierarchy
+function populatePrivFiltersFromHierarchy() {
+  const dists = [...new Set(privSchoolHierarchy.map(s => s.d).filter(Boolean))].sort();
+  const tehsils = [...new Set(privSchoolHierarchy.map(s => s.t).filter(Boolean))].sort();
+  const markazs = [...new Set(privSchoolHierarchy.map(s => s.m).filter(Boolean))].sort();
 
   const popSelect = (id, items) => {
     const el = document.getElementById(id);
     if (!el) return;
     const cur = el.value;
     el.innerHTML = '<option value="">All</option>' +
-      items.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+      items.map(v => `<option value="${_privEsc(v)}">${_privEsc(v)}</option>`).join('');
     if (items.includes(cur)) el.value = cur;
   };
 
-  popSelect('pubFltDistrict', dists);
-  popSelect('pubFltWing', wings);
-  popSelect('pubFltTehsil', tehsils);
-  popSelect('pubFltMarkaz', markazs);
+  popSelect('privFltDistrict', dists);
+  popSelect('privFltTehsil', tehsils);
+  popSelect('privFltMarkaz', markazs);
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  CASCADE FILTER – uses schoolHierarchy (not pubData)
+//  CASCADE FILTER – uses schoolHierarchy (not privData)
 // ══════════════════════════════════════════════════════════════════════
-function updatePubCascades(trigger) {
-  const d = document.getElementById('pubFltDistrict').value;
-  const t = document.getElementById('pubFltTehsil').value;
-  const w = document.getElementById('pubFltWing').value;
+function updatePrivCascades(trigger) {
+  const d = document.getElementById('privFltDistrict').value;
+  const t = document.getElementById('privFltTehsil').value;
 
-  let filteredSchools = [...pubSchoolHierarchy];
+  let filtered = [...privSchoolHierarchy];
 
   if (trigger === 'District') {
-    if (d) filteredSchools = filteredSchools.filter(s => s.d === d);
-    const wings = [...new Set(filteredSchools.map(s => s.w).filter(Boolean))].sort();
-    const tehsils = [...new Set(filteredSchools.map(s => s.t).filter(Boolean))].sort();
-    const markazs = [...new Set(filteredSchools.map(s => s.m).filter(Boolean))].sort();
+    if (d) filtered = filtered.filter(s => s.d === d);
+    const tehsils = [...new Set(filtered.map(s => s.t).filter(Boolean))].sort();
+    const markazs = [...new Set(filtered.map(s => s.m).filter(Boolean))].sort();
 
-    popSelect('pubFltWing', wings);
-    document.getElementById('pubFltWing').value = '';
-    popSelect('pubFltTehsil', tehsils);
-    document.getElementById('pubFltTehsil').value = '';
-    popSelect('pubFltMarkaz', markazs);
-    document.getElementById('pubFltMarkaz').value = '';
+    popSelect('privFltTehsil', tehsils);
+    document.getElementById('privFltTehsil').value = '';
+    popSelect('privFltMarkaz', markazs);
+    document.getElementById('privFltMarkaz').value = '';
     return;
   }
 
-  if (d) filteredSchools = filteredSchools.filter(s => s.d === d);
+  if (d) filtered = filtered.filter(s => s.d === d);
   if (trigger === 'Tehsil') {
-    if (t) filteredSchools = filteredSchools.filter(s => s.t === t);
-    const wings = [...new Set(filteredSchools.map(s => s.w).filter(Boolean))].sort();
-    const markazs = [...new Set(filteredSchools.map(s => s.m).filter(Boolean))].sort();
-
-    popSelect('pubFltWing', wings);
-    document.getElementById('pubFltWing').value = '';
-    popSelect('pubFltMarkaz', markazs);
-    document.getElementById('pubFltMarkaz').value = '';
-    return;
-  }
-
-  if (t) filteredSchools = filteredSchools.filter(s => s.t === t);
-  if (trigger === 'Wing') {
-    if (w) filteredSchools = filteredSchools.filter(s => s.w === w);
-    const markazs = [...new Set(filteredSchools.map(s => s.m).filter(Boolean))].sort();
-    popSelect('pubFltMarkaz', markazs);
-    document.getElementById('pubFltMarkaz').value = '';
+    if (t) filtered = filtered.filter(s => s.t === t);
+    const markazs = [...new Set(filtered.map(s => s.m).filter(Boolean))].sort();
+    popSelect('privFltMarkaz', markazs);
+    document.getElementById('privFltMarkaz').value = '';
   }
 }
 
@@ -238,318 +246,376 @@ function popSelect(id, items) {
   if (!el) return;
   const cur = el.value;
   el.innerHTML = '<option value="">All</option>' +
-    items.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+    items.map(v => `<option value="${_privEsc(v)}">${_privEsc(v)}</option>`).join('');
   if (items.includes(cur)) el.value = cur;
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  APPLY FILTERS – uses pubData (filtered rows)
+//  APPLY FILTERS — only when user clicks "Filter Data"
 // ══════════════════════════════════════════════════════════════════════
-function applyPubFilters() {
-  if (!pubDataLoaded) {
+function applyPrivFilters() {
+  if (!privDataLoaded) {
     if (typeof showToast === 'function') showToast('Data is still loading, please wait.', false);
     return;
   }
 
-  const d = document.getElementById('pubFltDistrict').value;
-  const t = document.getElementById('pubFltTehsil').value;
-  const w = document.getElementById('pubFltWing').value;
-  const m = document.getElementById('pubFltMarkaz').value;
-  const e = document.getElementById('pubFltEmis').value.toLowerCase().trim();
-  const q = document.getElementById('pubSearchInput').value.toLowerCase().trim();
+  const d  = document.getElementById('privFltDistrict').value;
+  const t  = document.getElementById('privFltTehsil').value;
+  const m  = document.getElementById('privFltMarkaz').value;
+  const st = document.getElementById('privFltStatus').value;
+  const q  = document.getElementById('privFltSearch').value.toLowerCase().trim();
 
-  let fData = [...pubData];
-  if (d && pubFHeaders.district) fData = fData.filter(r => r[pubFHeaders.district] === d);
-  if (t && pubFHeaders.tehsil)   fData = fData.filter(r => r[pubFHeaders.tehsil]   === t);
-  if (w && pubFHeaders.wing)     fData = fData.filter(r => r[pubFHeaders.wing]     === w);
-  if (m && pubFHeaders.markaz)   fData = fData.filter(r => r[pubFHeaders.markaz]   === m);
-  if (e && pubFHeaders.emis)     fData = fData.filter(r => String(r[pubFHeaders.emis]).toLowerCase().includes(e));
+  let fData = [...privData];
+  if (d  && privFHeaders.district) fData = fData.filter(r => r[privFHeaders.district] === d);
+  if (t  && privFHeaders.tehsil)   fData = fData.filter(r => r[privFHeaders.tehsil]   === t);
+  if (m  && privFHeaders.markaz)   fData = fData.filter(r => r[privFHeaders.markaz]   === m);
+  if (st && privFHeaders.status)   fData = fData.filter(r => r[privFHeaders.status]   === st);
   if (q) fData = fData.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
 
-  // ★ NEW: Sort by Markaz Name (A → Z), then EMIS Code (ascending)
-  if (pubFHeaders.markaz && pubFHeaders.emis) {
+  // ★ NEW: Sort filtered results by School Name (A → Z) alphabetically
+  if (privFHeaders.name) {
     fData.sort((a, b) => {
-      const markazA = (a[pubFHeaders.markaz] || '').toString().toLowerCase();
-      const markazB = (b[pubFHeaders.markaz] || '').toString().toLowerCase();
-      if (markazA < markazB) return -1;
-      if (markazA > markazB) return 1;
-      const emisA = parseInt((a[pubFHeaders.emis] || '').toString(), 10) || 0;
-      const emisB = parseInt((b[pubFHeaders.emis] || '').toString(), 10) || 0;
-      return emisA - emisB;
+      const nameA = (a[privFHeaders.name] || '').toString().toLowerCase();
+      const nameB = (b[privFHeaders.name] || '').toString().toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
     });
   }
 
-  pubFilteredCache = fData;
+  privFilteredCache = fData;
 
   // Pagination
   const totalRecords = fData.length;
-  const totalPages = Math.ceil(totalRecords / pubPageSize);
-  if (pubCurrentPage > totalPages) pubCurrentPage = totalPages || 1;
-  const start = (pubCurrentPage - 1) * pubPageSize;
-  const pageData = fData.slice(start, start + pubPageSize);
+  const totalPages = Math.ceil(totalRecords / privPageSize);
+  if (privCurrentPage > totalPages) privCurrentPage = totalPages || 1;
+  const start = (privCurrentPage - 1) * privPageSize;
+  const pageData = fData.slice(start, start + privPageSize);
 
-  document.getElementById('pubEmptyState').style.display  = 'none';
-  document.getElementById('pubTableWrap').style.display   = 'block';
+  document.getElementById('privEmptyState').style.display = 'none';
+  document.getElementById('privTableWrap').style.display  = 'block';
 
-  document.getElementById('pubRecordCount').innerHTML =
-    `<i class="bi bi-database"></i> ${totalRecords} Records (Page ${pubCurrentPage}/${totalPages})`;
+  document.getElementById('privRecordCount').innerHTML =
+    `<i class="bi bi-database"></i> ${totalRecords} Records (Page ${privCurrentPage}/${totalPages})`;
 
-  if (!fData.length) {
-    document.getElementById('pubTHead').innerHTML = '';
-    document.getElementById('pubTBody').innerHTML =
+  renderPrivateTable(pageData, totalRecords);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  TABLE RENDER
+// ══════════════════════════════════════════════════════════════════════
+function renderPrivateTable(dataArr, totalRecords) {
+  if (!dataArr.length) {
+    document.getElementById('privTHead').innerHTML = '';
+    document.getElementById('privTBody').innerHTML =
       `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--t3)">
          No records match the selected filters.
        </td></tr>`;
     return;
   }
-
-  document.getElementById('pubTHead').innerHTML =
-    `<tr><th>Actions</th>${pubHeaders.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr>`;
-
-  document.getElementById('pubTBody').innerHTML = pageData.map(row => {
-    const keyVal = String(row[pubHeaders[0]] || '').replace(/'/g, "\\'");
+  document.getElementById('privTHead').innerHTML =
+    `<tr><th>Edit</th>${privHeaders.map(h => `<th>${_privEsc(h)}</th>`).join('')}</tr>`;
+  document.getElementById('privTBody').innerHTML = dataArr.map(row => {
+    const keyVal = String(row['Unique ID'] || '').replace(/'/g, "\\'");
     return `<tr>
       <td>
-        <button class="tbl-btn btn-edit" onclick="editPublic('${keyVal}')">
-          <i class="bi bi-pencil-square"></i>
+        <button class="tbl-btn btn-edit" onclick="editPrivate('${keyVal}')">
+          <i class="bi bi-pencil"></i>
         </button>
       </td>
-      ${pubHeaders.map(h => `<td>${escHtml(String(row[h] || ''))}</td>`).join('')}
+      ${privHeaders.map(h => `<td>${_privEsc(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
   }).join('');
 
   // Add pagination controls
-  const paginationHtml = totalPages > 1 ? `
-    <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:15px;">
-      <button class="btn btn-outline-secondary btn-sm" onclick="pubGoPage(${pubCurrentPage - 1})" ${pubCurrentPage === 1 ? 'disabled' : ''}>Previous</button>
-      <span>Page ${pubCurrentPage} of ${totalPages}</span>
-      <button class="btn btn-outline-secondary btn-sm" onclick="pubGoPage(${pubCurrentPage + 1})" ${pubCurrentPage === totalPages ? 'disabled' : ''}>Next</button>
-    </div>
-  ` : '';
-  const tblWrap = document.getElementById('pubTableWrap');
-  const existingPagination = tblWrap.querySelector('.pub-pagination');
-  if (existingPagination) existingPagination.remove();
-  if (paginationHtml) {
+  const totalPages = Math.ceil(totalRecords / privPageSize);
+  if (totalPages > 1) {
+    const paginationHtml = `
+      <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:15px;">
+        <button class="btn btn-outline-secondary btn-sm" onclick="privGoPage(${privCurrentPage - 1})" ${privCurrentPage === 1 ? 'disabled' : ''}>Previous</button>
+        <span>Page ${privCurrentPage} of ${totalPages}</span>
+        <button class="btn btn-outline-secondary btn-sm" onclick="privGoPage(${privCurrentPage + 1})" ${privCurrentPage === totalPages ? 'disabled' : ''}>Next</button>
+      </div>
+    `;
+    const tblWrap = document.getElementById('privTableWrap');
+    const existing = tblWrap.querySelector('.priv-pagination');
+    if (existing) existing.remove();
     const div = document.createElement('div');
-    div.className = 'pub-pagination';
+    div.className = 'priv-pagination';
     div.innerHTML = paginationHtml;
     tblWrap.appendChild(div);
   }
 }
 
-function pubGoPage(page) {
-  const total = Math.ceil(pubFilteredCache.length / pubPageSize);
+function privGoPage(page) {
+  const total = Math.ceil(privFilteredCache.length / privPageSize);
   if (page < 1 || page > total) return;
-  pubCurrentPage = page;
-  applyPubFilters();
+  privCurrentPage = page;
+  applyPrivFilters();
 }
+
+// Quick search within already-filtered results (toolbar search box)
+function quickSearchPriv() {
+  const q = document.getElementById('privSearchInput').value.toLowerCase();
+  if (!privFilteredCache.length) return;
+  const visible = privFilteredCache.filter(r =>
+    Object.values(r).some(v => String(v).toLowerCase().includes(q))
+  );
+  // Re‑apply pagination to the filtered subset
+  const totalRecords = visible.length;
+  const totalPages = Math.ceil(totalRecords / privPageSize);
+  if (privCurrentPage > totalPages) privCurrentPage = totalPages || 1;
+  const start = (privCurrentPage - 1) * privPageSize;
+  const pageData = visible.slice(start, start + privPageSize);
+  renderPrivateTable(pageData, totalRecords);
+}
+
+// Legacy alias for older code that calls filterPrivateTable()
+function filterPrivateTable() { quickSearchPriv(); }
 
 // ══════════════════════════════════════════════════════════════════════
 //  FORM BUILD
 // ══════════════════════════════════════════════════════════════════════
-function buildPublicForm() {
-  // Master fields (A-I) — read-only
-  const mGrid = document.getElementById('pubMasterGrid');
-  mGrid.innerHTML = '';
-  for (let i = 0; i < PUB_MASTER_COUNT; i++) {
-    if (pubHeaders[i]) {
-      mGrid.innerHTML +=
-        `<div class="ff ff-locked" id="wrap_pub_m_${i}">
-           <span class="flabel">${escHtml(pubHeaders[i])}</span>
-           <input type="text" id="pub_m_${i}" readonly>
-         </div>`;
+function buildPrivateForm() {
+  const pGrid = document.getElementById('privFormGrid');
+  pGrid.innerHTML = '';
+
+  PRIVATE_FIELD_CONFIG.forEach(f => {
+    if (f.hidden) {
+      pGrid.innerHTML += `<input type="hidden" id="${f.id}" data-header="${f.header}" value="">`;
+      return;
     }
-  }
 
-  // Editable fields (J-AO)
-  const eGrid = document.getElementById('pubEditableGrid');
-  eGrid.innerHTML = '';
-  PUB_EDITABLE_FIELDS.forEach(f => {
-    const input = f.type === 'select'
-      ? `<select id="${f.id}" data-header="${f.header}" ${f.onchange ? `onchange="${f.onchange}"` : ''}>
-           <option value="">Select</option>
-           ${f.options.map(o => `<option>${o}</option>`).join('')}
-         </select>`
-      : `<input
-           type="${f.type || 'text'}"
-           id="${f.id}"
-           data-header="${f.header}"
-           ${f.readonly ? 'readonly' : ''}
-           ${f.oninput  ? `oninput="${f.oninput}"` : ''}
-         >`;
+    let defaultVal = '';
+    if (typeof currentUser !== 'undefined' && currentUser) {
+      if      (f.id === 'priv_district') defaultVal = currentUser.district || '';
+      else if (f.id === 'priv_tehsil')   defaultVal = currentUser.tehsil   || '';
+      else if (f.id === 'priv_markaz')   defaultVal = currentUser.markaz   || '';
+    }
 
-    eGrid.innerHTML +=
-      `<div class="ff${f.readonly ? ' ff-locked' : ''}" id="wrap_${f.id}" ${f.hidden ? 'style="display:none"' : ''}>
-         <span class="flabel" title="${f.hint || f.header}">${f.hint || f.header}</span>
-         ${input}
-         <div class="field-error">Invalid value</div>
-       </div>`;
+    let inputHTML = '';
+    if (f.type === 'select') {
+      inputHTML = `<select id="${f.id}" data-header="${f.header}"
+                     ${f.onchange ? `onchange="${f.onchange}"` : ''}>
+                     <option value="">Select</option>
+                     ${f.options.map(o => `<option>${o}</option>`).join('')}
+                   </select>`;
+    } else {
+      inputHTML = `<input
+        type="${f.type || 'text'}"
+        id="${f.id}"
+        data-header="${f.header}"
+        value="${defaultVal}"
+        ${f.readonly    ? 'readonly'                       : ''}
+        ${f.oninput     ? `oninput="${f.oninput}"`         : ''}
+        ${f.onblur      ? `onblur="${f.onblur}"`           : ''}
+        ${f.placeholder ? `placeholder="${f.placeholder}"` : ''}
+      >`;
+    }
+
+    const width = f.wide ? 'grid-column:1/-1;' : '';
+    pGrid.innerHTML += `
+      <div class="ff${f.readonly ? ' ff-locked' : ''}" id="wrap_${f.id}" style="${width}">
+        <span class="flabel" title="${f.hint || f.header}">${f.hint || f.header}</span>
+        ${inputHTML}
+        <div class="field-error">Invalid</div>
+      </div>`;
   });
 }
 
-function editPublic(keyVal) {
-  const row = pubData.find(r => String(r[pubHeaders[0]]) === String(keyVal));
+// ══════════════════════════════════════════════════════════════════════
+//  ADD NEW — name-check flow
+// ══════════════════════════════════════════════════════════════════════
+function startAddPrivate() {
+  document.getElementById('checkSchoolNameInput').value = '';
+  document.getElementById('matchingSchoolsList').innerHTML = '';
+  nameCheckModalInstance.show();
+}
+
+function searchExistingSchools(val) {
+  const listDiv = document.getElementById('matchingSchoolsList');
+  if (!val || val.length < 3) { listDiv.innerHTML = ''; return; }
+
+  const lower = val.toLowerCase().trim();
+  const nameH = privHeaders.find(h => String(h).toLowerCase().includes('school name'));
+  const matches = privData.filter(r =>
+    String(r[nameH] || '').toLowerCase().includes(lower)
+  );
+
+  if (matches.length > 0) {
+    listDiv.innerHTML =
+      `<div style="color:var(--warn);font-size:0.75rem;font-weight:700;padding:6px;
+                   background:var(--warn-bg);border-radius:6px;margin-bottom:8px;">
+         <i class="bi bi-exclamation-triangle-fill"></i>
+         Similar schools found! Click to load data or proceed as new.
+       </div>` +
+      matches.map(m => `
+        <div onclick="loadMatchedSchool('${String(m['Unique ID'] || '').replace(/'/g, "\\'")}')"
+          style="padding:10px;background:var(--s0);border:1px solid var(--b0);
+                 border-radius:6px;cursor:pointer;transition:background 0.15s;margin-bottom:4px">
+          <strong style="color:var(--brand);display:block;font-size:0.85rem;">${_privEsc(m[nameH])}</strong>
+          <span style="font-size:0.7rem;color:var(--t2);">
+            EMIS/Reg: ${_privEsc(m['Registeration No in Case of registered (EMIS Code) pepris'] || 'N/A')} |
+            Level: ${_privEsc(m['Level (Primary,Middle,High,Higher Secondary)'] || 'N/A')}
+          </span>
+        </div>`
+      ).join('');
+  } else {
+    listDiv.innerHTML =
+      `<div style="color:var(--ok);font-size:0.75rem;font-weight:700;padding:6px;
+                   background:var(--ok-bg);border-radius:6px;">
+         <i class="bi bi-check-circle-fill"></i> No exact matches found. You can proceed to add.
+       </div>`;
+  }
+}
+
+function loadMatchedSchool(uid) {
+  nameCheckModalInstance.hide();
+  editPrivate(uid);
+}
+
+function proceedWithNewSchool() {
+  const newName = document.getElementById('checkSchoolNameInput').value.trim();
+  nameCheckModalInstance.hide();
+  openPrivateModal();
+  setTimeout(() => {
+    const nameEl = document.getElementById('priv_name');
+    if (nameEl) nameEl.value = newName;
+  }, 400);
+}
+
+function openPrivateModal() {
+  document.getElementById('privEditId').value = '';
+  const protect_ = ['priv_uid', 'priv_name', 'priv_district', 'priv_tehsil', 'priv_markaz'];
+  PRIVATE_FIELD_CONFIG.forEach(f => {
+    const el = document.getElementById(f.id);
+    if (el && !protect_.includes(f.id)) el.value = '';
+  });
+  if (typeof currentUser !== 'undefined' && currentUser) {
+    const distEl   = document.getElementById('priv_district');
+    const tehEl    = document.getElementById('priv_tehsil');
+    const markazEl = document.getElementById('priv_markaz');
+    if (distEl)   distEl.value   = currentUser.district || '';
+    if (tehEl)    tehEl.value    = currentUser.tehsil   || '';
+    if (markazEl) markazEl.value = currentUser.markaz   || '';
+  }
+  document.getElementById('ki_cascade_container').innerHTML = '';
+  document.getElementById('kiTitle').style.display = 'none';
+  document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
+  privModal.show();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  EDIT EXISTING
+// ══════════════════════════════════════════════════════════════════════
+function editPrivate(keyVal) {
+  const row = privData.find(r => String(r['Unique ID']) === String(keyVal));
   if (!row) return;
 
-  document.getElementById('pubEditId').value = keyVal;
-  for (let i = 0; i < PUB_MASTER_COUNT; i++) {
-    const el = document.getElementById('pub_m_' + i);
-    if (el && pubHeaders[i]) el.value = row[pubHeaders[i]] || '';
-  }
-  PUB_EDITABLE_FIELDS.forEach(f => {
+  document.getElementById('privEditId').value = keyVal;
+  PRIVATE_FIELD_CONFIG.forEach(f => {
     const el = document.getElementById(f.id);
     if (el) el.value = row[f.header] || '';
   });
-  handlePubBW();
-  document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
-  pubModal.show();
-}
 
-function openPublicModal() {
-  document.getElementById('pubEditId').value = '';
-  for (let i = 0; i < PUB_MASTER_COUNT; i++) {
-    const el = document.getElementById('pub_m_' + i);
-    if (el) el.value = '';
-  }
-  PUB_EDITABLE_FIELDS.forEach(f => {
-    const el = document.getElementById(f.id);
-    if (el) el.value = '';
-  });
-  document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
-  pubModal.show();
-}
+  handleRegStatus(true);
+  generateKICascades();
 
-// ══════════════════════════════════════════════════════════════════════
-//  CALCULATIONS
-// ══════════════════════════════════════════════════════════════════════
-function calcPubLand() {
-  const k = parseFloat(document.getElementById('pub_Kanal')?.value  || 0);
-  const m = parseFloat(document.getElementById('pub_Marla')?.value  || 0);
-  const s = parseFloat(document.getElementById('pub_Sarsai')?.value || 0);
-  const tSqFt = (k * 5445) + (m * 272.25) + (s * 30.25);
-  const totEl = document.getElementById('pub_TotalArea');
-  if (totEl) totEl.value = (isNaN(tSqFt) || tSqFt === 0) ? '' : tSqFt.toFixed(2);
-  calcPubUncovered();
-
-  const enrol  = parseInt(document.getElementById('pub_Enroll')?.value || 0);
-  const catEl  = document.getElementById('pub_Category');
-  if (catEl) {
-    if      (enrol > 2000) catEl.value = 'A+';
-    else if (enrol >= 500) catEl.value = 'A';
-    else if (enrol > 0)    catEl.value = 'B';
-    else                   catEl.value = '';
-  }
-}
-
-function calcPubUncovered() {
-  const total = parseFloat(document.getElementById('pub_TotalArea')?.value || 0);
-  const cov   = parseFloat(document.getElementById('pub_Covered')?.value   || 0);
-  const el    = document.getElementById('pub_Uncovered');
-  if (el) el.value = (!isNaN(total) && !isNaN(cov)) ? Math.max(0, total - cov).toFixed(2) : '';
-}
-
-function calcPubRooms() {
-  const t  = parseInt(document.getElementById('pub_Rooms')?.value    || 0);
-  const u  = parseInt(document.getElementById('pub_Teaching')?.value || 0);
-  const el = document.getElementById('pub_NonTeaching');
-  if (el) el.value = (!isNaN(t) && !isNaN(u)) ? Math.max(0, t - u) : '';
-}
-
-function handlePubBW() {
-  const stat = document.getElementById('pub_BWStatus')?.value;
-  const wrap = document.getElementById('wrap_pub_BWFeet');
-  if (wrap) {
-    wrap.style.display = (stat === 'Partial') ? 'block' : 'none';
-    if (stat !== 'Partial') {
-      const feetEl = document.getElementById('pub_BWFeet');
-      if (feetEl) feetEl.value = '';
+  const kiStr = document.getElementById('priv_ki_names').value;
+  const count = parseInt(document.getElementById('priv_ki_no').value || 0);
+  if (kiStr && count > 0) {
+    const arr = kiStr.split(',').map(s => s.trim());
+    for (let i = 1; i <= count; i++) {
+      const iEl = document.getElementById('ki_name_' + i);
+      if (iEl && arr[i - 1]) iEl.value = arr[i - 1];
     }
   }
+
+  document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
+  privModal.show();
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  SAVE
 // ══════════════════════════════════════════════════════════════════════
-function submitPublicForm() {
-  const emisVal = document.getElementById('pub_m_0')?.value.trim();
-  const nameVal = document.getElementById('pub_m_1')?.value.trim();
-  if (!emisVal) {
-    if (typeof showToast === 'function') showToast('Emis code is required.', false);
-    return;
-  }
-  if (!nameVal) {
-    if (typeof showToast === 'function') showToast('School Name is required.', false);
-    return;
-  }
+function submitPrivateForm() {
+  try {
+    document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
+    document.querySelectorAll('.field-error').forEach(el => el.style.display = 'none');
 
-  const iban = document.getElementById('pub_IBAN')?.value.trim().replace(/\s/g, '') || '';
-  if (iban.length > 0 && iban.length !== 24) {
-    document.getElementById('wrap_pub_IBAN').classList.add('ff-invalid');
-    if (typeof showToast === 'function') showToast('IBAN must be exactly 24 characters', false);
-    return;
+    if (!validatePrivateForm()) {
+      if (typeof showToast === 'function') showToast('Please fix the errors in the form', false);
+      else alert('Please fix the errors in the form');
+      return;
+    }
+
+    const kiNames = [];
+    const count   = parseInt(document.getElementById('priv_ki_no')?.value || 0);
+    for (let i = 1; i <= count; i++) {
+      const val = document.getElementById('ki_name_' + i)?.value;
+      if (val) kiNames.push(val);
+    }
+    document.getElementById('priv_ki_names').value = kiNames.join(', ');
+
+    let dataObj = {};
+    if (document.getElementById('privEditId').value) {
+      dataObj['Unique ID'] = document.getElementById('privEditId').value;
+    }
+    PRIVATE_FIELD_CONFIG.forEach(f => {
+      const el = document.getElementById(f.id);
+      if (el) dataObj[f.header] = el.value;
+    });
+
+    const btn = document.getElementById('privSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = 'Saving…';
+
+    const activeUser = (typeof currentUser !== 'undefined') ? currentUser : null;
+
+    google.script.run
+      .withSuccessHandler(res => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save2"></i> Save Record';
+        if (res && res.success) {
+          if (typeof showToast === 'function') showToast('Record saved successfully', true);
+          privModal.hide();
+          openPrivateModule(currentPrivSheet);
+          if (typeof loadKPIs === 'function') loadKPIs();
+        } else {
+          alert('Save Failed: ' + (res ? res.message : 'Unknown error'));
+        }
+      })
+      .withFailureHandler(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save2"></i> Save Record';
+        alert('Server crash (savePrivateSchool): ' + err.message);
+      })
+      .savePrivateSchool(dataObj, activeUser, currentPrivSheet);
+  } catch (e) {
+    alert('submitPrivateForm crash: ' + e.message);
   }
-
-  let dataObj = {};
-  dataObj._isNew = !document.getElementById('pubEditId').value;
-  dataObj[pubHeaders[0]] = document.getElementById('pubEditId').value;
-  for (let i = 0; i < PUB_MASTER_COUNT; i++) {
-    if (pubHeaders[i]) dataObj[pubHeaders[i]] = document.getElementById('pub_m_' + i).value;
-  }
-  PUB_EDITABLE_FIELDS.forEach(f => {
-    const el = document.getElementById(f.id);
-    if (el) dataObj[f.header] = el.value;
-  });
-
-  const btn = document.getElementById('pubSaveBtn');
-  btn.disabled = true;
-  btn.innerHTML = 'Saving…';
-
-  google.script.run
-    .withSuccessHandler(res => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-save2"></i> Save Record';
-      if (res.success) {
-        if (typeof showToast === 'function') showToast(res.message, true);
-        pubModal.hide();
-        openPublicModule(currentPubSheet);
-        if (typeof loadKPIs === 'function') loadKPIs();
-      } else {
-        if (typeof showToast === 'function') showToast(res.message, false);
-      }
-    })
-    .withFailureHandler(err => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-save2"></i> Save Record';
-      if (typeof showToast === 'function') showToast('Server error: ' + err.message, false);
-      else alert('Server error: ' + err.message);
-    })
-    .savePublicSchool(dataObj, currentUser, currentPubSheet);
 }
 
 // ══════════════════════════════════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════════════════════════════════
-function exportPubView() {
-  if (pubFilteredCache.length > 0 && pubHeaders.length > 0) {
-    _triggerExcelDownload(pubHeaders, pubFilteredCache, currentPubSheet || 'Public');
-    return;
+function exportPrivateView() {
+  const target = privFilteredCache.length ? privFilteredCache : privData;
+  if (target.length > 0 && privHeaders.length > 0) {
+    _triggerExcelDownload(privHeaders, target, currentPrivSheet || 'Private');
+  } else {
+    exportPrivateDirect(currentPrivSheet || 'Private');
   }
-  exportPubDirect(currentPubSheet || 'Public');
 }
 
-function exportPubDirect(sheetName) {
+function exportPrivateDirect(sheetName) {
   _showExportToast('Fetching ' + sheetName + ' data…');
+  const activeUser = (typeof currentUser !== 'undefined') ? currentUser : null;
   google.script.run
     .withSuccessHandler(function(res) {
       _hideExportToast();
-      if (!res || !res.success) {
-        alert('Export failed: ' + (res ? res.message : 'Unknown error'));
-        return;
-      }
-      if (!res.rows || res.rows.length === 0) {
-        alert('No records to export for: ' + sheetName);
-        return;
-      }
+      if (!res || !res.success) { alert('Export failed: ' + (res ? res.message : 'Unknown')); return; }
+      if (!res.rows || res.rows.length === 0) { alert('No records to export for: ' + sheetName); return; }
       const objRows = res.rows.map(row => {
         const obj = {};
         res.headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ''; });
@@ -557,14 +623,119 @@ function exportPubDirect(sheetName) {
       });
       _triggerExcelDownload(res.headers, objRows, sheetName);
     })
-    .withFailureHandler(function(err) {
-      _hideExportToast();
-      alert('Export server error: ' + err.message);
-    })
-    .exportSheetData(sheetName, currentUser);
+    .withFailureHandler(function(err) { _hideExportToast(); alert('Export error: ' + err.message); })
+    .exportSheetData(sheetName, activeUser);
 }
 
-// Shared helpers (defined in Index.html, aliased here for safety)
+// ══════════════════════════════════════════════════════════════════════
+//  FIELD HELPERS & CALCULATIONS
+// ══════════════════════════════════════════════════════════════════════
+function handleRegStatus(preserveValue) {
+  const st = document.getElementById('priv_reg_status').value;
+  const isRegistered = (st === 'Registered' || st === 'Expired');
+
+  const fieldsToToggle = [
+    { input: 'priv_reg_no',      wrap: 'wrap_priv_reg_no' },
+    { input: 'priv_reg_exp',     wrap: 'wrap_priv_reg_exp' },
+    { input: 'priv_bldg_exp',    wrap: 'wrap_priv_bldg_exp' },
+    { input: 'priv_health_exp',  wrap: 'wrap_priv_health_exp' },
+  ];
+
+  fieldsToToggle.forEach(({ input, wrap }) => {
+    const el     = document.getElementById(input);
+    const wrapEl = document.getElementById(wrap);
+    if (!el) return;
+    if (isRegistered) {
+      el.readOnly = false;
+      if (wrapEl) wrapEl.classList.remove('ff-locked');
+    } else {
+      el.readOnly = true;
+      if (wrapEl) wrapEl.classList.add('ff-locked');
+      if (!preserveValue) el.value = '';
+    }
+  });
+}
+
+function validateCNIC(el) {
+  const v = el.value.replace(/\D/g, '');
+  if (v.length > 0 && v.length !== 13) {
+    el.parentElement.classList.add('ff-invalid');
+    const errDiv = el.parentElement.querySelector('.field-error');
+    if (errDiv) errDiv.textContent = 'Exactly 13 digits required.';
+  } else {
+    el.parentElement.classList.remove('ff-invalid');
+  }
+}
+
+function markInvalid(el, msg) {
+  const parent   = el.closest('.ff');
+  if (!parent) return;
+  parent.classList.add('ff-invalid');
+  const errorDiv = parent.querySelector('.field-error');
+  if (errorDiv) { errorDiv.textContent = msg; errorDiv.style.display = 'block'; }
+}
+
+function calcPrivCategory() {
+  const en  = parseInt(document.getElementById('priv_enrol').value || 0);
+  const cat = document.getElementById('priv_sec_cat');
+  if      (en > 2000) cat.value = 'A+';
+  else if (en >= 500) cat.value = 'A';
+  else if (en > 0)    cat.value = 'B';
+  else                cat.value = '';
+}
+
+function generateKICascades() {
+  const c     = parseInt(document.getElementById('priv_ki_no').value || 0);
+  const box   = document.getElementById('ki_cascade_container');
+  const title = document.getElementById('kiTitle');
+  box.innerHTML       = '';
+  title.style.display = c > 0 ? 'block' : 'none';
+  for (let i = 1; i <= c; i++) {
+    box.innerHTML += `
+      <div class="ff">
+        <span class="flabel">Name of KI #${i}</span>
+        <input type="text" id="ki_name_${i}" class="ki-name"
+          style="width:100%;height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 9px;">
+      </div>`;
+  }
+}
+
+function validatePrivateForm() {
+  let isValid = true;
+  ['priv_own_cnic', 'priv_prin_cnic'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value.length > 0 && el.value.length !== 13) {
+      markInvalid(el, 'Must be exactly 13 digits');
+      isValid = false;
+    }
+  });
+  ['priv_own_cell', 'priv_prin_cell'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value.length > 0 && el.value.length !== 11) {
+      markInvalid(el, 'Must be 11 digits');
+      isValid = false;
+    }
+  });
+  PRIVATE_FIELD_CONFIG.forEach(f => {
+    if (f.type === 'number') {
+      const el = document.getElementById(f.id);
+      if (el && el.value !== '' && isNaN(el.value)) {
+        markInvalid(el, 'Must be a number');
+        isValid = false;
+      }
+    }
+  });
+  return isValid;
+}
+
+// ── Local escHtml (safe even if Index.html's version loads first) ─────
+function _privEsc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Shared download helpers — defined only if not already present ─────
 if (typeof _triggerExcelDownload === 'undefined') {
   function _triggerExcelDownload(headers, objRows, filename) {
     try {
@@ -608,11 +779,4 @@ if (typeof _showExportToast === 'undefined') {
 }
 if (typeof downloadExcel === 'undefined') {
   function downloadExcel(h, r, f) { _triggerExcelDownload(h, r, f); }
-}
-if (typeof escHtml === 'undefined') {
-  function escHtml(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
 }
