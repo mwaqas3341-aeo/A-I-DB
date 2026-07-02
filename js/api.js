@@ -565,16 +565,34 @@ async function apiCall(action, payload) {
 
     case 'executeTransfer': {
       const p = Array.isArray(payload) ? payload[0] : payload;
-      const pno = p['PERSONAL NO.'] || p.personal_no;
-      const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
+      const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
+      if (!pno) return { success: false, error: 'Missing employee personal number.' };
+
+      const targetEmis = p.targetEmis || p.to_emis || p['To EMIS'];
+      if (!targetEmis) return { success: false, error: 'Missing destination EMIS.' };
+
+      const { data: s } = await _sb.from('staff')
+        .select('name_of_teacher, school_emis_code, markaz_name, tehsil, district, wing')
+        .eq('personal_no', pno).single();
+      if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
+
+      // The Transfer form only collects the destination EMIS — look up
+      // that school's actual district/wing/tehsil/markaz from the
+      // schools table rather than expecting the frontend to send them
+      // (it never did, which is why transfers silently wrote blanks
+      // into those columns before).
+      const { data: dest } = await _sb.from('schools')
+        .select('district, wing, tehsil, markaz')
+        .eq('emis', targetEmis).maybeSingle();
+      if (!dest) return { success: false, error: `EMIS "${targetEmis}" was not found in the schools list.` };
 
       const r = await _checkedUpdate('staff', _sanitizeEmpty({
-        school_emis_code:              p.to_emis              || p['To EMIS'] || '',
-        markaz_name:                   p.to_markaz            || p['To Markaz'] || '',
-        tehsil:                        p.to_tehsil            || p['To Tehsil'] || '',
-        district:                      p.to_district          || p['To District'] || '',
-        wing:                          p.to_wing              || p['To Wing'] || '',
-        date_of_posting_present_school:p.date_of_joining_new_school || p['Date of Joining New School'] || '',
+        school_emis_code:              targetEmis,
+        markaz_name:                   dest.markaz,
+        tehsil:                        dest.tehsil,
+        district:                      dest.district,
+        wing:                          dest.wing,
+        date_of_posting_present_school:p.newJoiningDate || p.date_of_joining_new_school || '',
         status:                        'active',
         changes_made_by:               user?.name || '',
         changes_made_at:               new Date().toISOString(),
@@ -585,14 +603,13 @@ async function apiCall(action, payload) {
         personal_no:   pno,
         employee_name: s?.name_of_teacher || '',
         event_type:    'transfer',
-        notification_no: p.notification_no || p['Notification No'] || '',
-        effective_date:  p.effective_date  || p['Transfer Date'] || '',
+        notification_no: p.notificationNo || p.notification_no || p['Notification No'] || '',
+        effective_date:  p.newJoiningDate || p.effective_date  || p['Transfer Date'] || '',
         details:         {
-          from_emis:    p.from_emis    || p['From EMIS'] || '',
-          to_emis:      p.to_emis      || p['To EMIS'] || '',
-          from_markaz:  p.from_markaz  || p['From Markaz'] || '',
-          to_markaz:    p.to_markaz    || p['To Markaz'] || '',
-          transfer_type:p.transfer_type|| p['Transfer Type'] || '',
+          from_emis:    s?.school_emis_code || '',
+          to_emis:      targetEmis,
+          from_markaz:  s?.markaz_name || '',
+          to_markaz:    dest.markaz || '',
         },
         created_by: user?.name || '',
       }]);
@@ -601,13 +618,35 @@ async function apiCall(action, payload) {
 
     case 'executePromotion': {
       const p = Array.isArray(payload) ? payload[0] : payload;
-      const pno = p['PERSONAL NO.'] || p.personal_no;
+      const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
+      if (!pno) return { success: false, error: 'Missing employee personal number.' };
+
       const { data: s } = await _sb.from('staff').select('name_of_teacher, designation, bps').eq('personal_no', pno).single();
+      if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
+
+      const targetEmis = p.targetEmis || p.to_emis;
+      let destFields = {};
+      if (targetEmis) {
+        const { data: dest } = await _sb.from('schools')
+          .select('district, wing, tehsil, markaz')
+          .eq('emis', targetEmis).maybeSingle();
+        if (dest) {
+          destFields = {
+            school_emis_code: targetEmis,
+            markaz_name:      dest.markaz,
+            tehsil:           dest.tehsil,
+            district:         dest.district,
+            wing:             dest.wing,
+          };
+        }
+      }
 
       const r = await _checkedUpdate('staff', _sanitizeEmpty({
-        designation:                  p.new_designation || p['New Designation'] || '',
-        bps:                          p.new_bps         || p['New BPS'] || '',
-        date_of_joining_present_scale:p.effective_date  || '',
+        designation:                  p.newDesignation || p.new_designation || p['New Designation'] || '',
+        bps:                          p.newBps         || p.new_bps         || p['New BPS'] || '',
+        date_of_posting_present_school:p.newPostingDate || '',
+        date_of_joining_present_scale:p.newScaleJoiningDate || p.effective_date  || '',
+        ...destFields,
         changes_made_by:              user?.name || '',
         changes_made_at:              new Date().toISOString(),
       }), 'personal_no', pno);
@@ -617,13 +656,13 @@ async function apiCall(action, payload) {
         personal_no:    pno,
         employee_name:  s?.name_of_teacher || '',
         event_type:     'promotion',
-        notification_no:p.notification_no || '',
-        effective_date: p.effective_date  || '',
+        notification_no:p.notificationNo || p.notification_no || '',
+        effective_date: p.newScaleJoiningDate || p.effective_date  || '',
         details:        {
           old_designation: s?.designation || '',
-          new_designation: p.new_designation || '',
+          new_designation: p.newDesignation || p.new_designation || '',
           old_bps:         s?.bps || '',
-          new_bps:         p.new_bps || '',
+          new_bps:         p.newBps || p.new_bps || '',
         },
         created_by: user?.name || '',
       }]);
@@ -632,8 +671,9 @@ async function apiCall(action, payload) {
 
     case 'executeStaffAction': {
       const p = Array.isArray(payload) ? payload[0] : payload;
-      const pno = p['PERSONAL NO.'] || p.personal_no;
-      const actionType = (p.action_type || p['Action Type'] || '').toLowerCase();
+      const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
+      if (!pno) return { success: false, errors: ['Missing employee personal number.'] };
+      const actionType = (p.actionType || p.action_type || p['Action Type'] || '').toLowerCase();
       const statusMap2 = {
         retire: 'retired', retirement: 'retired',
         resign: 'resigned', resignation: 'resigned',
@@ -647,19 +687,21 @@ async function apiCall(action, payload) {
       }[newStatus] || '';
 
       const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
-      const r = await _checkedUpdate('staff', {
+      if (!s) return { success: false, errors: [`No staff record found for personal number "${pno}".`] };
+
+      const r = await _checkedUpdate('staff', _sanitizeEmpty({
         status: newStatus,
         changes_made_by: user?.name || '',
         changes_made_at: new Date().toISOString(),
-      }, 'personal_no', pno);
+      }), 'personal_no', pno);
       if (!r.ok) return { success: false, errors: [r.message] };
 
       await _sb.from('staff_events').insert([{
         personal_no:    pno,
         employee_name:  s?.name_of_teacher || '',
         event_type:     newStatus,
-        notification_no:p.notification_no || p['Notification No'] || '',
-        effective_date: p.effective_date  || p['Effective Date'] || '',
+        notification_no:p.notificationNo || p.notification_no || p['Notification No'] || '',
+        effective_date: p.effectiveDate  || p.effective_date  || p['Effective Date'] || '',
         created_by:     user?.name || '',
       }]);
       return { success: true, message: 'Action completed.', targetSheet };
