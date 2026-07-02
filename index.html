@@ -402,7 +402,7 @@
 
   <!-- TOOLBAR -->
   <div class="toolbar">
-    <button class="btn-add" id="btnPubAdd" onclick="openPublicModal()">
+    <button class="btn-add" id="btnPubAdd" onclick="openPublicModal()" style="display:none">
       <i class="bi bi-plus-lg"></i> Add School
     </button>
     <div class="search-box">
@@ -808,13 +808,13 @@
         <div class="form-grid" style="margin-bottom:20px">
           <div class="ff">
             <span class="flabel">District (Col H)</span>
-            <select id="u_district" onchange="filterMarkazDropdown(); filterTehsilDropdown()">
+            <select id="u_district" onchange="filterMarkazDropdown()">
               <option value="">Select District</option>
             </select>
           </div>
           <div class="ff">
             <span class="flabel">Wing (Col I)</span>
-            <select id="u_wing" onchange="filterMarkazDropdown(); filterTehsilDropdown()">
+            <select id="u_wing" onchange="filterMarkazDropdown()">
               <option value="">Select Wing</option>
               <option value="M-EE">M-EE (Male Elementary Education)</option>
               <option value="W-EE">W-EE (Female Elementary Education)</option>
@@ -829,7 +829,7 @@
           </div>
           <div class="ff">
             <span class="flabel">Markaz Name (Col C)</span>
-            <select id="u_markaz" onchange="filterTehsilDropdown()">
+            <select id="u_markaz">
               <option value="">Select Markaz</option>
             </select>
           </div>
