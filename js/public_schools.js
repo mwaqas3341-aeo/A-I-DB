@@ -354,7 +354,7 @@ function buildPublicForm() {
   for (let i = 0; i < PUB_MASTER_COUNT; i++) {
     if (pubHeaders[i]) {
       mGrid.innerHTML +=
-        `<div class="ff ff-locked">
+        `<div class="ff ff-locked" id="wrap_pub_m_${i}">
            <span class="flabel">${escHtml(pubHeaders[i])}</span>
            <input type="text" id="pub_m_${i}" readonly>
          </div>`;
@@ -471,6 +471,17 @@ function handlePubBW() {
 //  SAVE
 // ══════════════════════════════════════════════════════════════════════
 function submitPublicForm() {
+  const emisVal = document.getElementById('pub_m_0')?.value.trim();
+  const nameVal = document.getElementById('pub_m_1')?.value.trim();
+  if (!emisVal) {
+    if (typeof showToast === 'function') showToast('Emis code is required.', false);
+    return;
+  }
+  if (!nameVal) {
+    if (typeof showToast === 'function') showToast('School Name is required.', false);
+    return;
+  }
+
   const iban = document.getElementById('pub_IBAN')?.value.trim().replace(/\s/g, '') || '';
   if (iban.length > 0 && iban.length !== 24) {
     document.getElementById('wrap_pub_IBAN').classList.add('ff-invalid');
@@ -479,6 +490,7 @@ function submitPublicForm() {
   }
 
   let dataObj = {};
+  dataObj._isNew = !document.getElementById('pubEditId').value;
   dataObj[pubHeaders[0]] = document.getElementById('pubEditId').value;
   for (let i = 0; i < PUB_MASTER_COUNT; i++) {
     if (pubHeaders[i]) dataObj[pubHeaders[i]] = document.getElementById('pub_m_' + i).value;
