@@ -210,14 +210,29 @@ function doLogout() {
 
 // ─── Load KPIs ────────────────────────────────────
 function loadKPIs() {
-  google.script.run.withSuccessHandler(res => {
-    if (res.success) {
-      document.getElementById('kpiGovt').textContent       = res.publicCount;
-      document.getElementById('kpiPrivate').textContent    = res.privateCount;
-      document.getElementById('kpiOutsourced').textContent = res.outsourcedCount;
-      document.getElementById('kpiInactive').textContent   = res.inactiveCount;
-    }
-  }).getSummaryCounts(currentUser);
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res.success) {
+        document.getElementById('kpiGovt').textContent       = res.publicCount;
+        document.getElementById('kpiPrivate').textContent    = res.privateCount;
+        document.getElementById('kpiOutsourced').textContent = res.outsourcedCount;
+        document.getElementById('kpiInactive').textContent   = res.inactiveCount;
+      } else {
+        ['kpiGovt','kpiPrivate','kpiOutsourced','kpiInactive'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = '—';
+        });
+        if (typeof showToast === 'function') showToast('Could not load summary counts: ' + (res.message || 'Unknown error'), 'error');
+      }
+    })
+    .withFailureHandler(err => {
+      ['kpiGovt','kpiPrivate','kpiOutsourced','kpiInactive'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '—';
+      });
+      if (typeof showToast === 'function') showToast('Failed to load summary counts: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
+    })
+    .getSummaryCounts(currentUser);
 }
 
 // ─── Excel helper (shared) ────────────────────────
