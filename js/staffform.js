@@ -490,7 +490,7 @@ function sfmPopulateForm(row) {
     var key  = SF_FIELD_MAP[id];
     var el   = document.getElementById(id);
     if (!el) return;
-    var val  = (row && row[key] !== undefined) ? row[key].toString() : '';
+    var val  = (row && row[key] !== undefined && row[key] !== null) ? row[key].toString() : '';
 
     if (el.tagName === 'SELECT') {
       el.value = val;
