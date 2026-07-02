@@ -168,37 +168,6 @@ function filterMarkazDropdown() {
   if (optionsList.includes(currentVal)) markazEl.value = currentVal;
 }
 
-// Markaz-wise Tehsil filtering: once a Markaz is picked, narrow the
-// Tehsil dropdown to only the tehsil(s) that Markaz actually belongs
-// to (almost always exactly one) and auto-fill it if unambiguous.
-function filterTehsilDropdown() {
-  if (!jDropdowns || !jDropdowns.jMap) return;
-  const selDistrict = document.getElementById('u_district').value;
-  const selWing     = document.getElementById('u_wing').value;
-  const selMarkaz   = document.getElementById('u_markaz').value;
-
-  const filteredMap = jDropdowns.jMap.filter(item => {
-    return (!selDistrict || item.district === selDistrict) &&
-           (!selWing     || item.wing === selWing) &&
-           (!selMarkaz   || item.markaz === selMarkaz);
-  });
-
-  const validTehsils = [...new Set(filteredMap.map(i => i.tehsil))].sort();
-  const tehsilEl    = document.getElementById('u_tehsil');
-  const currentVal  = tehsilEl.value;
-  const optionsList = (selDistrict || selWing || selMarkaz) ? validTehsils : jDropdowns.tehsils;
-
-  tehsilEl.innerHTML = '<option value="">Select Tehsil</option>' +
-    optionsList.map(t => `<option value="${t}">${t}</option>`).join('');
-
-  if (selMarkaz && validTehsils.length === 1) {
-    // Markaz uniquely determines its tehsil — fill it in automatically.
-    tehsilEl.value = validTehsils[0];
-  } else if (optionsList.includes(currentVal)) {
-    tehsilEl.value = currentVal;
-  }
-}
-
 // ═══════════════════════════════════════════════
 //  SCOPE VALUE UI – MULTI‑SELECT WITH FILTERING
 // ═══════════════════════════════════════════════
