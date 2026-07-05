@@ -243,29 +243,39 @@ async function _fetchAllRows(table, selectCols, queryBuilderFn, filterFn, keyset
  * RLS-blocked update, so callers were reporting false "success".
  */
 async function _checkedUpdate(table, dbRow, matchCol, matchVal) {
-  const { data, error } = await _sb.from(table).update(dbRow).eq(matchCol, matchVal).select();
+  // IMPORTANT: use count instead of .select() here. .select() forces
+  // Postgres to re-read the just-written row under the table's SELECT
+  // policy to return it — and for tables like `staff` where UPDATE and
+  // SELECT have different scope rules (an editor can WRITE a transfer
+  // that moves someone outside their own jurisdiction, but can't SELECT
+  // that row afterward since it's now out of scope), that re-read fails
+  // even though the write itself succeeded, surfacing as a confusing
+  // "violates row-level security policy" error for a perfectly valid
+  // write. Counting affected rows verifies the write happened without
+  // needing to read the row's content back at all.
+  const { error, count } = await _sb.from(table).update(dbRow, { count: 'exact' }).eq(matchCol, matchVal);
   if (error) return { ok: false, message: error.message };
-  if (!data || data.length === 0) {
+  if (!count || count === 0) {
     return {
       ok: false,
       message: `Save blocked: no row was updated in "${table}". This is almost always a missing/too-strict ` +
                `Row Level Security UPDATE policy for this table in Supabase — check Authentication → Policies.`,
     };
   }
-  return { ok: true, data };
+  return { ok: true, count };
 }
 
 async function _checkedDelete(table, matchCol, matchVal) {
-  const { data, error } = await _sb.from(table).delete().eq(matchCol, matchVal).select();
+  const { error, count } = await _sb.from(table).delete({ count: 'exact' }).eq(matchCol, matchVal);
   if (error) return { ok: false, message: error.message };
-  if (!data || data.length === 0) {
+  if (!count || count === 0) {
     return {
       ok: false,
       message: `Delete blocked: no row was deleted in "${table}". This is almost always a missing/too-strict ` +
                `Row Level Security DELETE policy for this table in Supabase — check Authentication → Policies.`,
     };
   }
-  return { ok: true, data };
+  return { ok: true, count };
 }
 
 /**
