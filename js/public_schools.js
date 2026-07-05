@@ -86,6 +86,8 @@ function openPublicModule(sheetName) {
 
   document.getElementById('pubCurrentSheet').textContent = sheetName;
   document.getElementById('pubRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
+  const catEl = document.getElementById('pubFltCategory');
+  if (catEl) catEl.value = sheetName;
 
   // ★ HIDE THE ADD SCHOOL BUTTON ALWAYS (removed from public module)
   document.getElementById('btnPubAdd').style.display = 'none';
