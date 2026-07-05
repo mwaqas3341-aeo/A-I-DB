@@ -28,7 +28,7 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'District',                                                                                     id: 'priv_district',    readonly: true  },
   { header: 'Tehsil',                                                                                      id: 'priv_tehsil',      readonly: true  },
   { header: 'Markaz Name',                                                                                  id: 'priv_markaz',      readonly: true  },
-  { header: 'School Category',   hint: 'School Category (Private,Pef,Piema)',                               id: 'priv_cat',         type: 'select', options: ['Private', 'Pef', 'Piema'] },
+  { header: 'School Category',   hint: 'School Category (Private,Pef,Piema,Academy)',                       id: 'priv_cat',         type: 'select', options: ['Private', 'Pef', 'Piema', 'Academy'] },
   { header: 'School Name',                                                                                  id: 'priv_name',        wide: true },
   { header: 'Registeration Status', hint: 'Registeration Status (Registered/Non Registered/Expired)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
   { header: 'Registeration No',  hint: 'Registeration No in Case of registered (EMIS Code)',                id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
@@ -566,9 +566,6 @@ function submitPrivateForm() {
       if (el) dataObj[f.header] = el.value;
     });
 
-    dataObj['__colB__'] = document.getElementById('priv_district')?.value || '';
-    dataObj['__colC__'] = document.getElementById('priv_tehsil')?.value   || '';
-
     const btn = document.getElementById('privSaveBtn');
     btn.disabled = true;
     btn.innerHTML = 'Saving…';
@@ -634,17 +631,29 @@ function exportPrivateDirect(sheetName) {
 //  FIELD HELPERS & CALCULATIONS
 // ══════════════════════════════════════════════════════════════════════
 function handleRegStatus(preserveValue) {
-  const st   = document.getElementById('priv_reg_status').value;
-  const no   = document.getElementById('priv_reg_no');
-  const wrap = document.getElementById('wrap_priv_reg_no');
-  if (st === 'Registered' || st === 'Expired') {
-    no.readOnly = false;
-    wrap.classList.remove('ff-locked');
-  } else {
-    no.readOnly = true;
-    wrap.classList.add('ff-locked');
-    if (!preserveValue) no.value = '';
-  }
+  const st = document.getElementById('priv_reg_status').value;
+  const isRegistered = (st === 'Registered' || st === 'Expired');
+
+  const fieldsToToggle = [
+    { input: 'priv_reg_no',      wrap: 'wrap_priv_reg_no' },
+    { input: 'priv_reg_exp',     wrap: 'wrap_priv_reg_exp' },
+    { input: 'priv_bldg_exp',    wrap: 'wrap_priv_bldg_exp' },
+    { input: 'priv_health_exp',  wrap: 'wrap_priv_health_exp' },
+  ];
+
+  fieldsToToggle.forEach(({ input, wrap }) => {
+    const el     = document.getElementById(input);
+    const wrapEl = document.getElementById(wrap);
+    if (!el) return;
+    if (isRegistered) {
+      el.readOnly = false;
+      if (wrapEl) wrapEl.classList.remove('ff-locked');
+    } else {
+      el.readOnly = true;
+      if (wrapEl) wrapEl.classList.add('ff-locked');
+      if (!preserveValue) el.value = '';
+    }
+  });
 }
 
 function validateCNIC(el) {
