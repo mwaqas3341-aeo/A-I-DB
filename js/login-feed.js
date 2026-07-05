@@ -1,5 +1,6 @@
 /* AEO Schools Portal — login screen live feed.
-   Ported from the old landing.js to the merged login view.
+   Shows a rotating highlight of what the system actually does,
+   instead of simulated school-verification rows.
    Self-contained, does not touch app logic or doLogin(). */
 (function(){
   "use strict";
@@ -7,14 +8,14 @@
   if (!feedBody) return;
 
   var sample = [
-    { name:"GPS Green Town",          meta:"Markaz 3 · EMIS 34110212", icon:"bi-building" },
-    { name:"GGHS North Markaz",       meta:"Markaz 1 · EMIS 34108871", icon:"bi-building-fill" },
-    { name:"Outsourced MS Sector 4",  meta:"Markaz 5 · EMIS 34119043", icon:"bi-buildings" },
-    { name:"GES Riverside",           meta:"Markaz 2 · EMIS 34107765", icon:"bi-building" },
-    { name:"Private HS Al-Noor",      meta:"Markaz 4 · EMIS 34122390", icon:"bi-buildings-fill" },
-    { name:"GPS Model Colony",        meta:"Markaz 3 · EMIS 34110588", icon:"bi-building" },
-    { name:"GGPS Canal View",         meta:"Markaz 6 · EMIS 34125512", icon:"bi-building-fill" },
-    { name:"Outsourced PS Eastside",  meta:"Markaz 1 · EMIS 34108220", icon:"bi-buildings" }
+    { name:"Public School Records",        meta:"38,000+ government schools tracked", icon:"bi-building" },
+    { name:"Private School Records",       meta:"Registration, safety & facility data", icon:"bi-buildings-fill" },
+    { name:"Staff Transfers",              meta:"Move any employee to any posting",   icon:"bi-arrow-left-right" },
+    { name:"Promotions & Scale Changes",   meta:"BPS, designation & scale history",   icon:"bi-arrow-up-circle" },
+    { name:"Retirement & Separation",      meta:"Retire, resign, terminate — reversibly", icon:"bi-person-check" },
+    { name:"Jurisdiction-Based Access",    meta:"District · Tehsil · Markaz scoping", icon:"bi-diagram-3" },
+    { name:"Admin User Management",        meta:"Roles, access levels & permissions", icon:"bi-shield-lock" },
+    { name:"Live Dashboards",              meta:"Summary counts & KPI tracking",      icon:"bi-bar-chart-fill" }
   ];
 
   var i = 0, MAX_ROWS = 4;
@@ -29,12 +30,12 @@
         '<div class="lt-feed-name">' + item.name + '</div>' +
         '<div class="lt-feed-meta">' + item.meta + '</div>' +
       '</div>' +
-      '<div class="lt-feed-status">Checking…</div>';
+      '<div class="lt-feed-status">Loading…</div>';
     feedBody.prepend(row);
 
     var statusEl = row.querySelector(".lt-feed-status");
     setTimeout(function(){
-      statusEl.textContent = "✓ Verified";
+      statusEl.textContent = "✓ Available";
       statusEl.classList.add("ok");
     }, 850);
 
