@@ -95,6 +95,8 @@ function openPrivateModule(sheetName) {
 
     document.getElementById('privCurrentSheet').textContent = sheetName;
     document.getElementById('privRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
+    const catEl = document.getElementById('privFltCategory');
+    if (catEl) catEl.value = sheetName;
 
     // Hide Add button for Inactive sheet
     document.getElementById('btnPrivAdd').style.display =
