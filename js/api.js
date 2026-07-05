@@ -190,8 +190,35 @@ async function _callAdminFunction(action, payload) {
  * Use this for any table that can plausibly exceed 1000 rows
  * (schools: 38k+, public_schools: 38k+, staff: 7k+, etc).
  */
-async function _fetchAllRows(table, selectCols, queryBuilderFn, filterFn) {
+async function _fetchAllRows(table, selectCols, queryBuilderFn, filterFn, keysetCol) {
   const PAGE = 1000;
+
+  if (keysetCol) {
+    // Keyset (cursor) pagination: "WHERE col > lastValue ORDER BY col
+    // LIMIT 1000" — cost stays flat no matter how deep the page is.
+    // Use this for large tables (tens of thousands of rows); OFFSET
+    // pagination below gets slower every page since Postgres still has
+    // to scan and discard everything before the offset each time,
+    // which is what was causing statement timeouts on later pages of
+    // public_schools.
+    let allRows = [];
+    let cursor = null;
+    while (true) {
+      let q = _sb.from(table).select(selectCols);
+      if (queryBuilderFn) q = queryBuilderFn(q);
+      if (filterFn) q = filterFn(q);
+      if (cursor !== null) q = q.gt(keysetCol, cursor);
+      q = q.order(keysetCol, { ascending: true }).limit(PAGE);
+      const { data, error } = await q;
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allRows = allRows.concat(data);
+      if (data.length < PAGE) break;  // last page
+      cursor = data[data.length - 1][keysetCol];
+    }
+    return allRows;
+  }
+
   let allRows = [];
   let from = 0;
   while (true) {
@@ -446,7 +473,7 @@ async function apiCall(action, payload) {
     case 'getSchoolHierarchyForUser': {
       try {
         const data = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, emis',
-          q => q.order('district').order('wing').order('tehsil').order('markaz'));
+          null, null, 'emis');
         // Shape: [{d, w, t, m, e}] — exactly what core.js schoolCache expects
         return (data || []).map(r => ({
           d: r.district,
@@ -765,8 +792,13 @@ async function apiCall(action, payload) {
       // the same way exportSheetData already does below.
       const sheetName = Array.isArray(payload) ? payload[1] : (payload?.status || 'Public');
       const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
+      // Keyset pagination on emis (unique, indexed) instead of OFFSET —
+      // this table has 38,000+ rows, and OFFSET pagination was hitting
+      // the statement timeout on later pages. Final display order is
+      // handled client-side (sorted by markaz + emis), so the fetch
+      // order here doesn't need to match what the user sees.
       const data = await _fetchAllRows('public_schools', '*',
-        q => q.order('school_name'), q => q.eq('status', status));
+        null, q => q.eq('status', status), 'emis');
       return { success: true, ..._toHeadersData(data, PUB_COL_MAP) };
     }
 
@@ -810,7 +842,7 @@ async function apiCall(action, payload) {
       const sheetName = Array.isArray(payload) ? payload[0] : (payload?.sheet || payload);
       if (sheetName === 'Public' || sheetName === 'Out Sourced School') {
         const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
-        const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status));
+        const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status), 'emis');
         const hdrs = _headers(PUB_COL_MAP);
         const rows2d = (data||[]).map(r => hdrs.map(h => {
           const col = Object.entries(PUB_COL_MAP).find(([,v])=>v===h)?.[0];
@@ -1066,7 +1098,7 @@ async function apiCall(action, payload) {
     // ── ADMIN — JURISDICTION DROPDOWNS ────────────────────────────────
     case 'getJurisdictionDropdownData': {
       const rows = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, emis',
-        q => q.order('district').order('wing').order('tehsil').order('markaz'));
+        null, null, 'emis');
       return {
         success:   true,
         districts: [...new Set(rows.map(r=>r.district).filter(Boolean))].sort(),
