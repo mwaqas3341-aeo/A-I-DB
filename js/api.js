@@ -338,6 +338,7 @@ async function apiCall(action, payload) {
         wing:        fullProfile.wing,
         tehsil:      fullProfile.tehsil,
         cell_no:     fullProfile.cell_no,
+        email:       fullProfile.email,
         scope_type:  fullProfile.scope_type,
         scope_value: fullProfile.scope_value,
         access_type: fullProfile.access_type,
@@ -893,6 +894,72 @@ async function apiCall(action, payload) {
       const headers = Object.values(USER_COL_MAP);
       const mapped  = (data||[]).map(r => ({ ..._remap(r, USER_COL_MAP), _id: r.id }));
       return { success: true, headers, data: mapped };
+    }
+
+    // ── PERSONAL PROFILE (self-service, any logged-in user) ────────────
+    case 'getMyProfile': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const { data, error } = await _sb.from('app_users').select('*').eq('id', user.id).single();
+      if (error) return { success: false, message: error.message };
+      return {
+        success:     true,
+        personal_no: data.personal_no,
+        name:        data.name,
+        cnic:        data.cnic,
+        email:       data.email,
+        district:    data.district,
+        wing:        data.wing,
+        tehsil:      data.tehsil,
+        markaz_name: data.markaz_name,
+      };
+    }
+
+    case 'updateMyProfile': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : payload;
+      const newPersonalNo = (p.personalNo ?? p.personal_no ?? '').toString().trim();
+      const newName       = (p.name ?? '').toString().trim();
+      const newCnic        = (p.cnic ?? '').toString().trim();
+      const newEmail       = (p.email ?? '').toString().trim();
+
+      if (!newPersonalNo) return { success: false, message: 'Personal No. is required.' };
+      if (!newName)       return { success: false, message: 'Name is required.' };
+      if (!newCnic || !/^\d{13}$/.test(newCnic)) return { success: false, message: 'CNIC must be exactly 13 digits.' };
+      if (newEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) return { success: false, message: 'Please enter a valid email address.' };
+
+      const { data: existing, error: fetchErr } = await _sb.from('app_users').select('cnic').eq('id', user.id).single();
+      if (fetchErr) return { success: false, message: fetchErr.message };
+
+      // CNIC doubles as the login identifier (see get_login_email()), so
+      // changing it has to keep the Auth account in sync — that needs the
+      // service-role key, so it's routed through the same privileged Edge
+      // Function used for admin actions, rather than a plain table update.
+      if (newCnic !== existing.cnic) {
+        const cnicResult = await _callAdminFunction('updateCnic', { userId: user.id, newCnic });
+        if (!cnicResult.success) {
+          return { success: false, message: 'Could not update CNIC: ' + (cnicResult.message || 'Unknown error') };
+        }
+      }
+
+      const r = await _checkedUpdate('app_users', _sanitizeEmpty({
+        personal_no: newPersonalNo,
+        name:        newName,
+        cnic:        newCnic,
+        email:       newEmail,
+      }), 'id', user.id);
+      if (!r.ok) return { success: false, message: r.message };
+
+      // Keep the locally-stored session in sync so the header/name shown
+      // elsewhere in the app updates immediately without a re-login.
+      const updatedUser = { ...user, personal_no: newPersonalNo, name: newName, cnic: newCnic, email: newEmail };
+      localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(updatedUser));
+
+      return {
+        success: true,
+        message: newCnic !== existing.cnic
+          ? 'Profile updated. Your CNIC changed — use the new CNIC next time you log in.'
+          : 'Profile updated successfully.',
+      };
     }
 
     case 'saveUser': {
