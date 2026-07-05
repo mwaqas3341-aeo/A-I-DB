@@ -118,10 +118,6 @@
               onclick="openAdminModule(); switchGlobalTab('adminDataView', this)">
         <i class="bi bi-shield-lock-fill"></i> Admin Panel
       </button>
-      <button class="nav-link-btn" id="navMyProfileBtn"
-              onclick="openMyProfileModal()">
-        <i class="bi bi-person-circle"></i> My Profile
-      </button>
     </div>
 
     <div style="flex:1"></div>
@@ -754,67 +750,7 @@
 </div>
 
 <!-- ══ USER MODAL ══ -->
-<div class="modal fade" id="myProfileModal" data-bs-backdrop="static" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-hdr">
-        <div class="modal-hdr-icon"><i class="bi bi-person-circle"></i></div>
-        <div style="flex:1"><div class="modal-hdr-title">My Profile</div></div>
-        <button class="btn-mclose" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
-      </div>
-      <div class="modal-bdy">
-
-        <div class="form-section-title"><i class="bi bi-pencil-square"></i> Editable Details</div>
-        <div class="form-grid" style="margin-bottom:20px">
-          <div class="ff">
-            <span class="flabel">Personal No.</span>
-            <input type="text" id="mp_personal_no" placeholder="e.g. 12345">
-          </div>
-          <div class="ff">
-            <span class="flabel">Full Name</span>
-            <input type="text" id="mp_name" placeholder="Full Name">
-          </div>
-          <div class="ff">
-            <span class="flabel">CNIC — Login ID</span>
-            <input type="text" id="mp_cnic" placeholder="13 digits, no dashes" maxlength="13">
-            <div style="font-size:.72rem;color:var(--t3);margin-top:3px">Changing this changes what you log in with next time.</div>
-          </div>
-          <div class="ff">
-            <span class="flabel">Email</span>
-            <input type="email" id="mp_email" placeholder="user@example.com">
-          </div>
-        </div>
-
-        <div class="form-section-title"><i class="bi bi-diagram-3"></i> Primary Jurisdiction <span style="font-weight:400;font-size:.75rem;color:var(--t3)">(read-only — contact an admin to change)</span></div>
-        <div class="form-grid" style="margin-bottom:8px">
-          <div class="ff">
-            <span class="flabel">District</span>
-            <input type="text" id="mp_district" readonly disabled>
-          </div>
-          <div class="ff">
-            <span class="flabel">Wing</span>
-            <input type="text" id="mp_wing" readonly disabled>
-          </div>
-          <div class="ff">
-            <span class="flabel">Tehsil</span>
-            <input type="text" id="mp_tehsil" readonly disabled>
-          </div>
-          <div class="ff">
-            <span class="flabel">Markaz Name</span>
-            <input type="text" id="mp_markaz" readonly disabled>
-          </div>
-        </div>
-
-      </div>
-      <div class="modal-ftr">
-        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-primary" onclick="submitMyProfile()"><i class="bi bi-check-lg"></i> Save Changes</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-
+<div class="modal fade" id="userModal" data-bs-backdrop="static" tabindex="-1">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-hdr">
