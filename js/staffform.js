@@ -457,14 +457,44 @@ function clearFieldErr(inputId, errId) {
 // ---------- Date helpers ----------
 function toDateInputVal(str) {
   if (!str) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-  var m = str.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
-  if (m) {
+  str = str.trim();
+
+  // 1) Already ISO: YYYY-MM-DD (optionally with a time part attached,
+  //    e.g. a timestamptz column) — take just the date portion.
+  var iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+
+  // 2) DD-Mon-YYYY, e.g. "15-May-1990"
+  var mon = str.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if (mon) {
     var months = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
                   jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
-    var mo = months[m[2].toLowerCase()];
-    return mo ? (m[3] + '-' + mo + '-' + m[1].padStart(2,'0')) : '';
+    var mo = months[mon[2].toLowerCase()];
+    return mo ? (mon[3] + '-' + mo + '-' + mon[1].padStart(2,'0')) : '';
   }
+
+  // 3) Numeric DD-MM-YYYY or DD/MM/YYYY — the most common format for
+  //    data originally entered by hand (as opposed to a spreadsheet's
+  //    own date type), and exactly the kind of ambiguous format the
+  //    native JS Date parser handles inconsistently/incorrectly rather
+  //    than just failing loudly. Handle it explicitly instead of
+  //    gambling on new Date(...) for this one.
+  var numeric = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (numeric) {
+    var day = parseInt(numeric[1], 10);
+    var mo2 = parseInt(numeric[2], 10);
+    var yr  = numeric[3];
+    // Guard against the (less common) MM-DD-YYYY case: if the first
+    // number can't be a valid day-of-month but CAN be a month, swap.
+    if (day > 31) return '';
+    if (mo2 > 12 && day <= 12) { var tmp = day; day = mo2; mo2 = tmp; }
+    if (mo2 > 12) return '';
+    return yr + '-' + String(mo2).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+  }
+
+  // 4) Last resort: native parser, for anything else recognizable
+  //    (e.g. a full ISO timestamp with a 'Z'/offset already handled by
+  //    case 1 above, or other Date-parseable strings).
   var d = new Date(str);
   if (!isNaN(d)) {
     return d.getFullYear() + '-' +
