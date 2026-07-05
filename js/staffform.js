@@ -546,9 +546,9 @@ function sfmCollectData() {
     var key = SF_FIELD_MAP[id];
     var el  = document.getElementById(id);
     if (!el) return;
-    var val = el.value || '';
-    if (el.type === 'date' && val) val = fromDateInputVal(val);
-    data[key] = val;
+    // Date inputs already give YYYY-MM-DD, exactly what Postgres date
+    // columns expect — send it as-is instead of reformatting it.
+    data[key] = el.value || '';
   });
   return data;
 }
@@ -933,7 +933,7 @@ function tfSubmit() {
   }
 
   var newSchool     = sfmEmisMap[targetEmis.toLowerCase()];
-  var formattedDate = fromDateInputVal(joiningDate);
+  var formattedDate = joiningDate;  // already YYYY-MM-DD from the date input
   var teacherName   = safeVal(transferRowData['NAME OF TEACHER']);
 
   if (!confirm(
@@ -1161,8 +1161,8 @@ function pmSubmit() {
   }
 
   var teacherName      = safeVal(promotionRowData['NAME OF TEACHER']);
-  var formattedPosting = postingDate ? fromDateInputVal(postingDate) : '';
-  var formattedScale   = fromDateInputVal(scaleDate);
+  var formattedPosting = postingDate || '';  // already YYYY-MM-DD from the date input
+  var formattedScale   = scaleDate;           // already YYYY-MM-DD from the date input
 
   if (!confirm(
     'Confirm promotion of "' + teacherName + '"?\n' +
