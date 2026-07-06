@@ -265,6 +265,28 @@ async function _checkedUpdate(table, dbRow, matchCol, matchVal) {
   return { ok: true, count };
 }
 
+// Staff writes go through a dedicated RPC instead of a plain table
+// update. Reason: Postgres requires that after ANY update, the
+// resulting row must still satisfy the table's SELECT policy — not
+// just the UPDATE policy's own WITH CHECK. For `staff`, that meant a
+// transfer moving someone to a different wing/jurisdiction than the
+// acting editor's own scope got silently rejected, even though the
+// UPDATE policy itself was correctly written to allow it. This RPC
+// (see supabase migration) authorizes against the OLD row only, then
+// writes with elevated privilege — sidestepping that automatic
+// coupling entirely without weakening any other security boundary.
+async function _staffPrivilegedUpdate(pno, updates) {
+  const { data, error } = await _sb.rpc('staff_privileged_update', {
+    p_personal_no: pno,
+    p_updates: updates,
+  });
+  if (error) return { ok: false, message: error.message };
+  if (!data || data === 0) {
+    return { ok: false, message: `No staff record found for personal number "${pno}", or you're not authorized to modify it.` };
+  }
+  return { ok: true, count: data };
+}
+
 async function _checkedDelete(table, matchCol, matchVal) {
   const { error, count } = await _sb.from(table).delete({ count: 'exact' }).eq(matchCol, matchVal);
   if (error) return { ok: false, message: error.message };
@@ -538,8 +560,9 @@ async function apiCall(action, payload) {
       dbRow.changes_made_by = user?.name || '';
       dbRow.changes_made_at = new Date().toISOString();
 
+      const cleanRow = _sanitizeEmpty(dbRow);
       const { data: inserted, error } = await _sb
-        .from('staff').insert([dbRow]).select().single();
+        .from('staff').insert([cleanRow]).select().single();
       if (error) return { success: false, error: error.message };
 
       await _sb.from('staff_events').insert([{
@@ -566,7 +589,7 @@ async function apiCall(action, payload) {
       dbRow.changes_made_at = new Date().toISOString();
       delete dbRow.personal_no;  // don't overwrite the PK
 
-      const r = await _checkedUpdate('staff', dbRow, 'personal_no', pno);
+      const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty(dbRow));
       if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
@@ -584,11 +607,11 @@ async function apiCall(action, payload) {
       const reason = Array.isArray(payload) ? payload[1] : payload?.reason;
       const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
 
-      const r = await _checkedUpdate('staff', {
+      const r = await _staffPrivilegedUpdate(pno, {
         status: 'deleted',
         changes_made_by: user?.name || '',
         changes_made_at: new Date().toISOString(),
-      }, 'personal_no', pno);
+      });
       if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
@@ -624,7 +647,7 @@ async function apiCall(action, payload) {
         .eq('emis', targetEmis).maybeSingle();
       if (!dest) return { success: false, error: `EMIS "${targetEmis}" was not found in the schools list.` };
 
-      const r = await _checkedUpdate('staff', _sanitizeEmpty({
+      const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
         school_emis_code:              targetEmis,
         markaz_name:                   dest.markaz,
         tehsil:                        dest.tehsil,
@@ -634,7 +657,7 @@ async function apiCall(action, payload) {
         status:                        'active',
         changes_made_by:               user?.name || '',
         changes_made_at:               new Date().toISOString(),
-      }), 'personal_no', pno);
+      }));
       if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
@@ -679,7 +702,7 @@ async function apiCall(action, payload) {
         }
       }
 
-      const r = await _checkedUpdate('staff', _sanitizeEmpty({
+      const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
         designation:                  p.newDesignation || p.new_designation || p['New Designation'] || '',
         bps:                          p.newBps         || p.new_bps         || p['New BPS'] || '',
         date_of_posting_present_school:p.newPostingDate || '',
@@ -687,7 +710,7 @@ async function apiCall(action, payload) {
         ...destFields,
         changes_made_by:              user?.name || '',
         changes_made_at:              new Date().toISOString(),
-      }), 'personal_no', pno);
+      }));
       if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
@@ -727,11 +750,11 @@ async function apiCall(action, payload) {
       const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
       if (!s) return { success: false, errors: [`No staff record found for personal number "${pno}".`] };
 
-      const r = await _checkedUpdate('staff', _sanitizeEmpty({
+      const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
         status: newStatus,
         changes_made_by: user?.name || '',
         changes_made_at: new Date().toISOString(),
-      }), 'personal_no', pno);
+      }));
       if (!r.ok) return { success: false, errors: [r.message] };
 
       await _sb.from('staff_events').insert([{
@@ -765,11 +788,11 @@ async function apiCall(action, payload) {
         }
       }
 
-      const r = await _checkedUpdate('staff', {
+      const r = await _staffPrivilegedUpdate(pno, {
         status: 'active',
         changes_made_by: user?.name || '',
         changes_made_at: new Date().toISOString(),
-      }, 'personal_no', pno);
+      });
       if (!r.ok) return { success: false, error: r.message };
 
       await _sb.from('staff_events').insert([{
