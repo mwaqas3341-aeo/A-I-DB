@@ -748,7 +748,22 @@ async function apiCall(action, payload) {
     case 'revertToActiveStaff': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
-      const { data: s } = await _sb.from('staff').select('name_of_teacher, status').eq('personal_no', pno).single();
+      const { data: s } = await _sb.from('staff').select('name_of_teacher, status, changes_made_at').eq('personal_no', pno).single();
+      if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
+
+      // Non-admins can only revert within 24 hours of the action that
+      // needs undoing — admins have no time restriction at all.
+      if (!user || String(user.role || '').toLowerCase() !== 'admin') {
+        const changedAt = s.changes_made_at ? new Date(s.changes_made_at) : null;
+        const hoursSince = changedAt ? (Date.now() - changedAt.getTime()) / (1000 * 60 * 60) : Infinity;
+        if (hoursSince > 24) {
+          return {
+            success: false,
+            error: 'This action can no longer be reverted — it was made more than 24 hours ago. ' +
+                   'Please contact an admin, who can revert it at any time.',
+          };
+        }
+      }
 
       const r = await _checkedUpdate('staff', {
         status: 'active',
