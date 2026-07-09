@@ -6,8 +6,10 @@
   <title>AEO Schools Portal</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600&family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <base target="_blank">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/portal-polish.css">
@@ -121,6 +123,10 @@
       <button class="nav-link-btn" id="navMyProfileBtn"
               onclick="openMyProfileModal()">
         <i class="bi bi-person-circle"></i> My Profile
+      </button>
+      <button class="nav-link-btn" id="navDispatchBtn"
+              onclick="openDispatchReportsView()">
+        <i class="bi bi-send-check"></i> Report Dispatch
       </button>
     </div>
 
@@ -329,6 +335,28 @@
 
     </div><!-- /.dashboard-layout -->
   </div><!-- /#homeView -->
+
+  <!-- ── DISPATCH REPORTS VIEW ────────────────────────── -->
+  <div id="dispatchReportsView" class="app-view">
+    <div class="dashboard-layout">
+      <div class="dashboard-main" style="flex:0 0 100%;max-width:100%">
+        <div class="dash-heading">
+          <i class="bi bi-send-check" style="color:var(--brand)"></i> Report Dispatch Register
+        </div>
+        <button class="btn-back-kpi" onclick="switchGlobalTab('homeView', null)">
+          <i class="bi bi-arrow-left"></i> Back to Main Dashboard
+        </button>
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="openWriteReportModal()"><i class="bi bi-pencil-square"></i> Write Report</button>
+          <button class="btn btn-outline-secondary" onclick="openContactsManager()"><i class="bi bi-person-lines-fill"></i> My Contacts</button>
+          <button class="btn btn-outline-secondary" onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('googleConnectModal')).show(); refreshGoogleConnectionStatus()"><i class="bi bi-google"></i> Google Connection</button>
+        </div>
+        <div id="dispatchReportsListBody" style="background:#fff;border:1px solid var(--b0);border-radius:10px;overflow-x:auto">
+          <div style="padding:30px;text-align:center;color:var(--t3)"><span class="spinner-border"></span> Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ── TOOLS VIEW ────────────────────────── -->
   <div id="toolsView" class="app-view">
@@ -799,6 +827,11 @@
             <span class="flabel">Email</span>
             <input type="email" id="mp_email" placeholder="user@example.com">
           </div>
+          <div class="ff">
+            <span class="flabel">Designation</span>
+            <input type="text" id="mp_designation" placeholder="e.g. AEO, DEO">
+            <div style="font-size:.72rem;color:var(--t3);margin-top:3px">Used on your Report Dispatch stamp.</div>
+          </div>
         </div>
 
         <div class="form-section-title"><i class="bi bi-diagram-3"></i> Primary Jurisdiction <span style="font-weight:400;font-size:.75rem;color:var(--t3)">(read-only — contact an admin to change)</span></div>
@@ -829,6 +862,215 @@
     </div>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     REPORT DISPATCH SYSTEM — Modals
+     Include this file's contents inside index.html, alongside the
+     other modals (search for "USER MODAL (admin)" as a landmark and
+     paste these blocks right before it, or anywhere among the other
+     top-level modal divs).
+     ══════════════════════════════════════════════════════════════ -->
+
+<!-- ══ GOOGLE CONNECTION SETUP MODAL ══ -->
+<div class="modal fade" id="googleConnectModal" data-bs-backdrop="static" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-hdr">
+        <div class="modal-hdr-icon"><i class="bi bi-google"></i></div>
+        <div style="flex:1"><div class="modal-hdr-title">Connect Your Google Account</div></div>
+        <button class="btn-mclose" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-bdy" style="text-align:center;padding:28px 24px">
+        <div id="googleNotConnectedView">
+          <i class="bi bi-shield-check" style="font-size:2.5rem;color:var(--brand)"></i>
+          <h3 style="margin:14px 0 8px;font-size:1.05rem">Reports save to your own Drive</h3>
+          <p style="color:var(--t3);font-size:.85rem;line-height:1.6;max-width:380px;margin:0 auto 18px">
+            This creates a "Report Dispatch System" folder in <b>your own</b> Google Drive and sends
+            emails from <b>your own</b> Gmail — nothing is shared with anyone else's account, and admins
+            never see your Drive or inbox directly, only the report links you dispatch.
+          </p>
+          <button class="btn btn-primary" style="padding:10px 24px" onclick="connectGoogleAccount()">
+            <i class="bi bi-google"></i> Connect Google Account
+          </button>
+        </div>
+        <div id="googleConnectedView" style="display:none">
+          <i class="bi bi-check-circle-fill" style="font-size:2.5rem;color:var(--ok)"></i>
+          <h3 style="margin:14px 0 4px;font-size:1.05rem">Connected</h3>
+          <p style="color:var(--t3);font-size:.85rem" id="googleConnectedEmail"></p>
+          <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--b0)">
+            <div style="font-weight:600;font-size:.85rem;margin-bottom:10px">Your Signature</div>
+            <img id="signaturePreview" style="display:none;max-height:70px;max-width:220px;margin-bottom:10px;background:repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50% / 16px 16px">
+            <div>
+              <label class="btn btn-outline-secondary" style="cursor:pointer">
+                <i class="bi bi-upload"></i> Upload Signature
+                <input type="file" accept="image/*" style="display:none" onchange="handleSignatureFileSelect(this)">
+              </label>
+            </div>
+            <div id="signatureUploadStatus" style="font-size:.75rem;color:var(--t3);margin-top:6px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CONTACTS MANAGER MODAL ══ -->
+<div class="modal fade" id="contactsManagerModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-hdr">
+        <div class="modal-hdr-icon"><i class="bi bi-person-lines-fill"></i></div>
+        <div style="flex:1"><div class="modal-hdr-title">My Contacts</div></div>
+        <button class="btn-mclose" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-bdy">
+        <div id="contactsListBody" style="border:1px solid var(--b0);border-radius:8px;margin-bottom:20px;max-height:260px;overflow-y:auto"></div>
+
+        <div style="border-top:2px solid var(--b0);padding-top:16px">
+          <div style="font-weight:700;margin-bottom:12px" id="contactFormTitle">Add Contact</div>
+          <input type="hidden" id="contact_id">
+          <div class="form-grid" style="margin-bottom:12px">
+            <div class="ff"><span class="flabel">Name</span><input type="text" id="contact_name" placeholder="Officer name"></div>
+            <div class="ff"><span class="flabel">Office / Designation</span><input type="text" id="contact_office" placeholder="e.g. DEO Layyah"></div>
+          </div>
+
+          <div style="margin-bottom:10px">
+            <span class="flabel">To</span>
+            <div id="emailsToBox"></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addEmailBox('to')"><i class="bi bi-plus"></i> Add email</button>
+          </div>
+          <div style="margin-bottom:10px">
+            <span class="flabel">CC</span>
+            <div id="emailsCcBox"></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addEmailBox('cc')"><i class="bi bi-plus"></i> Add email</button>
+          </div>
+          <div style="margin-bottom:10px">
+            <span class="flabel">BCC</span>
+            <div id="emailsBccBox"></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addEmailBox('bcc')"><i class="bi bi-plus"></i> Add email</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-ftr">
+        <button class="btn btn-outline-secondary" onclick="clearContactForm()">Clear</button>
+        <button class="btn btn-primary" onclick="saveDispatchContact()"><i class="bi bi-check-lg"></i> Save Contact</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ WRITE REPORT MODAL ══ -->
+<div class="modal fade" id="writeReportModal" data-bs-backdrop="static" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-hdr">
+        <div class="modal-hdr-icon"><i class="bi bi-file-earmark-text"></i></div>
+        <div style="flex:1"><div class="modal-hdr-title">Write Report</div></div>
+        <div class="btn-group" style="margin-right:10px" role="group">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="langBtnEn" onclick="setReportLanguage('en')">English</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="langBtnUr" onclick="setReportLanguage('ur')">اردو</button>
+        </div>
+        <button class="btn-mclose" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-bdy">
+
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="ff">
+            <span class="flabel">Dispatch No.</span>
+            <input type="text" id="rpt_dispatchPreview" readonly disabled placeholder="Assigned on send">
+          </div>
+          <div class="ff">
+            <span class="flabel">Date</span>
+            <input type="date" id="rpt_date" onchange="onReportDateChange()">
+            <div id="rpt_dateHint" style="font-size:.72rem;color:var(--t3);margin-top:3px"></div>
+          </div>
+          <div class="ff">
+            <span class="flabel">Category / Nature</span>
+            <input type="text" id="rpt_category" placeholder="e.g. Absence, Complaint, Inspection">
+          </div>
+        </div>
+
+        <div class="form-section-title"><i class="bi bi-building"></i> School Reference</div>
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="ff">
+            <span class="flabel">School Type</span>
+            <select id="rpt_schoolType" onchange="clearReportSchoolLookup()">
+              <option value="">Select</option>
+              <option value="Public">Public</option>
+              <option value="Private">Private</option>
+            </select>
+          </div>
+          <div class="ff">
+            <span class="flabel">EMIS Code</span>
+            <input type="text" id="rpt_emis" placeholder="8-digit EMIS" oninput="onReportEmisInput()">
+            <div id="rpt_emisStatus" style="font-size:.72rem;margin-top:3px"></div>
+          </div>
+          <div class="ff">
+            <span class="flabel">School Name</span>
+            <input type="text" id="rpt_schoolName" readonly disabled>
+          </div>
+          <div class="ff">
+            <span class="flabel">Accused / Concerned Person</span>
+            <input type="text" id="rpt_accused" placeholder="Name (if applicable)">
+          </div>
+        </div>
+
+        <div class="form-section-title"><i class="bi bi-pencil-square"></i> Report Content</div>
+        <div class="ff" style="margin-bottom:12px">
+          <span class="flabel">Description</span>
+          <textarea id="rpt_description" rows="8" style="width:100%;padding:10px;border:1px solid var(--b0);border-radius:8px;font-size:.9rem"
+            oninput="scheduleDraftAutosave()"></textarea>
+        </div>
+        <div class="ff" style="margin-bottom:16px">
+          <span class="flabel">Remarks</span>
+          <textarea id="rpt_remarks" rows="3" style="width:100%;padding:10px;border:1px solid var(--b0);border-radius:8px;font-size:.9rem"
+            oninput="scheduleDraftAutosave()"></textarea>
+        </div>
+
+        <div class="form-section-title"><i class="bi bi-people"></i> Send To</div>
+        <div style="margin-bottom:16px">
+          <select id="rpt_contactPicker" multiple style="width:100%;min-height:90px;border:1px solid var(--b0);border-radius:8px;padding:8px"></select>
+          <div style="font-size:.72rem;color:var(--t3);margin-top:4px">Ctrl/Cmd-click to select multiple. No contact you need? <a href="#" onclick="openContactsManager();return false;">Add one here</a>.</div>
+        </div>
+
+        <div class="form-section-title"><i class="bi bi-paperclip"></i> Attachments <span style="font-weight:400;font-size:.75rem;color:var(--t3)">(images or PDF only)</span></div>
+        <div style="margin-bottom:16px">
+          <input type="file" id="rpt_attachments" accept="image/*,application/pdf" multiple onchange="onAttachmentsSelected(this)">
+          <div id="rpt_attachmentsList" style="margin-top:8px"></div>
+        </div>
+
+        <div id="rpt_draftStatus" style="font-size:.72rem;color:var(--t3);text-align:right"></div>
+      </div>
+      <div class="modal-ftr">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-outline-primary" onclick="previewReport()"><i class="bi bi-eye"></i> Preview</button>
+        <button class="btn btn-primary" id="rpt_signSendBtn" onclick="signAndSendReport()"><i class="bi bi-send-check"></i> Sign &amp; Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ REPORT PREVIEW MODAL ══ -->
+<div class="modal fade" id="reportPreviewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-hdr">
+        <div class="modal-hdr-icon"><i class="bi bi-eye"></i></div>
+        <div style="flex:1"><div class="modal-hdr-title">Report Preview</div></div>
+        <button class="btn-mclose" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-bdy" style="background:#f4f4f4;padding:20px">
+        <div id="reportPreviewContainer" style="background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.1);margin:0 auto"></div>
+      </div>
+      <div class="modal-ftr">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close &amp; Keep Editing</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden container used to render the report to canvas for PDF generation -->
+<div id="reportPdfRenderTarget" style="position:fixed;top:-9999px;left:-9999px;width:794px;background:#fff"></div>
 
 <!-- ══ USER MODAL (admin) ══ -->
 <div class="modal fade" id="userModal" data-bs-backdrop="static" tabindex="-1">
@@ -1863,6 +2105,11 @@
   <script src="js/api.js"></script>
   <script src="js/perf-cache.js"></script>
   <script src="js/profile.js"></script>
+  <script src="js/dispatch-google.js"></script>
+  <script src="js/dispatch-contacts.js"></script>
+  <script src="js/dispatch-signature.js"></script>
+  <script src="js/dispatch-report-form.js"></script>
+  <script src="js/dispatch-reports-list.js"></script>
   <script src="js/cache-service.js"></script>
   <script src="js/preloader.js"></script>
   <!-- ── Module JS ── -->
