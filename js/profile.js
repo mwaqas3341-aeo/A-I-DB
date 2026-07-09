@@ -22,6 +22,7 @@ function openMyProfileModal() {
   setVal_mp('mp_name', '…');
   setVal_mp('mp_cnic', '…');
   setVal_mp('mp_email', '…');
+  setVal_mp('mp_designation', '…');
 
   modal.show();
 
@@ -35,6 +36,7 @@ function openMyProfileModal() {
       setVal_mp('mp_name',        res.name || '');
       setVal_mp('mp_cnic',        res.cnic || '');
       setVal_mp('mp_email',       res.email || '');
+      setVal_mp('mp_designation', res.designation || '');
       // In case these are more current than the local session copy.
       setVal_mp('mp_district', res.district || '');
       setVal_mp('mp_wing',     res.wing || '');
@@ -57,6 +59,7 @@ function submitMyProfile() {
   const name       = document.getElementById('mp_name').value.trim();
   const cnic       = document.getElementById('mp_cnic').value.trim();
   const email      = document.getElementById('mp_email').value.trim();
+  const designation = document.getElementById('mp_designation').value.trim();
 
   if (!personalNo) { showToast('Personal No. is required.', false); return; }
   if (!name)       { showToast('Name is required.', false); return; }
@@ -83,5 +86,5 @@ function submitMyProfile() {
       if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="bi bi-check-lg"></i> Save Changes'; }
       showToast('Failed to save profile: ' + (err && err.message ? err.message : 'Unknown error'), false);
     })
-    .updateMyProfile({ personalNo, name, cnic, email });
+    .updateMyProfile({ personalNo, name, cnic, email, designation });
 }
