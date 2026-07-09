@@ -206,6 +206,13 @@
               <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </div>
 
+            <div class="module-card" onclick="openDispatchReportsView()">
+              <i class="bi bi-send-check-fill mc-icon" style="color:var(--brand)"></i>
+              <div class="mc-title">Report Dispatch</div>
+              <div class="mc-desc">Write, sign &amp; send official reports</div>
+              <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+            </div>
+
           </div>
 
           <!-- ══ DYNAMIC KPI / MODULE CARDS (from Admin → Dashboard Cards) ══ -->
@@ -275,25 +282,6 @@
                 <button class="kpi-sub-btn kpi-sub-btn-inactive"
                         onclick="event.stopPropagation(); openPrivateModule('Inactive')">
                   <i class="bi bi-archive-fill"></i> Inactive
-                </button>
-              </div>
-            </div>
-
-            <div class="kpi-card kpi-govt" style="cursor:pointer" onclick="openDispatchReportsView()" title="Click to open Report Dispatch">
-              <i class="bi bi-send-check kpi-icon"></i>
-              <div class="kpi-title">Report Dispatch</div>
-              <div style="font-size:.72rem;color:var(--t3);font-weight:600;margin-top:2px">My Reports Sent (This Year)</div>
-              <div class="kpi-value" id="kpiDispatchSent">
-                <span class="spinner-border spinner-border-sm"></span>
-              </div>
-              <div class="kpi-actions">
-                <button class="kpi-sub-btn kpi-sub-btn-active"
-                        onclick="event.stopPropagation(); openWriteReportModal()">
-                  <i class="bi bi-pencil-square"></i> Write Report
-                </button>
-                <button class="kpi-sub-btn kpi-sub-btn-outsourced"
-                        onclick="event.stopPropagation(); openContactsManager()">
-                  <i class="bi bi-person-lines-fill"></i> Contacts
                 </button>
               </div>
             </div>
@@ -1908,28 +1896,10 @@
                 <option value="">Select…</option>
                 <option>PST</option>
                 <option>ESE</option>
-                <option>EST PET</option>
-                <option>EST CS</option>
-                <option>EST GENERAL</option>
-                <option>EST SCIENCE</option>
-                <option>EST SCIENCE MATH</option>
-                <option>EST URDU</option>
-                <option>EST ENGLISH</option>
-                <option>EST AT</option>
-                <option>EST OT</option>
-                <option>SESE PET</option>
-                <option>SESE CS</option>
-                <option>SESE GENERAL</option>
-                <option>SESE SCIENCE</option>
-                <option>SESE SCIENCE MATH</option>
-                <option>SESE URDU</option>
-                <option>SESE ENGLISH</option>
-                <option>SESE AT</option>
-                <option>SESE OT</option>
-                <option>SST SCIENCE</option>
-                <option>SST GENERAL</option>
-                <option>SSE SCIENCE</option>
-                <option>SSE GENERAL</option>
+                <option>EST</option>
+                <option>SESE</option>
+                <option>SST</option>
+                <option>SSE</option>
                 <option>Headmaster</option>
                 <option>Headmistress</option>
                 <option>School Guard</option>
