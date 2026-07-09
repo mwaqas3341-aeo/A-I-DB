@@ -189,7 +189,6 @@ function enterApp(user) {
   loadKPIs();
   loadDashboardLinksApps();
   loadDashboardKpiCards();
-  if (typeof loadDispatchKpiCount === 'function') loadDispatchKpiCount();
 
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
   history.pushState({ route: 'home' }, '', '#home');
