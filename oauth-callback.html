@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connecting Google Account…</title>
+<style>
+  body {
+    margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0B6E4F; color: #fff; text-align: center;
+  }
+  .box { max-width: 360px; padding: 24px; }
+  .spinner {
+    width: 40px; height: 40px; margin: 0 auto 16px;
+    border: 4px solid rgba(255,255,255,0.3); border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h2 { margin: 0 0 8px; font-size: 1.1rem; }
+  p { margin: 0; font-size: 0.85rem; opacity: 0.85; }
+  .icon { font-size: 2.5rem; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div id="spinner" class="spinner"></div>
+    <div id="icon" class="icon" style="display:none"></div>
+    <h2 id="title">Connecting your Google account…</h2>
+    <p id="msg">Please wait, this only takes a moment.</p>
+  </div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(async function () {
+  const titleEl = document.getElementById('title');
+  const msgEl = document.getElementById('msg');
+  const spinnerEl = document.getElementById('spinner');
+  const iconEl = document.getElementById('icon');
+
+  function showResult(success, title, msg) {
+    spinnerEl.style.display = 'none';
+    iconEl.style.display = 'block';
+    iconEl.textContent = success ? '✓' : '⚠';
+    titleEl.textContent = title;
+    msgEl.textContent = msg;
+  }
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+
+    if (error) {
+      showResult(false, 'Connection cancelled', 'You can close this window and try again from the app.');
+      return;
+    }
+    if (!code) {
+      showResult(false, 'Something went wrong', 'No authorization code was received. Please try again.');
+      return;
+    }
+
+    const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+    // The user's existing app session (from the main window) is stored
+    // under the same CONFIG.SESSION_KEY used across the rest of the app.
+    // We need their Supabase auth session specifically (not the CNIC
+    // profile object) to call the Edge Function as themselves.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      showResult(false, 'Not logged in', 'Please close this window, log in to the app, and try connecting again.');
+      return;
+    }
+
+    const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/google-oauth-exchange', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + session.access_token,
+      },
+      body: JSON.stringify({
+        code: code,
+        redirect_uri: window.location.origin + window.location.pathname,
+      }),
+    });
+    const result = await res.json();
+
+    if (result.success) {
+      showResult(true, 'Google account connected!', 'You can close this window and return to the app.');
+      if (window.opener) {
+        try { window.opener.postMessage({ type: 'google-connected', success: true }, '*'); } catch (e) {}
+      }
+      setTimeout(() => window.close(), 1800);
+    } else {
+      showResult(false, 'Connection failed', result.message || 'Please close this window and try again.');
+      if (window.opener) {
+        try { window.opener.postMessage({ type: 'google-connected', success: false, message: result.message }, '*'); } catch (e) {}
+      }
+    }
+  } catch (e) {
+    showResult(false, 'Something went wrong', e.message || 'Please close this window and try again.');
+  }
+})();
+</script>
+</body>
+</html>
