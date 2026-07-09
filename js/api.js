@@ -398,6 +398,7 @@ async function apiCall(action, payload) {
         tehsil:      fullProfile.tehsil,
         cell_no:     fullProfile.cell_no,
         email:       fullProfile.email,
+        designation: fullProfile.designation,
         scope_type:  fullProfile.scope_type,
         scope_value: fullProfile.scope_value,
         access_type: fullProfile.access_type,
@@ -950,7 +951,20 @@ async function apiCall(action, payload) {
         if (!r.ok) return { success: false, message: r.message };
       } else {
         dbRow.status = dbRow.status || 'Active';
-        const { error } = await _sb.from('private_schools').insert([dbRow]);
+        // This column has no database-level default — without this,
+        // new private schools were being inserted with unique_id left
+        // NULL, which then made Edit unable to find them afterward
+        // (it looks records up by this exact value). Match the
+        // existing ID format used across the table: PS-YYYY-XXXXXXXX.
+        const year = new Date().getFullYear();
+        const genId = () => `PS-${year}-` + Array.from({length: 8}, () => '0123456789ABCDEF'[Math.floor(Math.random()*16)]).join('');
+        dbRow.unique_id = genId();
+        let { error } = await _sb.from('private_schools').insert([dbRow]);
+        if (error && error.code === '23505') {
+          // Collision on the generated id (astronomically unlikely) — retry once with a fresh one.
+          dbRow.unique_id = genId();
+          ({ error } = await _sb.from('private_schools').insert([dbRow]));
+        }
         if (error) return { success: false, message: error.message };
       }
       return { success: true, message: 'School saved.' };
@@ -987,6 +1001,7 @@ async function apiCall(action, payload) {
         name:        data.name,
         cnic:        data.cnic,
         email:       data.email,
+        designation: data.designation,
         district:    data.district,
         wing:        data.wing,
         tehsil:      data.tehsil,
@@ -1001,6 +1016,7 @@ async function apiCall(action, payload) {
       const newName       = (p.name ?? '').toString().trim();
       const newCnic        = (p.cnic ?? '').toString().trim();
       const newEmail       = (p.email ?? '').toString().trim();
+      const newDesignation = (p.designation ?? '').toString().trim();
 
       if (!newPersonalNo) return { success: false, message: 'Personal No. is required.' };
       if (!newName)       return { success: false, message: 'Name is required.' };
@@ -1026,12 +1042,13 @@ async function apiCall(action, payload) {
         name:        newName,
         cnic:        newCnic,
         email:       newEmail,
+        designation: newDesignation,
       }), 'id', user.id);
       if (!r.ok) return { success: false, message: r.message };
 
       // Keep the locally-stored session in sync so the header/name shown
       // elsewhere in the app updates immediately without a re-login.
-      const updatedUser = { ...user, personal_no: newPersonalNo, name: newName, cnic: newCnic, email: newEmail };
+      const updatedUser = { ...user, personal_no: newPersonalNo, name: newName, cnic: newCnic, email: newEmail, designation: newDesignation };
       localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(updatedUser));
 
       return {
