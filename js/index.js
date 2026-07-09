@@ -36,11 +36,30 @@ document.addEventListener('DOMContentLoaded', () => {
 let currentUser = null;
 
 // ─── Toast ────────────────────────────────────────
-function showToast(msg, ok = true) {
+function showToast(msg, okOrType = true) {
+  // Two different calling conventions exist across this codebase:
+  //   showToast(msg, true/false)                      — boolean style
+  //   showToast(msg, 'error'|'warning'|'success'|...)  — string style
+  // Both need to render correctly rather than treating any non-empty
+  // string as truthy/success, which silently showed every error and
+  // warning toast with green "success" styling.
+  let ok = true, icon = 'check-circle-fill', cls = 'ok';
+  if (typeof okOrType === 'string') {
+    const t = okOrType.toLowerCase();
+    if (t === 'error' || t === 'danger') { ok = false; icon = 'exclamation-circle-fill'; cls = 'err'; }
+    else if (t === 'warning' || t === 'warn') { ok = false; icon = 'exclamation-triangle-fill'; cls = 'warn'; }
+    else if (t === 'info') { ok = true; icon = 'info-circle-fill'; cls = 'info'; }
+    else { ok = true; icon = 'check-circle-fill'; cls = 'ok'; } // 'success' or unrecognized
+  } else {
+    ok = !!okOrType;
+    icon = ok ? 'check-circle-fill' : 'exclamation-circle-fill';
+    cls = ok ? 'ok' : 'err';
+  }
+
   const s  = document.getElementById('toastStack');
   const el = document.createElement('div');
-  el.className = `toast-item ${ok ? 'ok' : 'err'}`;
-  el.innerHTML = `<i class="bi bi-${ok ? 'check-circle-fill' : 'exclamation-circle-fill'}"></i><span>${msg}</span>`;
+  el.className = `toast-item ${cls}`;
+  el.innerHTML = `<i class="bi bi-${icon}"></i><span>${msg}</span>`;
   s.appendChild(el);
   setTimeout(() => {
     el.style.animation = 'tout .3s forwards';
@@ -170,6 +189,7 @@ function enterApp(user) {
   loadKPIs();
   loadDashboardLinksApps();
   loadDashboardKpiCards();
+  if (typeof loadDispatchKpiCount === 'function') loadDispatchKpiCount();
 
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
   history.pushState({ route: 'home' }, '', '#home');
