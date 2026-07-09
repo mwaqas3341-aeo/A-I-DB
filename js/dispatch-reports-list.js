@@ -71,16 +71,3 @@ function openDispatchReportsView() {
   if (typeof switchGlobalTab === 'function') switchGlobalTab('dispatchReportsView', null);
   loadMyDispatchReports();
 }
-
-async function loadDispatchKpiCount() {
-  const el = document.getElementById('kpiDispatchSent');
-  if (!el) return;
-  const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
-  const { count, error } = await _sb
-    .from('dispatch_reports')
-    .select('id', { count: 'exact', head: true })
-    .eq('sender_id', currentUser.id)
-    .in('status', ['sent', 'partial'])
-    .gte('created_at', yearStart);
-  el.textContent = error ? '—' : (count ?? 0);
-}
