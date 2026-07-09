@@ -124,10 +124,6 @@
               onclick="openMyProfileModal()">
         <i class="bi bi-person-circle"></i> My Profile
       </button>
-      <button class="nav-link-btn" id="navDispatchBtn"
-              onclick="openDispatchReportsView()">
-        <i class="bi bi-send-check"></i> Report Dispatch
-      </button>
     </div>
 
     <div style="flex:1"></div>
@@ -279,6 +275,25 @@
                 <button class="kpi-sub-btn kpi-sub-btn-inactive"
                         onclick="event.stopPropagation(); openPrivateModule('Inactive')">
                   <i class="bi bi-archive-fill"></i> Inactive
+                </button>
+              </div>
+            </div>
+
+            <div class="kpi-card kpi-govt" style="cursor:pointer" onclick="openDispatchReportsView()" title="Click to open Report Dispatch">
+              <i class="bi bi-send-check kpi-icon"></i>
+              <div class="kpi-title">Report Dispatch</div>
+              <div style="font-size:.72rem;color:var(--t3);font-weight:600;margin-top:2px">My Reports Sent (This Year)</div>
+              <div class="kpi-value" id="kpiDispatchSent">
+                <span class="spinner-border spinner-border-sm"></span>
+              </div>
+              <div class="kpi-actions">
+                <button class="kpi-sub-btn kpi-sub-btn-active"
+                        onclick="event.stopPropagation(); openWriteReportModal()">
+                  <i class="bi bi-pencil-square"></i> Write Report
+                </button>
+                <button class="kpi-sub-btn kpi-sub-btn-outsourced"
+                        onclick="event.stopPropagation(); openContactsManager()">
+                  <i class="bi bi-person-lines-fill"></i> Contacts
                 </button>
               </div>
             </div>
@@ -2102,27 +2117,4 @@
   <!-- ── Config & API shim (load first) ── -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/perf-cache.js"></script>
-  <script src="js/profile.js"></script>
-  <script src="js/dispatch-google.js"></script>
-  <script src="js/dispatch-contacts.js"></script>
-  <script src="js/dispatch-signature.js"></script>
-  <script src="js/dispatch-report-form.js"></script>
-  <script src="js/dispatch-reports-list.js"></script>
-  <script src="js/cache-service.js"></script>
-  <script src="js/preloader.js"></script>
-  <!-- ── Module JS ── -->
-  <script src="js/core.js"></script>
-  <script src="js/hr_view.js"></script>
-  <script src="js/staffform.js"></script>
-  <script src="js/admin.js"></script>
-  <script src="js/public_schools.js"></script>
-  <script src="js/private_schools.js"></script>
-  <!-- ── App shell JS (runs last) ── -->
-  <script src="js/index.js"></script>
-  <script src="js/expiry-alerts.js"></script>
-  <script src="js/login-feed.js"></script>
-
-</body>
-</html>
+  <script src="js/api.js
