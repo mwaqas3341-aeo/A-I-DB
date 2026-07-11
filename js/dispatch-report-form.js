@@ -7,8 +7,9 @@
 
 let reportLanguage = 'en';
 let reportAttachments = []; // [{file, compressedBlob, name, type, size}]
-let reportSchoolMatch = null; // { district, wing, tehsil, markaz, emis }
+let reportSchoolMatch = null; // { school_name, district, wing, tehsil, markaz_name }
 let draftAutosaveTimer = null;
+let _reportEmisRequestSeq = 0; // guards against out-of-order EMIS lookup responses
 
 const DRAFT_KEY = 'dispatchReportDraft';
 
@@ -72,15 +73,12 @@ function _actuallyOpenWriteReportModal() {
   onReportDateChange();
 }
 
-// ── EMIS lookup. IMPORTANT: hrSchoolCache (built in hr_view.js) only
-//    carries jurisdiction hierarchy — .e (EMIS), .d (district), .w
-//    (wing), .t (tehsil), .m (markaz) — it does NOT contain the school's
-//    actual name. The real name lives in the Public Schools dataset
-//    (js/public_schools.js: pubData / pubHeaders), which is only loaded
-//    once that screen has been opened in this session. So: try to
-//    auto-fill the name from there if it's available, but ALWAYS leave
-//    the field editable so it can be typed/corrected either way.
-//    Private schools skip EMIS entirely — name is just typed in. ───────
+// ── EMIS lookup. Queries the `public_schools` table directly (columns
+//    emis, school_name, district, wing, tehsil, markaz_name) so it works
+//    every time, regardless of whether any other screen's cache has
+//    loaded yet this session. Name field always stays editable so it
+//    can be corrected/typed manually either way. Private schools skip
+//    EMIS entirely — name is just typed in directly. ───────────────────
 function clearReportSchoolLookup() {
   reportSchoolMatch = null;
   const type = document.getElementById('rpt_schoolType').value;
@@ -105,40 +103,45 @@ function clearReportSchoolLookup() {
   scheduleDraftAutosave();
 }
 
-function onReportEmisInput() {
+async function onReportEmisInput() {
   const emis = document.getElementById('rpt_emis').value.trim();
   const statusEl = document.getElementById('rpt_emisStatus');
   const nameEl = document.getElementById('rpt_schoolName');
+
   if (!emis) { reportSchoolMatch = null; statusEl.textContent = ''; return; }
+  if (!/^\d{8}$/.test(emis)) {
+    reportSchoolMatch = null;
+    statusEl.textContent = 'EMIS must be 8 digits';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
 
-  // Jurisdiction hierarchy match (district/wing/tehsil/markaz) — confirms
-  // the EMIS is a real, known school, but has no name to offer.
-  const pool = (typeof hrSchoolCache !== 'undefined' && hrSchoolCache.length) ? hrSchoolCache
-             : (typeof schoolCache !== 'undefined' ? schoolCache : []);
-  const match = pool.find(s => s.e && s.e.toString().trim() === emis);
-  reportSchoolMatch = match || null;
+  const myRequestId = ++_reportEmisRequestSeq; // ignore stale responses if the user keeps typing
+  statusEl.textContent = 'Looking up…';
+  statusEl.style.color = 'var(--t3)';
 
-  // Best-effort actual NAME lookup from the Public Schools module's own
-  // cache, if that screen has already loaded data this session.
-  let autoName = '';
   try {
-    if (typeof pubData !== 'undefined' && pubData.length && typeof pubHeaders !== 'undefined' && pubHeaders.length >= 2) {
-      const emisKey = pubHeaders[0], nameKey = pubHeaders[1];
-      const row = pubData.find(r => String(r[emisKey] || '').trim() === emis);
-      if (row) autoName = row[nameKey] || '';
+    const { data, error } = await _sb.from('public_schools')
+      .select('school_name, district, wing, tehsil, markaz_name')
+      .eq('emis', emis)
+      .maybeSingle();
+    if (myRequestId !== _reportEmisRequestSeq) return; // superseded by a newer lookup
+    if (error) throw error;
+
+    if (data) {
+      reportSchoolMatch = data;
+      nameEl.value = data.school_name || '';
+      statusEl.textContent = '✓ School found';
+      statusEl.style.color = 'var(--ok)';
+    } else {
+      reportSchoolMatch = null;
+      statusEl.textContent = 'EMIS not found — you can still enter the school name manually';
+      statusEl.style.color = 'var(--warn)';
     }
-  } catch (e) { /* Public schools data not loaded yet in this session — fine, field stays editable */ }
-
-  if (autoName) nameEl.value = autoName;
-
-  if (match && autoName) {
-    statusEl.textContent = '✓ School found';
-    statusEl.style.color = 'var(--ok)';
-  } else if (match) {
-    statusEl.textContent = '✓ EMIS matched — please enter/confirm the school name';
-    statusEl.style.color = 'var(--ok)';
-  } else {
-    statusEl.textContent = 'EMIS not found in records — you can still enter the school name manually';
+  } catch (e) {
+    if (myRequestId !== _reportEmisRequestSeq) return;
+    reportSchoolMatch = null;
+    statusEl.textContent = 'Lookup failed — enter the school name manually';
     statusEl.style.color = 'var(--warn)';
   }
   scheduleDraftAutosave();
