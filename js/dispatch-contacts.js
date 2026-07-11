@@ -1,8 +1,18 @@
 /**
  * Report Dispatch System — Contacts (per-user address book).
  * Each contact has a name/office + up to N email boxes split into
- * To / CC / BCC. Fully self-managed by each user; nothing shared.
+ * To / CC / BCC, plus an official-hierarchy designation used to
+ * auto-sort recipients when a report goes to multiple offices.
+ * Fully self-managed by each user; nothing shared.
  */
+
+// Official Government of Punjab school-education hierarchy order used to
+// auto-sort recipients whenever a report is sent to multiple offices.
+const DISPATCH_HIERARCHY_ORDER = ['CEO', 'DEO', 'Dy. DEO', 'AEO', 'Assistant Director', 'Head Teacher', 'Other'];
+function dispatchHierarchyRank(designation) {
+  const idx = DISPATCH_HIERARCHY_ORDER.indexOf(designation);
+  return idx === -1 ? DISPATCH_HIERARCHY_ORDER.length : idx;
+}
 
 let dispatchContactsCache = [];
 
@@ -29,7 +39,7 @@ function renderContactsList() {
   body.innerHTML = dispatchContactsCache.map(c => `
     <div class="contact-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b0)">
       <div>
-        <div style="font-weight:600">${escHtml(c.name)}</div>
+        <div style="font-weight:600">${escHtml(c.name)} <span style="font-weight:400;font-size:.72rem;color:var(--t3)">(${escHtml(c.designation || 'Other')})</span></div>
         <div style="font-size:.75rem;color:var(--t3)">${escHtml(c.office || '')}</div>
         <div style="font-size:.72rem;color:var(--t3);margin-top:2px">
           To: ${c.emails_to.length} &nbsp; CC: ${c.emails_cc.length} &nbsp; BCC: ${c.emails_bcc.length}
@@ -55,6 +65,7 @@ function clearContactForm() {
   document.getElementById('contact_id').value = '';
   document.getElementById('contact_name').value = '';
   document.getElementById('contact_office').value = '';
+  document.getElementById('contact_designation').value = 'Other';
   ['to', 'cc', 'bcc'].forEach(kind => {
     const box = document.getElementById('emails' + kind[0].toUpperCase() + kind.slice(1) + 'Box');
     box.innerHTML = '';
@@ -86,6 +97,7 @@ function editDispatchContact(id) {
   document.getElementById('contact_id').value = c.id;
   document.getElementById('contact_name').value = c.name;
   document.getElementById('contact_office').value = c.office || '';
+  document.getElementById('contact_designation').value = c.designation || 'Other';
   document.getElementById('contactFormTitle').textContent = 'Edit Contact';
 
   [['emailsToBox', c.emails_to, 'to'], ['emailsCcBox', c.emails_cc, 'cc'], ['emailsBccBox', c.emails_bcc, 'bcc']].forEach(([boxId, emails, kind]) => {
@@ -107,6 +119,7 @@ async function saveDispatchContact() {
   const id = document.getElementById('contact_id').value;
   const name = document.getElementById('contact_name').value.trim();
   const office = document.getElementById('contact_office').value.trim();
+  const designation = document.getElementById('contact_designation').value;
   const emails_to = _collectEmails('to');
   const emails_cc = _collectEmails('cc');
   const emails_bcc = _collectEmails('bcc');
@@ -119,7 +132,7 @@ async function saveDispatchContact() {
   const bad = allEmails.find(e => !emailRe.test(e));
   if (bad) { showToast(`"${bad}" is not a valid email address.`, false); return; }
 
-  const row = { name, office, emails_to, emails_cc, emails_bcc };
+  const row = { name, office, designation, emails_to, emails_cc, emails_bcc };
   let error;
   if (id) {
     ({ error } = await _sb.from('dispatch_contacts').update(row).eq('id', id));
