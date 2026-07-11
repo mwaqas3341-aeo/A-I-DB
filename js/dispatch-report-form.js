@@ -55,7 +55,7 @@ function _actuallyOpenWriteReportModal() {
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
 
   document.getElementById('rpt_date').value = new Date().toISOString().slice(0, 10);
-  document.getElementById('rpt_dispatchPreview').value = 'Assigned when sent';
+  document.getElementById('rpt_dispatchPreview').value = 'Calculating…';
   reportAttachments = [];
   document.getElementById('rpt_attachmentsList').innerHTML = '';
   setReportLanguage('en');
@@ -72,18 +72,40 @@ function _actuallyOpenWriteReportModal() {
 }
 
 // ── EMIS lookup (reuses the existing school hierarchy cache already
-//    built elsewhere in the app — hrSchoolCache / schoolCache) ──────
+//    built elsewhere in the app — hrSchoolCache / schoolCache). Public
+//    schools are looked up by EMIS; Private schools skip EMIS entirely
+//    and the name is just typed in directly. ───────────────────────────
 function clearReportSchoolLookup() {
   reportSchoolMatch = null;
-  document.getElementById('rpt_schoolName').value = '';
-  document.getElementById('rpt_emisStatus').textContent = '';
+  const type = document.getElementById('rpt_schoolType').value;
+  const emisWrap = document.getElementById('rpt_emisFieldWrap');
+  const emisInput = document.getElementById('rpt_emis');
+  const nameInput = document.getElementById('rpt_schoolName');
+  const statusEl = document.getElementById('rpt_emisStatus');
+
+  emisInput.value = '';
+  statusEl.textContent = '';
+  nameInput.value = '';
+
+  if (type === 'Private') {
+    emisWrap.style.display = 'none';
+    nameInput.readOnly = false;
+    nameInput.disabled = false;
+    nameInput.placeholder = 'Enter school name';
+  } else {
+    emisWrap.style.display = '';
+    nameInput.readOnly = true;
+    nameInput.disabled = true;
+    nameInput.placeholder = '';
+  }
+  scheduleDraftAutosave();
 }
 
 function onReportEmisInput() {
   const emis = document.getElementById('rpt_emis').value.trim();
   const statusEl = document.getElementById('rpt_emisStatus');
   const nameEl = document.getElementById('rpt_schoolName');
-  if (!emis) { clearReportSchoolLookup(); return; }
+  if (!emis) { reportSchoolMatch = null; nameEl.value = ''; statusEl.textContent = ''; return; }
 
   const pool = (typeof hrSchoolCache !== 'undefined' && hrSchoolCache.length) ? hrSchoolCache
              : (typeof schoolCache !== 'undefined' ? schoolCache : []);
@@ -91,7 +113,7 @@ function onReportEmisInput() {
 
   if (match) {
     reportSchoolMatch = match;
-    nameEl.value = `${match.m || ''} (${match.d || ''})`;
+    nameEl.value = match.n || match.name || match.school_name || '';
     statusEl.textContent = '✓ School found';
     statusEl.style.color = 'var(--ok)';
   } else {
@@ -103,26 +125,30 @@ function onReportEmisInput() {
   scheduleDraftAutosave();
 }
 
-// ── Dispatch number preview (informational only — the real number is
-//    claimed atomically at send time, never before) ─────────────────
+// ── Dispatch number preview — shows the number this report WOULD get
+//    right now. It is only a preview: the real number is still claimed
+//    atomically at send time (so two people saving at once never collide),
+//    but showing it upfront answers "what will my dispatch no. be?" ──────
 async function onReportDateChange() {
   const dateVal = document.getElementById('rpt_date').value;
   const hintEl = document.getElementById('rpt_dateHint');
-  if (!dateVal) { hintEl.textContent = ''; return; }
+  const previewEl = document.getElementById('rpt_dispatchPreview');
+  if (!dateVal) { hintEl.textContent = ''; previewEl.value = 'Assigned on send'; return; }
 
   const year = new Date(dateVal).getFullYear();
   const currentYear = new Date().getFullYear();
   const markaz = currentUser.markaz_name || currentUser.markaz || '';
 
-  if (year === currentYear) {
-    hintEl.textContent = 'The next dispatch number for your Markaz will be assigned automatically.';
-    scheduleDraftAutosave();
-    return;
-  }
-
   const { data } = await _sb.from('dispatch_counters').select('last_number').eq('markaz_name', markaz).eq('year', year).maybeSingle();
   const maxUsed = data ? data.last_number : 0;
-  hintEl.textContent = `Backdated to ${year}: highest dispatch number already used for your Markaz that year is ${String(maxUsed).padStart(3, '0')}. The next one sent will continue from there.`;
+  const nextSeq = maxUsed + 1;
+  previewEl.value = `${String(nextSeq).padStart(3, '0')}/${markaz}/${year} (expected)`;
+
+  if (year === currentYear) {
+    hintEl.textContent = 'This is the next dispatch number for your Markaz — it is only finalized once you actually send.';
+  } else {
+    hintEl.textContent = `Backdated to ${year}: highest dispatch number already used for your Markaz that year is ${String(maxUsed).padStart(3, '0')}. The next one sent will continue from there.`;
+  }
   scheduleDraftAutosave();
 }
 
@@ -200,6 +226,7 @@ function _saveDraft() {
     category: document.getElementById('rpt_category')?.value,
     schoolType: document.getElementById('rpt_schoolType')?.value,
     emis: document.getElementById('rpt_emis')?.value,
+    schoolName: document.getElementById('rpt_schoolName')?.value,
     accused: document.getElementById('rpt_accused')?.value,
     description: document.getElementById('rpt_description')?.value,
     remarks: document.getElementById('rpt_remarks')?.value,
@@ -220,11 +247,16 @@ function _restoreDraftIfAny() {
     document.getElementById('rpt_subject').value = d.subject || '';
     document.getElementById('rpt_category').value = d.category || '';
     document.getElementById('rpt_schoolType').value = d.schoolType || '';
+    clearReportSchoolLookup(); // sets EMIS vs typed-name mode for the restored school type
     document.getElementById('rpt_emis').value = d.emis || '';
     document.getElementById('rpt_accused').value = d.accused || '';
     document.getElementById('rpt_description').value = d.description || '';
     document.getElementById('rpt_remarks').value = d.remarks || '';
-    if (d.emis) onReportEmisInput();
+    if (d.schoolType === 'Private') {
+      document.getElementById('rpt_schoolName').value = d.schoolName || '';
+    } else if (d.emis) {
+      onReportEmisInput();
+    }
   } catch (e) { /* ignore a corrupt draft */ }
 }
 
@@ -333,9 +365,9 @@ function buildReportTemplateHtml() {
       </div>` : ''}
 
       <div style="margin-top:50px;display:flex;justify-content:flex-end">
-        <div style="width:240px;text-align:center">
+        <div style="width:300px;text-align:center">
           <div style="font-style:italic;color:#000;margin-bottom:4px">${L.signature}</div>
-          ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:60px;max-width:200px;display:block;margin:0 auto 4px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:60px"></div>`}
+          ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:110px;max-width:280px;display:block;margin:0 auto 4px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:110px"></div>`}
           <div style="border-top:1.4px solid #000;padding-top:6px;font-size:.85rem;color:#000">
             <div style="font-weight:700">${escHtml(name)}</div>
             <div>${escHtml(designation)}</div>
@@ -346,7 +378,7 @@ function buildReportTemplateHtml() {
 
       <div style="margin-top:40px;font-size:.85rem;color:#000">
         <div style="font-weight:700;margin-bottom:6px">${L.copy}:</div>
-        <div>1. ${isUr ? 'منتخب کردہ تمام دفاتر — بغیر علیحدہ کور لیٹر کے، ایک ایک نقل' : 'All addressee offices selected above — one copy each, no separate covering letter.'}</div>
+        <div>1. ${escHtml(toText)} — ${isUr ? 'ایک ایک نقل، بغیر علیحدہ کور لیٹر کے' : 'one copy each, no separate covering letter'}.</div>
         <div>2. ${isUr ? 'دفتری نقل (ریکارڈ کے لیے)' : 'Office copy (for record).'}</div>
       </div>
 
@@ -484,7 +516,7 @@ async function signAndSendReport() {
 
     // 3. Create the report row (status: sending) — this is what makes
     //    the claimed number safely retryable if the next steps fail.
-    const { data: reportRow, error: insertErr } = await _sb.from('dispatch_reports').insert([{
+    const reportRowBase = {
       dispatch_seq: seq,
       dispatch_number: dispatchNumber,
       dispatch_year: year,
@@ -493,7 +525,6 @@ async function signAndSendReport() {
       sender_designation: currentUser.designation || '',
       sender_markaz: markaz,
       report_date: date,
-      subject,
       language: reportLanguage,
       category: document.getElementById('rpt_category').value.trim(),
       school_type: document.getElementById('rpt_schoolType').value,
@@ -505,7 +536,19 @@ async function signAndSendReport() {
       recipients: selectedContacts.map(c => ({ name: c.name, to: c.emails_to, cc: c.emails_cc, bcc: c.emails_bcc })),
       signature_url: (_reportGoogleStatus && _reportGoogleStatus.signature_url) || '',
       status: 'sending',
-    }]).select().single();
+    };
+
+    let { data: reportRow, error: insertErr } = await _sb.from('dispatch_reports')
+      .insert([{ ...reportRowBase, subject }]).select().single();
+
+    // The 'subject' column may not exist yet on older installs — fall
+    // back to saving without it rather than blocking the whole send.
+    // Fix properly with: ALTER TABLE dispatch_reports ADD COLUMN subject text;
+    if (insertErr && /subject/i.test(insertErr.message) && /column/i.test(insertErr.message)) {
+      showToast('Admin note: add a "subject" column to dispatch_reports — sending without saving it for now.', false);
+      ({ data: reportRow, error: insertErr } = await _sb.from('dispatch_reports')
+        .insert([reportRowBase]).select().single());
+    }
     if (insertErr) throw new Error('Could not save the report: ' + insertErr.message);
 
     // 4. Generate the PDF and encode attachments
