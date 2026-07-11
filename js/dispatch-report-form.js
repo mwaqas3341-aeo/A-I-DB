@@ -59,6 +59,7 @@ function _actuallyOpenWriteReportModal() {
   reportAttachments = [];
   document.getElementById('rpt_attachmentsList').innerHTML = '';
   setReportLanguage('en');
+  clearReportSchoolLookup(); // sets EMIS-vs-typed-name UI state before any draft/restore runs
 
   loadDispatchContacts().then(contacts => {
     const picker = document.getElementById('rpt_contactPicker');
@@ -71,10 +72,15 @@ function _actuallyOpenWriteReportModal() {
   onReportDateChange();
 }
 
-// ── EMIS lookup (reuses the existing school hierarchy cache already
-//    built elsewhere in the app — hrSchoolCache / schoolCache). Public
-//    schools are looked up by EMIS; Private schools skip EMIS entirely
-//    and the name is just typed in directly. ───────────────────────────
+// ── EMIS lookup. IMPORTANT: hrSchoolCache (built in hr_view.js) only
+//    carries jurisdiction hierarchy — .e (EMIS), .d (district), .w
+//    (wing), .t (tehsil), .m (markaz) — it does NOT contain the school's
+//    actual name. The real name lives in the Public Schools dataset
+//    (js/public_schools.js: pubData / pubHeaders), which is only loaded
+//    once that screen has been opened in this session. So: try to
+//    auto-fill the name from there if it's available, but ALWAYS leave
+//    the field editable so it can be typed/corrected either way.
+//    Private schools skip EMIS entirely — name is just typed in. ───────
 function clearReportSchoolLookup() {
   reportSchoolMatch = null;
   const type = document.getElementById('rpt_schoolType').value;
@@ -86,17 +92,15 @@ function clearReportSchoolLookup() {
   emisInput.value = '';
   statusEl.textContent = '';
   nameInput.value = '';
+  nameInput.readOnly = false;
+  nameInput.disabled = false;
 
   if (type === 'Private') {
     emisWrap.style.display = 'none';
-    nameInput.readOnly = false;
-    nameInput.disabled = false;
     nameInput.placeholder = 'Enter school name';
   } else {
     emisWrap.style.display = '';
-    nameInput.readOnly = true;
-    nameInput.disabled = true;
-    nameInput.placeholder = '';
+    nameInput.placeholder = 'Auto-fills if found — edit if needed';
   }
   scheduleDraftAutosave();
 }
@@ -105,21 +109,36 @@ function onReportEmisInput() {
   const emis = document.getElementById('rpt_emis').value.trim();
   const statusEl = document.getElementById('rpt_emisStatus');
   const nameEl = document.getElementById('rpt_schoolName');
-  if (!emis) { reportSchoolMatch = null; nameEl.value = ''; statusEl.textContent = ''; return; }
+  if (!emis) { reportSchoolMatch = null; statusEl.textContent = ''; return; }
 
+  // Jurisdiction hierarchy match (district/wing/tehsil/markaz) — confirms
+  // the EMIS is a real, known school, but has no name to offer.
   const pool = (typeof hrSchoolCache !== 'undefined' && hrSchoolCache.length) ? hrSchoolCache
              : (typeof schoolCache !== 'undefined' ? schoolCache : []);
   const match = pool.find(s => s.e && s.e.toString().trim() === emis);
+  reportSchoolMatch = match || null;
 
-  if (match) {
-    reportSchoolMatch = match;
-    nameEl.value = match.n || match.name || match.school_name || '';
+  // Best-effort actual NAME lookup from the Public Schools module's own
+  // cache, if that screen has already loaded data this session.
+  let autoName = '';
+  try {
+    if (typeof pubData !== 'undefined' && pubData.length && typeof pubHeaders !== 'undefined' && pubHeaders.length >= 2) {
+      const emisKey = pubHeaders[0], nameKey = pubHeaders[1];
+      const row = pubData.find(r => String(r[emisKey] || '').trim() === emis);
+      if (row) autoName = row[nameKey] || '';
+    }
+  } catch (e) { /* Public schools data not loaded yet in this session — fine, field stays editable */ }
+
+  if (autoName) nameEl.value = autoName;
+
+  if (match && autoName) {
     statusEl.textContent = '✓ School found';
     statusEl.style.color = 'var(--ok)';
+  } else if (match) {
+    statusEl.textContent = '✓ EMIS matched — please enter/confirm the school name';
+    statusEl.style.color = 'var(--ok)';
   } else {
-    reportSchoolMatch = null;
-    nameEl.value = '';
-    statusEl.textContent = 'EMIS not found in records';
+    statusEl.textContent = 'EMIS not found in records — you can still enter the school name manually';
     statusEl.style.color = 'var(--warn)';
   }
   scheduleDraftAutosave();
