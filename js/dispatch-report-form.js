@@ -48,6 +48,35 @@ function openWriteReportModal() {
 
 let _reportGoogleStatus = null;
 
+// ── Recipient selection helpers (checkbox-based, hierarchy-sorted) ──────
+// Official order regardless of tick order: CEO > DEO > Dy. DEO > AEO >
+// Assistant Director > Head Teacher > Other. Used everywhere a report
+// needs its final recipient list — the letter body, the live "Sending
+// to" preview, and the actual send.
+function getSelectedReportContacts() {
+  const checkedIds = Array.from(document.querySelectorAll('.rpt-contact-check:checked')).map(el => el.value);
+  return dispatchContactsCache
+    .filter(c => checkedIds.includes(c.id))
+    .sort((a, b) => dispatchHierarchyRank(a.designation) - dispatchHierarchyRank(b.designation) || a.name.localeCompare(b.name));
+}
+
+function _renderSelectedOfficesLive() {
+  const box = document.getElementById('rpt_selectedOfficesBox');
+  const list = document.getElementById('rpt_selectedOfficesList');
+  const selected = getSelectedReportContacts();
+
+  if (!selected.length) { box.style.display = 'none'; scheduleDraftAutosave(); return; }
+
+  box.style.display = 'block';
+  list.innerHTML = selected.map(c => `
+    <div style="padding:3px 0;display:flex;justify-content:space-between;gap:10px">
+      <span>${escHtml(c.name)}${c.office ? ' — ' + escHtml(c.office) : ''} <span style="font-size:.7rem;color:var(--t3)">(${escHtml(c.designation || 'Other')})</span></span>
+      <span style="color:var(--t3);font-size:.78rem">${escHtml((c.emails_to || []).join(', '))}</span>
+    </div>
+  `).join('');
+  scheduleDraftAutosave();
+}
+
 function _actuallyOpenWriteReportModal() {
   const modalEl = document.getElementById('writeReportModal');
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -60,14 +89,27 @@ function _actuallyOpenWriteReportModal() {
   clearReportSchoolLookup(); // sets EMIS-vs-typed-name UI state before any draft/restore runs
 
   loadDispatchContacts().then(contacts => {
+    const sorted = [...contacts].sort((a, b) =>
+      dispatchHierarchyRank(a.designation) - dispatchHierarchyRank(b.designation) || a.name.localeCompare(b.name));
     const picker = document.getElementById('rpt_contactPicker');
-    picker.innerHTML = contacts.map(c =>
-      `<option value="${c.id}">${escHtml(c.name)}${c.office ? ' — ' + escHtml(c.office) : ''}</option>`
-    ).join('');
-  });
+    picker.innerHTML = sorted.length
+      ? sorted.map(c => `
+          <div class="form-check" style="margin-bottom:6px">
+            <input class="form-check-input rpt-contact-check" type="checkbox" value="${c.id}" id="rpt_contact_${c.id}" onchange="_renderSelectedOfficesLive()">
+            <label class="form-check-label" for="rpt_contact_${c.id}" style="cursor:pointer">
+              ${escHtml(c.name)}${c.office ? ' — ' + escHtml(c.office) : ''}
+              <span style="font-size:.7rem;color:var(--t3)">(${escHtml(c.designation || 'Other')})</span>
+            </label>
+          </div>
+        `).join('')
+      : '<div style="color:var(--t3);font-size:.85rem">No contacts saved yet.</div>';
 
-  _restoreDraftIfAny();
-  onReportDateChange();
+    // Only now that the checkboxes actually exist can a saved draft's
+    // recipient selection be restored and the rest of the draft applied.
+    _restoreDraftIfAny();
+    _renderSelectedOfficesLive();
+    onReportDateChange();
+  });
 }
 
 // ── EMIS lookup. Queries the `public_schools` table directly (columns
@@ -118,16 +160,17 @@ async function onReportEmisInput() {
   statusEl.style.color = 'var(--t3)';
 
   try {
-    const { data, error } = await _sb.from('public_schools')
-      .select('school_name, district, wing, tehsil, markaz_name')
-      .eq('emis', emis)
-      .maybeSingle();
+    // Uses the dedicated open lookup (any school, any jurisdiction) — a
+    // dispatch report legitimately needs to reference schools outside
+    // the sender's own Markaz (transfers, inquiries, promotions, etc.).
+    const { data, error } = await _sb.rpc('dispatch_lookup_school_by_emis', { p_emis: emis });
     if (myRequestId !== _reportEmisRequestSeq) return; // superseded by a newer lookup
     if (error) throw error;
+    const match = Array.isArray(data) ? data[0] : data;
 
-    if (data) {
-      reportSchoolMatch = data;
-      nameEl.value = data.school_name || '';
+    if (match) {
+      reportSchoolMatch = match;
+      nameEl.value = match.school_name || '';
       statusEl.textContent = '✓ School found';
       statusEl.style.color = 'var(--ok)';
     } else {
@@ -248,6 +291,7 @@ function _saveDraft() {
     schoolName: document.getElementById('rpt_schoolName')?.value,
     accused: document.getElementById('rpt_accused')?.value,
     description: document.getElementById('rpt_description')?.value,
+    selectedContactIds: Array.from(document.querySelectorAll('.rpt-contact-check:checked')).map(el => el.value),
     savedAt: Date.now(),
   };
   localStorage.setItem(DRAFT_KEY + '_' + currentUser.id, JSON.stringify(draft));
@@ -269,6 +313,10 @@ function _restoreDraftIfAny() {
     document.getElementById('rpt_emis').value = d.emis || '';
     document.getElementById('rpt_accused').value = d.accused || '';
     document.getElementById('rpt_description').value = d.description || '';
+    (d.selectedContactIds || []).forEach(id => {
+      const el = document.getElementById('rpt_contact_' + id);
+      if (el) el.checked = true;
+    });
     if (d.schoolType === 'Private') {
       document.getElementById('rpt_schoolName').value = d.schoolName || '';
     } else if (d.emis) {
@@ -297,11 +345,11 @@ function buildReportTemplateHtml() {
   const schoolName = document.getElementById('rpt_schoolName').value;
   const description = document.getElementById('rpt_description').value;
 
-  const toOptions = Array.from(document.getElementById('rpt_contactPicker').selectedOptions);
-  // Compact recipient block: one office per line, no commas, no blank
-  // lines between them — reads as a single tight block either way.
-  const toLines = toOptions.length
-    ? toOptions.map(o => escHtml(o.textContent.trim()))
+  // Compact recipient block, already hierarchy-sorted: one office per
+  // line, no commas, no blank lines between them.
+  const selectedForLetter = getSelectedReportContacts();
+  const toLines = selectedForLetter.length
+    ? selectedForLetter.map(c => escHtml(c.name + (c.office ? ' — ' + c.office : '')))
     : [escHtml(isUr ? 'منتخب کردہ دفاتر' : 'Office(s) chosen from contacts')];
 
   const name = currentUser.name || '';
@@ -484,7 +532,7 @@ async function signAndSendReport() {
   const date = document.getElementById('rpt_date').value;
   const subject = document.getElementById('rpt_subject').value.trim();
   const description = document.getElementById('rpt_description').value.trim();
-  const selectedContactIds = Array.from(document.getElementById('rpt_contactPicker').selectedOptions).map(o => o.value);
+  const selectedContactIds = getSelectedReportContacts().map(c => c.id);
 
   if (!date) { showToast('Date is required.', false); return; }
   if (!subject) { showToast('Subject is required.', false); return; }
@@ -508,7 +556,7 @@ async function signAndSendReport() {
     document.getElementById('rpt_dispatchPreview').value = dispatchNumber;
 
     // 2. Build the recipient list from selected contacts
-    const selectedContacts = dispatchContactsCache.filter(c => selectedContactIds.includes(c.id));
+    const selectedContacts = getSelectedReportContacts().filter(c => selectedContactIds.includes(c.id));
     const recipients = {
       to: [...new Set(selectedContacts.flatMap(c => c.emails_to))],
       cc: [...new Set(selectedContacts.flatMap(c => c.emails_cc))],
