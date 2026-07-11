@@ -527,6 +527,24 @@ function _blobToBase64(blob) {
   });
 }
 
+function _pdfFileName(dispatchNumber) {
+  return `${dispatchNumber.replace(/\//g, '-')}.pdf`;
+}
+
+// Triggers a normal browser file-save for the already-generated PDF —
+// step 4 of Sign & Send ("download the generated PDF to the user's
+// device"), done client-side since the blob already exists in memory.
+function _downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 // ── Sign & Send — the full orchestration ─────────────────────────────
 async function signAndSendReport() {
   const date = document.getElementById('rpt_date').value;
@@ -625,16 +643,22 @@ async function signAndSendReport() {
     const result = await res.json();
 
     if (result.success) {
-      showToast(`Report ${dispatchNumber} sent successfully.`, true);
+      _downloadBlob(pdfBlob, _pdfFileName(dispatchNumber));
+      showToast(`Report ${dispatchNumber} generated, saved to Drive, emailed, downloaded, and logged.`, true);
       _clearDraft();
       bootstrap.Modal.getOrCreateInstance(document.getElementById('writeReportModal')).hide();
       if (typeof loadMyDispatchReports === 'function') loadMyDispatchReports();
     } else if (result.partial) {
-      showToast(dispatchNumber + ': ' + result.message, false);
+      _downloadBlob(pdfBlob, _pdfFileName(dispatchNumber));
+      showToast(dispatchNumber + ': ' + result.message + ' A copy was downloaded to your device.', false);
       _clearDraft();
       bootstrap.Modal.getOrCreateInstance(document.getElementById('writeReportModal')).hide();
+      if (typeof loadMyDispatchReports === 'function') loadMyDispatchReports();
     } else {
-      showToast('Failed to send: ' + result.message, false);
+      // Even a full failure (e.g. network drop before upload) shouldn't
+      // lose the work — the PDF already exists locally, so hand it over.
+      _downloadBlob(pdfBlob, _pdfFileName(dispatchNumber));
+      showToast('Failed to send: ' + result.message + ' A local copy was downloaded. The report is saved under ' + dispatchNumber + ' with status Failed — find it in the Reports list to review or delete it.', false);
     }
   } catch (e) {
     showToast(e.message || 'Failed to send report.', false);
