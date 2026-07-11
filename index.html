@@ -354,9 +354,74 @@
           <button class="btn btn-primary" onclick="openWriteReportModal()"><i class="bi bi-pencil-square"></i> Write Report</button>
           <button class="btn btn-outline-secondary" onclick="openContactsManager()"><i class="bi bi-person-lines-fill"></i> My Contacts</button>
           <button class="btn btn-outline-secondary" onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('googleConnectModal')).show(); refreshGoogleConnectionStatus()"><i class="bi bi-google"></i> Google Connection</button>
+          <button class="btn btn-outline-secondary" onclick="openImportReportsModal()"><i class="bi bi-file-earmark-arrow-up"></i> Import Previous Reports</button>
         </div>
+
+        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
+          <div>
+            <label style="font-size:.75rem;color:var(--t3);display:block;margin-bottom:3px">From date</label>
+            <input type="date" id="dr_filterDateFrom" onchange="loadMyDispatchReports()" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          </div>
+          <div>
+            <label style="font-size:.75rem;color:var(--t3);display:block;margin-bottom:3px">To date</label>
+            <input type="date" id="dr_filterDateTo" onchange="loadMyDispatchReports()" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label style="font-size:.75rem;color:var(--t3);display:block;margin-bottom:3px">Dispatch No.</label>
+            <input type="text" id="dr_filterDispatchNo" placeholder="e.g. 004 or 004/FATEH..." oninput="_debouncedLoadDispatchReports()" style="width:100%;height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label style="font-size:.75rem;color:var(--t3);display:block;margin-bottom:3px">Recipient Office</label>
+            <input type="text" id="dr_filterOffice" placeholder="e.g. Wing Office" oninput="_debouncedLoadDispatchReports()" style="width:100%;height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          </div>
+          <button class="btn btn-outline-secondary" onclick="_clearDispatchReportFilters()"><i class="bi bi-x-circle"></i> Clear</button>
+        </div>
+
         <div id="dispatchReportsListBody" style="background:#fff;border:1px solid var(--b0);border-radius:10px;overflow-x:auto">
           <div style="padding:30px;text-align:center;color:var(--t3)"><span class="spinner-border"></span> Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── IMPORT PREVIOUS REPORTS MODAL ────────────────────────── -->
+  <div class="modal fade" id="importReportsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-file-earmark-arrow-up"></i> Import Previous Reports</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="ir_step1">
+            <p style="color:var(--t3);font-size:.85rem">
+              Upload an Excel (.xlsx) or CSV file exported from your existing Google Sheet register.
+              You'll map its columns to report fields on the next step, then review before anything is saved.
+            </p>
+            <input type="file" id="ir_fileInput" accept=".xlsx,.xls,.csv" onchange="handleImportFileSelected(this)" class="form-control">
+            <div style="font-size:.78rem;color:var(--t3);margin-top:8px">
+              Tip: if your data lives in Google Sheets, use <b>File → Download → Microsoft Excel (.xlsx)</b> or
+              <b>.csv</b> first, then upload that file here.
+            </div>
+          </div>
+          <div id="ir_step2" style="display:none">
+            <h6>Map columns</h6>
+            <div id="ir_mappingBody"></div>
+          </div>
+          <div id="ir_step3" style="display:none">
+            <h6>Review (<span id="ir_previewCount"></span> rows)</h6>
+            <div style="font-size:.78rem;color:var(--warn);margin-bottom:8px">
+              <i class="bi bi-exclamation-triangle"></i> Rows with no Dispatch No. in the sheet will be assigned the
+              next available number for their Markaz/year automatically, in date order.
+            </div>
+            <div id="ir_previewBody" style="max-height:320px;overflow:auto;border:1px solid var(--b0);border-radius:8px"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="ir_nextBtn" style="display:none" onclick="importReportsGoToMapping()">Next: Map Columns</button>
+          <button class="btn btn-primary" id="ir_previewBtn" style="display:none" onclick="importReportsGoToPreview()">Next: Preview</button>
+          <button class="btn btn-success" id="ir_confirmBtn" style="display:none" onclick="confirmImportReports()"><i class="bi bi-check2-circle"></i> Import These Reports</button>
         </div>
       </div>
     </div>
@@ -2143,6 +2208,7 @@
   <script src="js/dispatch-signature.js"></script>
   <script src="js/dispatch-report-form.js"></script>
   <script src="js/dispatch-reports-list.js"></script>
+  <script src="js/dispatch-reports-import.js"></script>
   <script src="js/cache-service.js"></script>
   <script src="js/preloader.js"></script>
   <!-- ── Module JS ── -->
