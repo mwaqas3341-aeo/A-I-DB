@@ -545,6 +545,63 @@ function _downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
+// ── Sign & Send progress modal — 6 fixed steps, each shown as
+//    pending / active / done / failed, plus an overall progress bar. ────
+const SEND_STEPS = [
+  { key: 'number', label: 'Assigning dispatch number' },
+  { key: 'save', label: 'Saving report' },
+  { key: 'pdf', label: 'Generating PDF' },
+  { key: 'upload', label: 'Uploading to Drive & sending email' },
+  { key: 'download', label: 'Downloading your copy' },
+  { key: 'done', label: 'Done' },
+];
+let _sendStepStates = {};
+
+function _sendProgressOpen(dispatchPreviewText) {
+  _sendStepStates = {};
+  SEND_STEPS.forEach(s => { _sendStepStates[s.key] = 'pending'; });
+  document.getElementById('sp_dispatchNumber').textContent = dispatchPreviewText || '';
+  document.getElementById('sp_headline').textContent = 'Sending your report…';
+  document.getElementById('sp_resultBox').style.display = 'none';
+  _sendProgressRender();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('sendProgressModal')).show();
+}
+
+function _sendProgressSet(key, state) {
+  _sendStepStates[key] = state; // 'active' | 'done' | 'failed'
+  const dn = document.getElementById('rpt_dispatchPreview');
+  if (dn && dn.value) document.getElementById('sp_dispatchNumber').textContent = dn.value;
+  _sendProgressRender();
+}
+
+function _sendProgressRender() {
+  const icons = { pending: '<i class="bi bi-circle" style="color:var(--t3)"></i>',
+    active: '<span class="spinner-border spinner-border-sm"></span>',
+    done: '<i class="bi bi-check-circle-fill" style="color:var(--ok)"></i>',
+    failed: '<i class="bi bi-x-circle-fill" style="color:var(--bad)"></i>' };
+
+  document.getElementById('sp_steps').innerHTML = SEND_STEPS.map(s => {
+    const state = _sendStepStates[s.key] || 'pending';
+    return `<div style="display:flex;align-items:center;gap:10px;opacity:${state === 'pending' ? .55 : 1}">
+      <span style="width:18px;text-align:center">${icons[state]}</span>
+      <span style="${state === 'failed' ? 'color:var(--bad)' : ''}">${s.label}</span>
+    </div>`;
+  }).join('');
+
+  const doneCount = SEND_STEPS.filter(s => _sendStepStates[s.key] === 'done').length;
+  const hasFailed = SEND_STEPS.some(s => _sendStepStates[s.key] === 'failed');
+  const pct = Math.round((doneCount / SEND_STEPS.length) * 100);
+  const bar = document.getElementById('sp_progressBar');
+  bar.style.width = pct + '%';
+  bar.className = 'progress-bar' + (hasFailed ? ' bg-danger' : pct === 100 ? ' bg-success' : '');
+}
+
+function _sendProgressFinish(headline, isError) {
+  document.getElementById('sp_headline').textContent = headline;
+  document.getElementById('sp_headline').style.color = isError ? 'var(--bad)' : 'var(--ok)';
+  document.getElementById('sp_resultBox').style.display = 'block';
+}
+
 // ── Sign & Send — the full orchestration ─────────────────────────────
 async function signAndSendReport() {
   const date = document.getElementById('rpt_date').value;
@@ -560,6 +617,8 @@ async function signAndSendReport() {
   const btn = document.getElementById('rpt_signSendBtn');
   btn.disabled = true; // prevent double-submission / duplicate dispatch numbers
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending…';
+  _sendProgressOpen(document.getElementById('rpt_dispatchPreview').value);
+  _sendProgressSet('number', 'active');
 
   try {
     const markaz = currentUser.markaz_name || currentUser.markaz || '';
@@ -568,10 +627,12 @@ async function signAndSendReport() {
     // 1. Atomically claim the dispatch number FIRST — once claimed, it
     //    stays associated with this report even if sending needs a retry.
     const { data: seqData, error: seqErr } = await _sb.rpc('get_next_dispatch_number', { p_markaz: markaz, p_year: year });
-    if (seqErr) throw new Error('Could not assign a dispatch number: ' + seqErr.message);
+    if (seqErr) { _sendProgressSet('number', 'failed'); throw new Error('Could not assign a dispatch number: ' + seqErr.message); }
     const seq = seqData;
     const dispatchNumber = `${String(seq).padStart(3, '0')}/${markaz}/${year}`;
     document.getElementById('rpt_dispatchPreview').value = dispatchNumber;
+    _sendProgressSet('number', 'done');
+    _sendProgressSet('save', 'active');
 
     // 2. Build the recipient list from selected contacts
     const selectedContacts = getSelectedReportContacts().filter(c => selectedContactIds.includes(c.id));
@@ -615,12 +676,16 @@ async function signAndSendReport() {
       ({ data: reportRow, error: insertErr } = await _sb.from('dispatch_reports')
         .insert([reportRowBase]).select().single());
     }
-    if (insertErr) throw new Error('Could not save the report: ' + insertErr.message);
+    if (insertErr) { _sendProgressSet('save', 'failed'); throw new Error('Could not save the report: ' + insertErr.message); }
+    _sendProgressSet('save', 'done');
+    _sendProgressSet('pdf', 'active');
 
     // 4. Generate the PDF and encode attachments
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating PDF…';
     const pdfBlob = await generateReportPdfBlob();
     const pdfBase64 = await _blobToBase64(pdfBlob);
+    _sendProgressSet('pdf', 'done');
+    _sendProgressSet('upload', 'active');
 
     // Attachments are already merged as extra pages into pdfBlob above, so
     // we only need to send their names/sizes for the record — not the raw
@@ -643,13 +708,22 @@ async function signAndSendReport() {
     const result = await res.json();
 
     if (result.success) {
+      _sendProgressSet('upload', 'done');
+      _sendProgressSet('download', 'active');
       _downloadBlob(pdfBlob, _pdfFileName(dispatchNumber));
+      _sendProgressSet('download', 'done');
+      _sendProgressSet('done', 'done');
+      _sendProgressFinish(`Report ${dispatchNumber} sent successfully.`, false);
       showToast(`Report ${dispatchNumber} generated, saved to Drive, emailed, downloaded, and logged.`, true);
       _clearDraft();
       bootstrap.Modal.getOrCreateInstance(document.getElementById('writeReportModal')).hide();
       if (typeof loadMyDispatchReports === 'function') loadMyDispatchReports();
     } else if (result.partial) {
+      _sendProgressSet('upload', 'failed');
+      _sendProgressSet('download', 'active');
       _downloadBlob(pdfBlob, _pdfFileName(dispatchNumber));
+      _sendProgressSet('download', 'done');
+      _sendProgressFinish(`Report ${dispatchNumber} saved, but the email failed.`, true);
       showToast(dispatchNumber + ': ' + result.message + ' A copy was downloaded to your device.', false);
       _clearDraft();
       bootstrap.Modal.getOrCreateInstance(document.getElementById('writeReportModal')).hide();
@@ -657,10 +731,17 @@ async function signAndSendReport() {
     } else {
       // Even a full failure (e.g. network drop before upload) shouldn't
       // lose the work — the PDF already exists locally, so hand it over.
+      _sendProgressSet('upload', 'failed');
+      _sendProgressSet('download', 'active');
       _downloadBlob(pdfBlob, _pdfFileName(dispatchNumber));
+      _sendProgressSet('download', 'done');
+      _sendProgressFinish('Failed to send — but nothing was lost.', true);
       showToast('Failed to send: ' + result.message + ' A local copy was downloaded. The report is saved under ' + dispatchNumber + ' with status Failed — find it in the Reports list to review or delete it.', false);
     }
   } catch (e) {
+    const activeStep = SEND_STEPS.find(s => _sendStepStates[s.key] === 'active');
+    if (activeStep) _sendProgressSet(activeStep.key, 'failed');
+    _sendProgressFinish(e.message || 'Failed to send report.', true);
     showToast(e.message || 'Failed to send report.', false);
   } finally {
     btn.disabled = false;
