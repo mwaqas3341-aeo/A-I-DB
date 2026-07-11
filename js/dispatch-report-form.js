@@ -343,7 +343,7 @@ function buildReportTemplateHtml() {
 
   // Everything below is intentionally black-only (#000) — no theme colors —
   // so the printed/PDF report always comes out in plain black ink.
-  const boxStyle = 'border:1.4px solid #000;border-radius:3px;padding:7px 10px;color:#000;';
+  const boxStyle = 'padding:2px 0;color:#000;';
   const rowStyle = 'display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;';
   const labelStyle = 'font-weight:700;min-width:110px;color:#000;padding-top:7px;';
 
@@ -555,7 +555,7 @@ async function signAndSendReport() {
       accused_name: document.getElementById('rpt_accused').value.trim(),
       description,
       remarks: document.getElementById('rpt_remarks').value.trim(),
-      recipients: selectedContacts.map(c => ({ name: c.name, to: c.emails_to, cc: c.emails_cc, bcc: c.emails_bcc })),
+      recipients: selectedContacts.map(c => ({ name: c.name, office: c.office || '', to: c.emails_to, cc: c.emails_cc, bcc: c.emails_bcc })),
       signature_url: (_reportGoogleStatus && _reportGoogleStatus.signature_url) || '',
       status: 'sending',
     };
@@ -578,10 +578,10 @@ async function signAndSendReport() {
     const pdfBlob = await generateReportPdfBlob();
     const pdfBase64 = await _blobToBase64(pdfBlob);
 
-    const attachmentsPayload = [];
-    for (const a of reportAttachments) {
-      attachmentsPayload.push({ name: a.name, mimeType: a.type, base64: await _blobToBase64(a.blob) });
-    }
+    // Attachments are already merged as extra pages into pdfBlob above, so
+    // we only need to send their names/sizes for the record — not the raw
+    // bytes again (the edge function no longer uploads them separately).
+    const attachmentsPayload = reportAttachments.map(a => ({ name: a.name, mimeType: a.type, size: a.finalSize }));
 
     // 5. Hand off to the Edge Function for the actual Drive upload + Gmail send
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading &amp; sending…';
