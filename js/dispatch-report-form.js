@@ -22,12 +22,9 @@ function setReportLanguage(lang) {
   document.getElementById('langBtnUr').classList.toggle('btn-outline-secondary', lang !== 'ur');
 
   const desc = document.getElementById('rpt_description');
-  const rem = document.getElementById('rpt_remarks');
-  [desc, rem].forEach(el => {
-    el.dir = lang === 'ur' ? 'rtl' : 'ltr';
-    el.style.fontFamily = lang === 'ur' ? "'Noto Nastaliq Urdu', serif" : "inherit";
-    el.style.textAlign = lang === 'ur' ? 'right' : 'left';
-  });
+  desc.dir = lang === 'ur' ? 'rtl' : 'ltr';
+  desc.style.fontFamily = lang === 'ur' ? "'Noto Nastaliq Urdu', serif" : "inherit";
+  desc.style.textAlign = lang === 'ur' ? 'right' : 'left';
   scheduleDraftAutosave();
 }
 
@@ -164,7 +161,7 @@ async function onReportDateChange() {
   const { data } = await _sb.from('dispatch_counters').select('last_number').eq('markaz_name', markaz).eq('year', year).maybeSingle();
   const maxUsed = data ? data.last_number : 0;
   const nextSeq = maxUsed + 1;
-  previewEl.value = `${String(nextSeq).padStart(3, '0')}/${markaz}/${year} (expected)`;
+  previewEl.value = `${String(nextSeq).padStart(3, '0')}/${markaz}/${year}`;
 
   if (year === currentYear) {
     hintEl.textContent = 'This is the next dispatch number for your Markaz — it is only finalized once you actually send.';
@@ -251,7 +248,6 @@ function _saveDraft() {
     schoolName: document.getElementById('rpt_schoolName')?.value,
     accused: document.getElementById('rpt_accused')?.value,
     description: document.getElementById('rpt_description')?.value,
-    remarks: document.getElementById('rpt_remarks')?.value,
     savedAt: Date.now(),
   };
   localStorage.setItem(DRAFT_KEY + '_' + currentUser.id, JSON.stringify(draft));
@@ -273,7 +269,6 @@ function _restoreDraftIfAny() {
     document.getElementById('rpt_emis').value = d.emis || '';
     document.getElementById('rpt_accused').value = d.accused || '';
     document.getElementById('rpt_description').value = d.description || '';
-    document.getElementById('rpt_remarks').value = d.remarks || '';
     if (d.schoolType === 'Private') {
       document.getElementById('rpt_schoolName').value = d.schoolName || '';
     } else if (d.emis) {
@@ -298,18 +293,16 @@ function buildReportTemplateHtml() {
   const dispatchNo = document.getElementById('rpt_dispatchPreview').value || '';
   const date = document.getElementById('rpt_date').value;
   const subject = document.getElementById('rpt_subject').value;
-  const category = document.getElementById('rpt_category').value;
-  const schoolType = document.getElementById('rpt_schoolType').value;
   const emis = document.getElementById('rpt_emis').value;
   const schoolName = document.getElementById('rpt_schoolName').value;
-  const accused = document.getElementById('rpt_accused').value;
   const description = document.getElementById('rpt_description').value;
-  const remarks = document.getElementById('rpt_remarks').value;
 
   const toOptions = Array.from(document.getElementById('rpt_contactPicker').selectedOptions);
-  const toText = toOptions.length
-    ? toOptions.map(o => o.textContent.trim()).join(isUr ? '، ' : ', ')
-    : (isUr ? 'منتخب کردہ دفاتر' : 'Office(s) chosen from contacts');
+  // Compact recipient block: one office per line, no commas, no blank
+  // lines between them — reads as a single tight block either way.
+  const toLines = toOptions.length
+    ? toOptions.map(o => escHtml(o.textContent.trim()))
+    : [escHtml(isUr ? 'منتخب کردہ دفاتر' : 'Office(s) chosen from contacts')];
 
   const name = currentUser.name || '';
   const designation = currentUser.designation || (isUr ? 'اسسٹنٹ ایجوکیشن آفیسر' : 'Assistant Education Officer');
@@ -320,25 +313,18 @@ function buildReportTemplateHtml() {
     ? new Date(date).toLocaleDateString(isUr ? 'ur-PK' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : '';
 
-  const refLine = [
-    category ? (isUr ? 'قسم: ' : 'Category: ') + escHtml(category) : '',
-    schoolType ? (isUr ? 'اسکول: ' : 'School: ') + escHtml(schoolType) : '',
-    emis ? 'EMIS: ' + escHtml(emis) + (schoolName ? ' — ' + escHtml(schoolName) : '') : '',
-    accused ? (isUr ? 'ملوث شخص: ' : 'Concerned: ') + escHtml(accused) : '',
-  ].filter(Boolean).join('&nbsp;&nbsp;|&nbsp;&nbsp;');
+  // Only EMIS/school-name reference is shown on the letter — category,
+  // school type and concerned-person are record-keeping fields only.
+  const refLine = emis ? 'EMIS: ' + escHtml(emis) + (schoolName ? ' — ' + escHtml(schoolName) : '') : '';
 
   const L = {
     from: isUr ? 'از' : 'From',
-    to: isUr ? 'بنام' : 'To',
+    to: isUr ? 'بجانب' : 'To',
     dispatch: isUr ? 'ڈسپیچ نمبر' : 'Dispatch No.',
     dated: isUr ? 'تاریخ' : 'Dated',
     subject: isUr ? 'موضوع' : 'Subject',
     description: isUr ? 'تفصیل' : 'Description',
-    remarks: isUr ? 'تبصرہ' : 'Remarks',
-    signature: isUr ? 'دستخط' : 'Signature',
-    designationDefault: isUr ? 'اسسٹنٹ ایجوکیشن آفیسر' : 'Assistant Education Officer',
     markazLabel: isUr ? 'مرکز' : 'Markaz',
-    copy: isUr ? 'نقول' : 'Copy',
   };
 
   // Everything below is intentionally black-only (#000) — no theme colors —
@@ -347,17 +333,22 @@ function buildReportTemplateHtml() {
   const rowStyle = 'display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;';
   const labelStyle = 'font-weight:700;min-width:110px;color:#000;padding-top:7px;';
 
+  // Sender block: one continuous compact line, no comma before the Markaz.
+  const senderLine = isUr
+    ? `دفتر اسسٹنٹ ایجوکیشن آفیسر ${escHtml(markaz)}`
+    : `Office of the Assistant Education Officer ${escHtml(markaz)}`;
+
   return `
     <div style="direction:${dir};font-family:${font};padding:50px 56px;width:794px;box-sizing:border-box;color:#000;line-height:1.7;background:#fff">
 
       <div style="${rowStyle}">
         <div style="${labelStyle}">${L.from}</div>
-        <div style="flex:1;${boxStyle}"><b>${isUr ? 'دفتر اسسٹنٹ ایجوکیشن آفیسر،' : 'Office of the Assistant Education Officer,'}</b> ${escHtml(markaz)}</div>
+        <div style="flex:1;${boxStyle}"><b>${senderLine}</b></div>
       </div>
 
       <div style="${rowStyle}">
         <div style="${labelStyle}">${L.to}</div>
-        <div style="flex:1;${boxStyle}">${escHtml(toText)}</div>
+        <div style="flex:1;${boxStyle}">${toLines.join('<br>')}</div>
       </div>
 
       <div style="display:flex;gap:16px;margin-bottom:14px">
@@ -381,27 +372,15 @@ function buildReportTemplateHtml() {
       <div style="margin-bottom:10px;font-weight:700;color:#000">${L.description}</div>
       <div style="white-space:pre-wrap;text-align:${align};color:#000;min-height:140px;margin-bottom:22px">${escHtml(description)}</div>
 
-      ${remarks ? `<div style="margin-bottom:22px">
-        <div style="font-weight:700;margin-bottom:6px;color:#000">${L.remarks}:</div>
-        <div style="white-space:pre-wrap;text-align:${align};color:#000">${escHtml(remarks)}</div>
-      </div>` : ''}
-
       <div style="margin-top:50px;display:flex;justify-content:flex-end">
         <div style="width:300px;text-align:center">
-          <div style="font-style:italic;color:#000;margin-bottom:4px">${L.signature}</div>
           ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:110px;max-width:280px;display:block;margin:0 auto 4px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:110px"></div>`}
-          <div style="border-top:1.4px solid #000;padding-top:6px;font-size:.85rem;color:#000">
+          <div style="padding-top:6px;font-size:.85rem;color:#000">
             <div style="font-weight:700">${escHtml(name)}</div>
             <div>${escHtml(designation)}</div>
             <div>${L.markazLabel} ${escHtml(markaz)}</div>
           </div>
         </div>
-      </div>
-
-      <div style="margin-top:40px;font-size:.85rem;color:#000">
-        <div style="font-weight:700;margin-bottom:6px">${L.copy}:</div>
-        <div>1. ${escHtml(toText)} — ${isUr ? 'ایک ایک نقل، بغیر علیحدہ کور لیٹر کے' : 'one copy each, no separate covering letter'}.</div>
-        <div>2. ${isUr ? 'دفتری نقل (ریکارڈ کے لیے)' : 'Office copy (for record).'}</div>
       </div>
 
     </div>
@@ -554,7 +533,6 @@ async function signAndSendReport() {
       school_name: document.getElementById('rpt_schoolName').value,
       accused_name: document.getElementById('rpt_accused').value.trim(),
       description,
-      remarks: document.getElementById('rpt_remarks').value.trim(),
       recipients: selectedContacts.map(c => ({ name: c.name, office: c.office || '', to: c.emails_to, cc: c.emails_cc, bcc: c.emails_bcc })),
       signature_url: (_reportGoogleStatus && _reportGoogleStatus.signature_url) || '',
       status: 'sending',
