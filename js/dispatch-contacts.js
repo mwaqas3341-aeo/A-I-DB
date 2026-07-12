@@ -27,6 +27,19 @@ const DISPATCH_DESIGNATION_TITLE = {
   'Other': '',
 };
 
+// Urdu titles — transliterated (matching how your office already writes
+// "اسسٹنٹ ایجوکیشن آفیسر" rather than a formal literary translation).
+// Correct any of these that aren't your department's actual wording.
+const DISPATCH_DESIGNATION_TITLE_UR = {
+  'CEO': 'سی ای او',
+  'DEO': 'ڈسٹرکٹ ایجوکیشن آفیسر',
+  'Dy. DEO': 'ڈپٹی ڈسٹرکٹ ایجوکیشن آفیسر',
+  'AEO': 'اسسٹنٹ ایجوکیشن آفیسر',
+  'Assistant Director': 'اسسٹنٹ ڈائریکٹر',
+  'Head Teacher': 'ہیڈ ٹیچر',
+  'Other': '',
+};
+
 let dispatchContactsCache = [];
 
 async function loadDispatchContacts() {
