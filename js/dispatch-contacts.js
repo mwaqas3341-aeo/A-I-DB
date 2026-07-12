@@ -14,6 +14,19 @@ function dispatchHierarchyRank(designation) {
   return idx === -1 ? DISPATCH_HIERARCHY_ORDER.length : idx;
 }
 
+// Full title used on the letter itself ("Office of the ...") — the
+// dropdown value stays a short code (DEO, AEO, …) for the contacts list,
+// but the printed letter needs the formal title spelled out.
+const DISPATCH_DESIGNATION_TITLE = {
+  'CEO': 'Chief Executive Officer',
+  'DEO': 'District Education Officer',
+  'Dy. DEO': 'Deputy District Education Officer',
+  'AEO': 'Assistant Education Officer',
+  'Assistant Director': 'Assistant Director',
+  'Head Teacher': 'Head Teacher',
+  'Other': '',
+};
+
 let dispatchContactsCache = [];
 
 async function loadDispatchContacts() {
@@ -40,7 +53,7 @@ function renderContactsList() {
     <div class="contact-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b0)">
       <div>
         <div style="font-weight:600">${escHtml(c.name)} <span style="font-weight:400;font-size:.72rem;color:var(--t3)">(${escHtml(c.designation || 'Other')})</span></div>
-        <div style="font-size:.75rem;color:var(--t3)">${escHtml(c.office || '')}</div>
+        <div style="font-size:.75rem;color:var(--t3)">${escHtml(c.office || '')}${c.jurisdiction ? ' — ' + escHtml(c.jurisdiction) : ''}</div>
         <div style="font-size:.72rem;color:var(--t3);margin-top:2px">
           To: ${c.emails_to.length} &nbsp; CC: ${c.emails_cc.length} &nbsp; BCC: ${c.emails_bcc.length}
         </div>
@@ -65,6 +78,7 @@ function clearContactForm() {
   document.getElementById('contact_id').value = '';
   document.getElementById('contact_name').value = '';
   document.getElementById('contact_office').value = '';
+  document.getElementById('contact_jurisdiction').value = '';
   document.getElementById('contact_designation').value = 'Other';
   ['to', 'cc', 'bcc'].forEach(kind => {
     const box = document.getElementById('emails' + kind[0].toUpperCase() + kind.slice(1) + 'Box');
@@ -97,6 +111,7 @@ function editDispatchContact(id) {
   document.getElementById('contact_id').value = c.id;
   document.getElementById('contact_name').value = c.name;
   document.getElementById('contact_office').value = c.office || '';
+  document.getElementById('contact_jurisdiction').value = c.jurisdiction || '';
   document.getElementById('contact_designation').value = c.designation || 'Other';
   document.getElementById('contactFormTitle').textContent = 'Edit Contact';
 
@@ -119,6 +134,7 @@ async function saveDispatchContact() {
   const id = document.getElementById('contact_id').value;
   const name = document.getElementById('contact_name').value.trim();
   const office = document.getElementById('contact_office').value.trim();
+  const jurisdiction = document.getElementById('contact_jurisdiction').value.trim();
   const designation = document.getElementById('contact_designation').value;
   const emails_to = _collectEmails('to');
   const emails_cc = _collectEmails('cc');
@@ -132,7 +148,7 @@ async function saveDispatchContact() {
   const bad = allEmails.find(e => !emailRe.test(e));
   if (bad) { showToast(`"${bad}" is not a valid email address.`, false); return; }
 
-  const row = { name, office, designation, emails_to, emails_cc, emails_bcc };
+  const row = { name, office, jurisdiction, designation, emails_to, emails_cc, emails_bcc };
   let error;
   if (id) {
     ({ error } = await _sb.from('dispatch_contacts').update(row).eq('id', id));
