@@ -368,7 +368,7 @@
           </div>
           <div style="flex:1;min-width:160px">
             <label style="font-size:.75rem;color:var(--t3);display:block;margin-bottom:3px">Dispatch No.</label>
-            <input type="text" id="dr_filterDispatchNo" placeholder="e.g. 004 or 004/FATEH..." oninput="_debouncedLoadDispatchReports()" style="width:100%;height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+            <input type="text" id="dr_filterDispatchNo" placeholder="e.g. 23 or 23/FPM" oninput="_debouncedLoadDispatchReports()" style="width:100%;height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
           </div>
           <div style="flex:1;min-width:160px">
             <label style="font-size:.75rem;color:var(--t3);display:block;margin-bottom:3px">Recipient Office</label>
@@ -1026,6 +1026,7 @@
           <div class="form-grid" style="margin-bottom:12px">
             <div class="ff"><span class="flabel">Name</span><input type="text" id="contact_name" placeholder="Officer name"></div>
             <div class="ff"><span class="flabel">Office</span><input type="text" id="contact_office" placeholder="e.g. DEO Layyah"></div>
+            <div class="ff"><span class="flabel">Jurisdiction (used on the letter, e.g. "Karor", "Layyah", "Fateh Pur - Male")</span><input type="text" id="contact_jurisdiction" placeholder="e.g. Karor"></div>
             <div class="ff">
               <span class="flabel">Designation (used to order multi-office dispatches)</span>
               <select id="contact_designation">
