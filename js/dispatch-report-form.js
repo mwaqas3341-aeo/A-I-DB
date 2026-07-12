@@ -354,21 +354,22 @@ function buildReportTemplateHtml() {
   const subject = document.getElementById('rpt_subject').value;
   const description = document.getElementById('rpt_description').value;
 
-  // Recipient lines never show a personal name — just the designation +
-  // jurisdiction, built from each contact's Designation + Jurisdiction
-  // fields. A contact with no recognized designation/jurisdiction falls
-  // back to its free-text Office field so nothing renders blank.
-  // Urdu keeps "بطرف" inline on each line (per the department's actual
-  // letter convention); English has no such prefix.
+  // Recipient lines never show a personal name. English composes
+  // "{designation title} {jurisdiction}" automatically; Urdu instead
+  // uses each contact's own editable "Office Name in Urdu" field
+  // (office_ur) so the user has full control over exact wording —
+  // falling back to an auto-composed version only if they haven't
+  // filled it in yet, so nothing renders blank.
   const selectedForLetter = getSelectedReportContacts();
   const toLines = selectedForLetter.length
     ? selectedForLetter.map(c => {
-        const title = (isUr ? DISPATCH_DESIGNATION_TITLE_UR : DISPATCH_DESIGNATION_TITLE)[c.designation] || '';
-        const body = title
-          ? `${title}${c.jurisdiction ? ' ' + c.jurisdiction : ''}`
-          : (c.office || c.name);
-        const line = isUr ? `بطرف ${body}` : body;
-        return escHtml(line);
+        if (isUr) {
+          if (c.office_ur) return escHtml(c.office_ur);
+          const urTitle = DISPATCH_DESIGNATION_TITLE_UR[c.designation] || '';
+          return escHtml(urTitle ? `${urTitle}${c.jurisdiction ? ' ' + c.jurisdiction : ''}` : (c.office || c.name));
+        }
+        const title = DISPATCH_DESIGNATION_TITLE[c.designation] || '';
+        return escHtml(title ? `${title}${c.jurisdiction ? ' ' + c.jurisdiction : ''}` : (c.office || c.name));
       })
     : [escHtml(isUr ? 'منتخب کردہ دفاتر' : 'Office(s) chosen from contacts')];
 
@@ -405,7 +406,7 @@ function buildReportTemplateHtml() {
   // left/right CSS needed, just the same relative layout as English.
   // ══════════════════════════════════════════════════════════════════
   if (isUr) {
-    const senderLine = `از دفتر اسسٹنٹ ایجوکیشن آفیسر ${escHtml(markaz)}`;
+    const senderLine = `از دفتر اسسٹنٹ ایجوکیشن آفیسر مرکز ${escHtml(markaz)}`;
 
     return `
       <div style="direction:rtl;font-family:'Noto Nastaliq Urdu', serif;padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
@@ -417,9 +418,9 @@ function buildReportTemplateHtml() {
           <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="font-size:12pt;font-weight:400;color:#000">${escHtml(dateDisplay)}</span></span>
         </div>
 
-        <!-- "بطرف" is written inline on each recipient line itself
-             (per the department's actual letter convention), so no
-             separate heading is needed here the way English uses "To". -->
+        <!-- "بطرف" is written once as a heading, not repeated on every
+             recipient line, per the department's letter convention. -->
+        <div style="text-align:right;font-size:12pt;font-weight:700;margin-bottom:6px">بطرف</div>
         <div style="text-align:right;font-size:14pt;font-weight:700;margin-bottom:18px">${toLines.join('<br>')}</div>
 
         <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:16px">
