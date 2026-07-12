@@ -354,18 +354,20 @@ function buildReportTemplateHtml() {
   const subject = document.getElementById('rpt_subject').value;
   const description = document.getElementById('rpt_description').value;
 
-  // Recipient lines never show a personal name — just "Office of the
-  // {full designation title} {jurisdiction}", built from each contact's
-  // Designation + Jurisdiction fields. A contact with no recognized
-  // designation/jurisdiction falls back to its free-text Office field
-  // so nothing renders blank.
+  // Recipient lines never show a personal name — just the designation +
+  // jurisdiction, built from each contact's Designation + Jurisdiction
+  // fields. A contact with no recognized designation/jurisdiction falls
+  // back to its free-text Office field so nothing renders blank.
+  // Urdu keeps "بطرف" inline on each line (per the department's actual
+  // letter convention); English has no such prefix.
   const selectedForLetter = getSelectedReportContacts();
   const toLines = selectedForLetter.length
     ? selectedForLetter.map(c => {
-        const title = DISPATCH_DESIGNATION_TITLE[c.designation] || '';
-        const line = title
+        const title = (isUr ? DISPATCH_DESIGNATION_TITLE_UR : DISPATCH_DESIGNATION_TITLE)[c.designation] || '';
+        const body = title
           ? `${title}${c.jurisdiction ? ' ' + c.jurisdiction : ''}`
           : (c.office || c.name);
+        const line = isUr ? `بطرف ${body}` : body;
         return escHtml(line);
       })
     : [escHtml(isUr ? 'منتخب کردہ دفاتر' : 'Office(s) chosen from contacts')];
@@ -385,9 +387,9 @@ function buildReportTemplateHtml() {
     : '';
 
   const L = {
-    dispatch: isUr ? 'ڈسپیچ نمبر' : 'Dispatch No.',
-    dated: isUr ? 'تاریخ' : 'Dated',
-    subject: isUr ? 'موضوع' : 'Subject',
+    dispatch: isUr ? 'نمبر' : 'Dispatch No.',
+    dated: isUr ? 'مورخہ' : 'Dated',
+    subject: isUr ? 'عنوان' : 'Subject',
     from: isUr ? 'از' : 'From',
     to: isUr ? 'بجانب' : 'To',
   };
@@ -396,36 +398,45 @@ function buildReportTemplateHtml() {
   const fieldValueStyle = 'font-size:12pt;font-weight:400;color:#000;padding-right:28px';
 
   // ══════════════════════════════════════════════════════════════════
-  // URDU TEMPLATE — kept exactly as it was; not touched by the English
-  // layout changes below (the two formats are maintained independently).
+  // URDU TEMPLATE — mirrors the English layout structure. Because the
+  // outer container has direction:rtl, flexbox's justify-content:
+  // flex-end/space-between automatically flip to the correct side on
+  // their own (right = start, left = end in RTL) — no separate
+  // left/right CSS needed, just the same relative layout as English.
   // ══════════════════════════════════════════════════════════════════
   if (isUr) {
-    const senderRecipientStyle = 'font-size:14pt;font-weight:700;color:#000';
-    const senderLine = `دفتر اسسٹنٹ ایجوکیشن آفیسر ${escHtml(markaz)}`;
-    const senderBlock = `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.from}</td><td style="${senderRecipientStyle}padding:4px 0"><b>${senderLine}</b></td></tr>`;
-    const recipientBlock = `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.to}</td><td style="${senderRecipientStyle}padding:4px 0">${toLines.join('<br>')}</td></tr>`;
-    const dispatchDatedRow = `
-      <div style="display:flex;gap:28px;margin:10px 0 18px">
-        <span><span style="${fieldLabelStyle}">${L.dispatch}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dispatchNo) || 'ارسال پر تفویض ہوگا'}</span></span>
-        <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dateDisplay)}</span></span>
-      </div>`;
+    const senderLine = `از دفتر اسسٹنٹ ایجوکیشن آفیسر ${escHtml(markaz)}`;
 
     return `
       <div style="direction:rtl;font-family:'Noto Nastaliq Urdu', serif;padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
-        <table style="width:100%;border-collapse:collapse;margin-bottom:6px">${senderBlock}${recipientBlock}</table>
-        ${dispatchDatedRow}
+
+        <div style="text-align:right;font-size:14pt;font-weight:700;margin-bottom:14px">${senderLine}</div>
+
+        <div style="display:flex;justify-content:space-between;margin:4px 0 22px">
+          <span><span style="${fieldLabelStyle}">${L.dispatch}</span><span style="font-size:12pt;font-weight:400;color:#000">${escHtml(dispatchNo) || 'ارسال پر تفویض ہوگا'}</span></span>
+          <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="font-size:12pt;font-weight:400;color:#000">${escHtml(dateDisplay)}</span></span>
+        </div>
+
+        <!-- "بطرف" is written inline on each recipient line itself
+             (per the department's actual letter convention), so no
+             separate heading is needed here the way English uses "To". -->
+        <div style="text-align:right;font-size:14pt;font-weight:700;margin-bottom:18px">${toLines.join('<br>')}</div>
+
         <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:16px">
           <span style="font-size:12pt;font-weight:700;padding-right:8px">${L.subject}</span>
           <span style="font-size:12pt;font-weight:700">${escHtml(subject)}</span>
         </div>
+
         <div style="white-space:pre-wrap;text-align:right;color:#000;font-size:11pt;font-weight:400;line-height:1.7;min-height:140px;margin-bottom:24px;word-wrap:break-word">${escHtml(description)}</div>
+
         <div style="margin-top:46px;display:flex;justify-content:flex-end">
-          <div style="width:280px;text-align:center">
-            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:100px;max-width:260px;display:block;margin:0 auto 6px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:100px"></div>`}
-            <div style="font-size:11pt;color:#000;margin-top:6px">${escHtml(designation)}</div>
-            <div style="font-size:11pt;color:#000">${escHtml(markaz)}</div>
+          <div style="text-align:center">
+            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:140px;max-width:320px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:140px;width:200px"></div>`}
+            <div style="font-weight:700;font-size:11pt;color:#000;margin-top:8px">${escHtml(designation)}</div>
+            <div style="font-weight:700;font-size:11pt;color:#000">${escHtml(markaz)}</div>
           </div>
         </div>
+
       </div>
     `;
   }
