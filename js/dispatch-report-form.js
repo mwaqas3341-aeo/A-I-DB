@@ -479,22 +479,10 @@ function previewReport() {
   const container = document.getElementById('reportPreviewContainer');
   container.innerHTML = buildReportTemplateHtml();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('reportPreviewModal')).show();
-  // Scale the 794px (A4-width) letter down to fit narrow/mobile screens
-  // — display-only; the PDF itself is generated separately at full size
-  // in generateReportPdfBlob(), so this never affects the actual output.
-  setTimeout(_fitReportPreviewToScreen, 50);
-  window.addEventListener('resize', _fitReportPreviewToScreen);
-}
-
-function _fitReportPreviewToScreen() {
-  const wrap = document.getElementById('reportPreviewScaleWrap');
-  const container = document.getElementById('reportPreviewContainer');
-  if (!wrap || !container || !wrap.parentElement) return;
-  const available = wrap.parentElement.clientWidth - 8;
-  const scale = Math.min(1, available / 794);
-  container.style.transform = `scale(${scale})`;
-  wrap.style.width = (794 * scale) + 'px';
-  wrap.style.height = (container.scrollHeight * scale) + 'px';
+  // Narrow/mobile screens get a horizontal scrollbar (via the modal
+  // body's overflow-x:auto) rather than a JS-computed scale — simpler
+  // and can't silently collapse the preview to nothing like the
+  // transform-based version did.
 }
 
 async function generateReportPdfBlob() {
