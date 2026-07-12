@@ -13,6 +13,33 @@ let _reportEmisRequestSeq = 0; // guards against out-of-order EMIS lookup respon
 
 const DRAFT_KEY = 'dispatchReportDraft';
 
+// ── Fonts — applied to the ENTIRE letter (every label, value, and the
+//    body), not just the heading or description. Set once on the outer
+//    container in buildReportTemplateHtml() and inherited by everything
+//    inside it, since nothing inside sets its own font-family.
+//    Note: Calibri/Times New Roman/Bookman Old Style/Arial Narrow are
+//    Microsoft-licensed fonts — most Android phones (which is what this
+//    system is mostly used on) don't have them installed, and they can't
+//    legally be embedded via a free CDN. Each stack below falls back to
+//    the closest free equivalent so the letter still looks reasonable on
+//    a device that doesn't have the exact font, but it won't be pixel-
+//    identical to that font unless the device happens to have it.
+const REPORT_FONTS_EN = [
+  { value: 'calibri', label: 'Calibri', stack: "'Calibri','Carlito',sans-serif" },
+  { value: 'times', label: 'Times New Roman', stack: "'Times New Roman','Liberation Serif',Times,serif" },
+  { value: 'bookman', label: 'Bookman Old Style', stack: "'Bookman Old Style','URW Bookman',Georgia,serif" },
+  { value: 'arialnarrow', label: 'Arial Narrow', stack: "'Arial Narrow',Arial,sans-serif" },
+];
+const REPORT_FONTS_UR = [
+  { value: 'jameel', label: 'Jameel Noori Nastaleeq', stack: "'Jameel Noori Nastaleeq','Noto Nastaliq Urdu',serif" },
+];
+function getReportFontStack() {
+  const list = reportLanguage === 'ur' ? REPORT_FONTS_UR : REPORT_FONTS_EN;
+  const sel = document.getElementById('rpt_fontChoice');
+  const found = list.find(f => f.value === sel?.value) || list[0];
+  return found.stack;
+}
+
 // ── Language toggle ────────────────────────────────────────────────
 function setReportLanguage(lang) {
   reportLanguage = lang;
@@ -20,6 +47,14 @@ function setReportLanguage(lang) {
   document.getElementById('langBtnEn').classList.toggle('btn-outline-secondary', lang !== 'en');
   document.getElementById('langBtnUr').classList.toggle('btn-primary', lang === 'ur');
   document.getElementById('langBtnUr').classList.toggle('btn-outline-secondary', lang !== 'ur');
+
+  // Font list depends on language — repopulate whenever it changes,
+  // keeping the previous choice only if it's still valid for the new list.
+  const fontList = lang === 'ur' ? REPORT_FONTS_UR : REPORT_FONTS_EN;
+  const fontSel = document.getElementById('rpt_fontChoice');
+  const prevValue = fontSel.value;
+  fontSel.innerHTML = fontList.map(f => `<option value="${f.value}">${f.label}</option>`).join('');
+  if (fontList.some(f => f.value === prevValue)) fontSel.value = prevValue;
 
   const desc = document.getElementById('rpt_description');
   desc.dir = lang === 'ur' ? 'rtl' : 'ltr';
@@ -303,6 +338,7 @@ function _saveDraft() {
     accused: document.getElementById('rpt_accused')?.value,
     description: document.getElementById('rpt_description')?.value,
     selectedContactIds: Array.from(document.querySelectorAll('.rpt-contact-check:checked')).map(el => el.value),
+    fontChoice: document.getElementById('rpt_fontChoice')?.value,
     savedAt: Date.now(),
   };
   localStorage.setItem(DRAFT_KEY + '_' + currentUser.id, JSON.stringify(draft));
@@ -316,6 +352,10 @@ function _restoreDraftIfAny() {
   try {
     const d = JSON.parse(raw);
     setReportLanguage(d.language || 'en');
+    if (d.fontChoice) {
+      const fontSel = document.getElementById('rpt_fontChoice');
+      if ([...fontSel.options].some(o => o.value === d.fontChoice)) fontSel.value = d.fontChoice;
+    }
     if (d.date) document.getElementById('rpt_date').value = d.date;
     document.getElementById('rpt_subject').value = d.subject || '';
     document.getElementById('rpt_category').value = d.category || '';
@@ -388,8 +428,8 @@ function buildReportTemplateHtml() {
     : '';
 
   const L = {
-    dispatch: isUr ? 'نمبر' : 'Dispatch No.',
-    dated: isUr ? 'مورخہ' : 'Dated',
+    dispatch: isUr ? 'نمبر:' : 'Dispatch No.',
+    dated: isUr ? 'مورخہ:' : 'Dated',
     subject: isUr ? 'عنوان' : 'Subject',
     from: isUr ? 'از' : 'From',
     to: isUr ? 'بجانب' : 'To',
@@ -409,7 +449,7 @@ function buildReportTemplateHtml() {
     const senderLine = `از دفتر اسسٹنٹ ایجوکیشن آفیسر مرکز ${escHtml(markaz)}`;
 
     return `
-      <div style="direction:rtl;font-family:'Noto Nastaliq Urdu', serif;padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
+      <div style="direction:rtl;font-family:${getReportFontStack()};padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
 
         <div style="text-align:right;font-size:14pt;font-weight:700;margin-bottom:14px">${senderLine}</div>
 
@@ -454,7 +494,7 @@ function buildReportTemplateHtml() {
   const senderLine = `Office of the Assistant Education Officer ${escHtml(markaz)}`;
 
   return `
-    <div style="direction:ltr;font-family:'Segoe UI', Arial, sans-serif;padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
+    <div style="direction:ltr;font-family:${getReportFontStack()};padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
 
       <div style="text-align:center;font-size:14pt;font-weight:700;margin-bottom:14px">${senderLine}</div>
 
