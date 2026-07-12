@@ -377,9 +377,14 @@ function buildReportTemplateHtml() {
 
   // Everything below is intentionally black-only (#000) — no theme colors —
   // so the printed/PDF report always comes out in plain black ink.
-  const boxStyle = 'padding:2px 0;color:#000;';
-  const rowStyle = 'display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;';
-  const labelStyle = 'font-weight:700;min-width:110px;color:#000;padding-top:7px;';
+  // An actual HTML table is used for the whole From/To/Dispatch/Dated/
+  // Subject block instead of ad-hoc flex widths — every label and value
+  // lines up in a clean column/row no matter how long the content is
+  // (a long Markaz name, several recipients, a long subject, …), and
+  // Dispatch No. / Dated sit in the very same <tr> so they're always on
+  // one identical baseline, not two independently-positioned boxes.
+  const cellLabelStyle = 'font-weight:700;font-size:14px;color:#000;padding:7px 12px 7px 0;vertical-align:top;white-space:nowrap;width:1%';
+  const cellValueStyle = 'font-size:14px;padding:7px 0;vertical-align:top;color:#000';
 
   // Sender block: one continuous compact line, no comma before the Markaz.
   const senderLine = isUr
@@ -387,43 +392,37 @@ function buildReportTemplateHtml() {
     : `Office of the Assistant Education Officer ${escHtml(markaz)}`;
 
   return `
-    <div style="direction:${dir};font-family:${font};padding:50px 56px;width:794px;box-sizing:border-box;color:#000;line-height:1.7;background:#fff">
+    <div style="direction:${dir};font-family:${font};font-size:14px;padding:48px 54px;width:794px;box-sizing:border-box;color:#000;line-height:1.6;background:#fff">
 
-      <div style="${rowStyle}">
-        <div style="${labelStyle}">${L.from}</div>
-        <div style="flex:1;${boxStyle}"><b>${senderLine}</b></div>
-      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
+        <tr>
+          <td style="${cellLabelStyle}">${L.from}</td>
+          <td style="${cellValueStyle}" colspan="3"><b>${senderLine}</b></td>
+        </tr>
+        <tr>
+          <td style="${cellLabelStyle}">${L.to}</td>
+          <td style="${cellValueStyle}" colspan="3">${toLines.join('<br>')}</td>
+        </tr>
+        <tr>
+          <td style="${cellLabelStyle}">${L.dispatch}</td>
+          <td style="${cellValueStyle}">${escHtml(dispatchNo) || (isUr ? 'ارسال پر تفویض ہوگا' : 'Assigned on send')}</td>
+          <td style="${cellLabelStyle}">${L.dated}</td>
+          <td style="${cellValueStyle}">${escHtml(dateDisplay)}</td>
+        </tr>
+        <tr>
+          <td style="${cellLabelStyle}">${L.subject}</td>
+          <td style="${cellValueStyle}" colspan="3"><b>${escHtml(subject)}</b></td>
+        </tr>
+      </table>
 
-      <div style="${rowStyle}">
-        <div style="${labelStyle}">${L.to}</div>
-        <div style="flex:1;${boxStyle}">${toLines.join('<br>')}</div>
-      </div>
+      ${refLine ? `<div style="font-size:12px;color:#000;margin:0 0 14px 0">${refLine}</div>` : ''}
 
-      <div style="display:flex;gap:16px;margin-bottom:14px">
-        <div style="flex:1;${rowStyle}margin-bottom:0">
-          <div style="${labelStyle}min-width:90px">${L.dispatch}</div>
-          <div style="flex:1;${boxStyle}">${escHtml(dispatchNo) || (isUr ? 'ارسال پر تفویض ہوگا' : 'Assigned on send')}</div>
-        </div>
-        <div style="flex:1;${rowStyle}margin-bottom:0">
-          <div style="${labelStyle}min-width:70px">${L.dated}</div>
-          <div style="flex:1;${boxStyle}">${escHtml(dateDisplay)}</div>
-        </div>
-      </div>
+      <div style="white-space:pre-wrap;text-align:${align};color:#000;font-size:14px;min-height:140px;margin-bottom:20px;word-wrap:break-word">${escHtml(description)}</div>
 
-      <div style="${rowStyle}">
-        <div style="${labelStyle}">${L.subject}</div>
-        <div style="flex:1;${boxStyle}"><b>${escHtml(subject)}</b></div>
-      </div>
-
-      ${refLine ? `<div style="font-size:.78rem;color:#000;margin:-6px 0 16px 120px">${refLine}</div>` : ''}
-
-      <div style="margin-bottom:10px;font-weight:700;color:#000">${L.description}</div>
-      <div style="white-space:pre-wrap;text-align:${align};color:#000;min-height:140px;margin-bottom:22px">${escHtml(description)}</div>
-
-      <div style="margin-top:50px;display:flex;justify-content:flex-end">
+      <div style="margin-top:46px;display:flex;justify-content:flex-end">
         <div style="width:300px;text-align:center">
           ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:110px;max-width:280px;display:block;margin:0 auto 4px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:110px"></div>`}
-          <div style="padding-top:6px;font-size:.85rem;color:#000">
+          <div style="padding-top:6px;font-size:13px;color:#000">
             <div style="font-weight:700">${escHtml(name)}</div>
             <div>${escHtml(designation)}</div>
             <div>${L.markazLabel} ${escHtml(markaz)}</div>
@@ -436,8 +435,25 @@ function buildReportTemplateHtml() {
 }
 
 function previewReport() {
-  document.getElementById('reportPreviewContainer').innerHTML = buildReportTemplateHtml();
+  const container = document.getElementById('reportPreviewContainer');
+  container.innerHTML = buildReportTemplateHtml();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('reportPreviewModal')).show();
+  // Scale the 794px (A4-width) letter down to fit narrow/mobile screens
+  // — display-only; the PDF itself is generated separately at full size
+  // in generateReportPdfBlob(), so this never affects the actual output.
+  setTimeout(_fitReportPreviewToScreen, 50);
+  window.addEventListener('resize', _fitReportPreviewToScreen);
+}
+
+function _fitReportPreviewToScreen() {
+  const wrap = document.getElementById('reportPreviewScaleWrap');
+  const container = document.getElementById('reportPreviewContainer');
+  if (!wrap || !container || !wrap.parentElement) return;
+  const available = wrap.parentElement.clientWidth - 8;
+  const scale = Math.min(1, available / 794);
+  container.style.transform = `scale(${scale})`;
+  wrap.style.width = (794 * scale) + 'px';
+  wrap.style.height = (container.scrollHeight * scale) + 'px';
 }
 
 async function generateReportPdfBlob() {
