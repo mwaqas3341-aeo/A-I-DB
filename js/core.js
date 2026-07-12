@@ -31,36 +31,46 @@ window.addEventListener('unhandledrejection', function (e) {
 //  INIT
 // =====================================================================
 window.addEventListener('DOMContentLoaded', () => {
-  initSchoolCache();
+  // Everything in this block belongs to the legacy Staff/HR filter view
+  // (Google-Apps-Script-era, pre-Supabase-migration). That view's
+  // container no longer exists in the current HTML, so skip its setup
+  // entirely rather than let it throw partway through — initSchoolCache()
+  // in particular still calls the old google.script.run API, which
+  // doesn't exist in this app anymore at all.
+  if (document.getElementById('resultsContainer')) {
+    initSchoolCache();
 
-  document.querySelectorAll('.view-btn').forEach(b => {
-    b.addEventListener('click', function () {
-      document.querySelectorAll('.view-btn').forEach(x => x.classList.remove('active'));
-      this.classList.add('active');
-      currentSheetView = this.dataset.sheet;
-      currentPage = 1;
-      resetFilterUI();
-      showEmptyState('Select filters and click Apply Filter to load records.');
+    document.querySelectorAll('.view-btn').forEach(b => {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('.view-btn').forEach(x => x.classList.remove('active'));
+        this.classList.add('active');
+        currentSheetView = this.dataset.sheet;
+        currentPage = 1;
+        resetFilterUI();
+        showEmptyState('Select filters and click Apply Filter to load records.');
+      });
     });
-  });
 
-  document.getElementById('filterBtn')?.addEventListener('click', applyFilter);
-  document.getElementById('clearBtn')?.addEventListener('click', clearFilters);
-  document.getElementById('addStaffBtn')?.addEventListener('click', () => openAddStaffModal());
+    document.getElementById('filterBtn')?.addEventListener('click', applyFilter);
+    document.getElementById('clearBtn')?.addEventListener('click', clearFilters);
+    document.getElementById('addStaffBtn')?.addEventListener('click', () => openAddStaffModal());
 
-  document.getElementById('filterDistrict')?.addEventListener('change', onDistrictChange);
-  document.getElementById('filterWing')?.addEventListener('change', onWingChange);
-  document.getElementById('filterTehsil')?.addEventListener('change', onTehsilChange);
+    document.getElementById('filterDistrict')?.addEventListener('change', onDistrictChange);
+    document.getElementById('filterWing')?.addEventListener('change', onWingChange);
+    document.getElementById('filterTehsil')?.addEventListener('change', onTehsilChange);
 
+    resetFilterUI();
+    showEmptyState('Select filters above and click Apply Filter to load records.');
+  }
+
+  // Universal — used across the whole app (action-menu dropdowns etc.),
+  // not specific to the legacy view above, so this always runs.
   document.addEventListener('click', e => {
     if (activeFixedMenu && !e.target.closest('.fixed-menu') && !e.target.closest('.action-menu-btn'))
       closeFixedMenu();
   });
   window.addEventListener('scroll', closeFixedMenu, { passive: true });
   window.addEventListener('resize', closeFixedMenu, { passive: true });
-
-  resetFilterUI();
-  showEmptyState('Select filters above and click Apply Filter to load records.');
 });
 // =====================================================================
 //  TOAST
@@ -167,10 +177,12 @@ function resetFilterUI() {
   resetSelect('filterWing',   'All Wings',   true);
   resetSelect('filterTehsil', 'All Tehsils', true);
   resetSelect('filterMarkaz', 'All Markazs', true);
-  document.getElementById('filterEmis').value    = '';
-  document.getElementById('filterKeyword').value = '';
+  const emisEl = document.getElementById('filterEmis');
+  const keywordEl = document.getElementById('filterKeyword');
+  if (emisEl) emisEl.value = '';
+  if (keywordEl) keywordEl.value = '';
   buildDistrictDropdown();
-  document.getElementById('addStaffBtn').classList.toggle('hidden', currentSheetView !== 'Staff');
+  document.getElementById('addStaffBtn')?.classList.toggle('hidden', currentSheetView !== 'Staff');
 }
 
 function clearFilters() {
