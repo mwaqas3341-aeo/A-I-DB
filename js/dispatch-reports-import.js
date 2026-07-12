@@ -192,7 +192,7 @@ async function confirmImportReports() {
         const { data: seqData, error: seqErr } = await _sb.rpc('get_next_dispatch_number', { p_markaz: markaz, p_year: year });
         if (seqErr) throw seqErr;
         dispatchSeq = seqData;
-        dispatchNumber = `${String(dispatchSeq).padStart(3, '0')}/${markaz}/${year}`;
+        dispatchNumber = `${dispatchSeq}/${markazInitials(markaz)}/${year}`;
       } catch (e) {
         failed++;
         continue;
