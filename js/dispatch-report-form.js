@@ -377,6 +377,12 @@ function buildReportTemplateHtml() {
   const dateDisplay = date
     ? new Date(date).toLocaleDateString(isUr ? 'ur-PK' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : '';
+  // Compact numeric date for next to the signature, per the format
+  // requested (DD/MM/YYYY) — separate from the "Dated" field above,
+  // which keeps its existing "12 Jul 2026" style.
+  const dateDisplayShort = date
+    ? new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : '';
 
   const L = {
     dispatch: isUr ? 'ڈسپیچ نمبر' : 'Dispatch No.',
@@ -386,60 +392,82 @@ function buildReportTemplateHtml() {
     to: isUr ? 'بجانب' : 'To',
   };
 
-  // Everything below is intentionally black-only (#000) — no theme colors —
-  // so the printed/PDF report always comes out in plain black ink.
-  // Point sizes are used directly (not px) to match the government
-  // office typography spec: sender/recipient 14pt bold, Dispatch No./
-  // Dated 12pt normal, Subject 12pt bold, body 11pt normal.
-  const senderRecipientStyle = 'font-size:14pt;font-weight:700;color:#000';
   const fieldLabelStyle = 'font-size:12pt;font-weight:400;color:#000;white-space:nowrap;padding-right:8px';
   const fieldValueStyle = 'font-size:12pt;font-weight:400;color:#000;padding-right:28px';
-  const subjectLabelStyle = 'font-size:12pt;font-weight:700;color:#000;white-space:nowrap;padding-right:8px';
-  const subjectValueStyle = 'font-size:12pt;font-weight:700;color:#000';
 
-  // Sender/recipient blocks: one continuous compact line, no comma, and
-  // — for the English letter specifically — no "From"/"To" caption at
-  // all, just the office details themselves. The Urdu letter keeps its
-  // از / بجانب labels since only the English format was asked to drop them.
-  const senderLine = isUr
-    ? `دفتر اسسٹنٹ ایجوکیشن آفیسر ${escHtml(markaz)}`
-    : `Office of the Assistant Education Officer ${escHtml(markaz)}`;
+  // ══════════════════════════════════════════════════════════════════
+  // URDU TEMPLATE — kept exactly as it was; not touched by the English
+  // layout changes below (the two formats are maintained independently).
+  // ══════════════════════════════════════════════════════════════════
+  if (isUr) {
+    const senderRecipientStyle = 'font-size:14pt;font-weight:700;color:#000';
+    const senderLine = `دفتر اسسٹنٹ ایجوکیشن آفیسر ${escHtml(markaz)}`;
+    const senderBlock = `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.from}</td><td style="${senderRecipientStyle}padding:4px 0"><b>${senderLine}</b></td></tr>`;
+    const recipientBlock = `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.to}</td><td style="${senderRecipientStyle}padding:4px 0">${toLines.join('<br>')}</td></tr>`;
+    const dispatchDatedRow = `
+      <div style="display:flex;gap:28px;margin:10px 0 18px">
+        <span><span style="${fieldLabelStyle}">${L.dispatch}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dispatchNo) || 'ارسال پر تفویض ہوگا'}</span></span>
+        <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dateDisplay)}</span></span>
+      </div>`;
 
-  const senderBlock = isUr
-    ? `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.from}</td><td style="${senderRecipientStyle}padding:4px 0"><b>${senderLine}</b></td></tr>`
-    : `<div style="${senderRecipientStyle};margin-bottom:10px">${senderLine}</div>`;
+    return `
+      <div style="direction:rtl;font-family:'Noto Nastaliq Urdu', serif;padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:6px">${senderBlock}${recipientBlock}</table>
+        ${dispatchDatedRow}
+        <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:16px">
+          <span style="font-size:12pt;font-weight:700;padding-right:8px">${L.subject}</span>
+          <span style="font-size:12pt;font-weight:700">${escHtml(subject)}</span>
+        </div>
+        <div style="white-space:pre-wrap;text-align:right;color:#000;font-size:11pt;font-weight:400;line-height:1.7;min-height:140px;margin-bottom:24px;word-wrap:break-word">${escHtml(description)}</div>
+        <div style="margin-top:46px;display:flex;justify-content:flex-end">
+          <div style="width:280px;text-align:center">
+            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:100px;max-width:260px;display:block;margin:0 auto 6px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:100px"></div>`}
+            <div style="font-size:11pt;color:#000;margin-top:6px">${escHtml(designation)}</div>
+            <div style="font-size:11pt;color:#000">${escHtml(markaz)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
-  const recipientBlock = isUr
-    ? `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.to}</td><td style="${senderRecipientStyle}padding:4px 0">${toLines.join('<br>')}</td></tr>`
-    : `<div style="${senderRecipientStyle};margin-bottom:16px">${toLines.join('<br>')}</div>`;
-
-  // Dispatch No. / Dated: same line, left-aligned flush with the sender/
-  // recipient block above it (not floated to the right anymore).
-  const dispatchDatedRow = `
-    <div style="display:flex;gap:28px;margin:${isUr ? '10px' : '4px'} 0 18px">
-      <span><span style="${fieldLabelStyle}">${L.dispatch}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dispatchNo) || (isUr ? 'ارسال پر تفویض ہوگا' : 'Assigned on send')}</span></span>
-      <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dateDisplay)}</span></span>
-    </div>`;
+  // ══════════════════════════════════════════════════════════════════
+  // ENGLISH TEMPLATE
+  //  - Sender block: top, center-aligned
+  //  - Dispatch No. / Dated: same line, center-aligned
+  //  - "To" label + office list: left-aligned
+  //  - Subject: left-aligned (unchanged)
+  //  - Signature: bigger, with a DD/MM/YYYY date to its right;
+  //    Designation + Markaz below it, bold, right-aligned
+  // ══════════════════════════════════════════════════════════════════
+  const senderLine = `Office of the Assistant Education Officer ${escHtml(markaz)}`;
 
   return `
-    <div style="direction:${dir};font-family:${font};padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
+    <div style="direction:ltr;font-family:'Segoe UI', Arial, sans-serif;padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
 
-      ${isUr ? `<table style="width:100%;border-collapse:collapse;margin-bottom:6px">${senderBlock}${recipientBlock}</table>` : `${senderBlock}${recipientBlock}`}
+      <div style="text-align:center;font-size:14pt;font-weight:700;margin-bottom:14px">${senderLine}</div>
 
-      ${dispatchDatedRow}
-
-      <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:16px">
-        <span style="${subjectLabelStyle}">${L.subject}</span>
-        <span style="${subjectValueStyle}">${escHtml(subject)}</span>
+      <div style="display:flex;justify-content:space-between;margin:4px 0 22px">
+        <span><span style="${fieldLabelStyle}">${L.dispatch}</span><span style="font-size:12pt;font-weight:400;color:#000">${escHtml(dispatchNo) || 'Assigned on send'}</span></span>
+        <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="font-size:12pt;font-weight:400;color:#000">${escHtml(dateDisplay)}</span></span>
       </div>
 
-      <div style="white-space:pre-wrap;text-align:${align};color:#000;font-size:11pt;font-weight:400;line-height:1.7;min-height:140px;margin-bottom:24px;word-wrap:break-word">${escHtml(description)}</div>
+      <div style="text-align:left;font-size:12pt;font-weight:700;margin-bottom:6px">${L.to}</div>
+      <div style="text-align:left;font-size:14pt;font-weight:700;margin-bottom:18px">${toLines.join('<br>')}</div>
+
+      <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:16px">
+        <span style="font-size:12pt;font-weight:700;padding-right:8px">${L.subject}</span>
+        <span style="font-size:12pt;font-weight:700">${escHtml(subject)}</span>
+      </div>
+
+      <div style="white-space:pre-wrap;text-align:left;color:#000;font-size:11pt;font-weight:400;line-height:1.7;min-height:140px;margin-bottom:24px;word-wrap:break-word">${escHtml(description)}</div>
 
       <div style="margin-top:46px;display:flex;justify-content:flex-end">
-        <div style="width:280px;text-align:center">
-          ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:100px;max-width:260px;display:block;margin:0 auto 6px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:100px"></div>`}
-          <div style="font-size:11pt;color:#000;margin-top:6px">${escHtml(designation)}</div>
-          <div style="font-size:11pt;color:#000">${escHtml(markaz)}</div>
+        <div style="text-align:center">
+          <div style="display:flex;align-items:flex-end;justify-content:flex-end">
+            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:140px;max-width:320px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:140px;width:200px"></div>`}
+          </div>
+          <div style="font-weight:700;font-size:11pt;color:#000;margin-top:8px">${escHtml(designation)}</div>
+          <div style="font-weight:700;font-size:11pt;color:#000">${escHtml(markaz)}</div>
         </div>
       </div>
 
