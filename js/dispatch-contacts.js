@@ -67,6 +67,7 @@ function renderContactsList() {
       <div>
         <div style="font-weight:600">${escHtml(c.name)} <span style="font-weight:400;font-size:.72rem;color:var(--t3)">(${escHtml(c.designation || 'Other')})</span></div>
         <div style="font-size:.75rem;color:var(--t3)">${escHtml(c.office || '')}${c.jurisdiction ? ' — ' + escHtml(c.jurisdiction) : ''}</div>
+        ${c.office_ur ? `<div style="font-size:.75rem;color:var(--t3);direction:rtl;text-align:left">${escHtml(c.office_ur)}</div>` : ''}
         <div style="font-size:.72rem;color:var(--t3);margin-top:2px">
           To: ${c.emails_to.length} &nbsp; CC: ${c.emails_cc.length} &nbsp; BCC: ${c.emails_bcc.length}
         </div>
@@ -92,6 +93,7 @@ function clearContactForm() {
   document.getElementById('contact_name').value = '';
   document.getElementById('contact_office').value = '';
   document.getElementById('contact_jurisdiction').value = '';
+  document.getElementById('contact_office_ur').value = '';
   document.getElementById('contact_designation').value = 'Other';
   ['to', 'cc', 'bcc'].forEach(kind => {
     const box = document.getElementById('emails' + kind[0].toUpperCase() + kind.slice(1) + 'Box');
@@ -125,6 +127,7 @@ function editDispatchContact(id) {
   document.getElementById('contact_name').value = c.name;
   document.getElementById('contact_office').value = c.office || '';
   document.getElementById('contact_jurisdiction').value = c.jurisdiction || '';
+  document.getElementById('contact_office_ur').value = c.office_ur || '';
   document.getElementById('contact_designation').value = c.designation || 'Other';
   document.getElementById('contactFormTitle').textContent = 'Edit Contact';
 
@@ -148,6 +151,7 @@ async function saveDispatchContact() {
   const name = document.getElementById('contact_name').value.trim();
   const office = document.getElementById('contact_office').value.trim();
   const jurisdiction = document.getElementById('contact_jurisdiction').value.trim();
+  const office_ur = document.getElementById('contact_office_ur').value.trim();
   const designation = document.getElementById('contact_designation').value;
   const emails_to = _collectEmails('to');
   const emails_cc = _collectEmails('cc');
@@ -161,7 +165,7 @@ async function saveDispatchContact() {
   const bad = allEmails.find(e => !emailRe.test(e));
   if (bad) { showToast(`"${bad}" is not a valid email address.`, false); return; }
 
-  const row = { name, office, jurisdiction, designation, emails_to, emails_cc, emails_bcc };
+  const row = { name, office, jurisdiction, office_ur, designation, emails_to, emails_cc, emails_bcc };
   let error;
   if (id) {
     ({ error } = await _sb.from('dispatch_contacts').update(row).eq('id', id));
