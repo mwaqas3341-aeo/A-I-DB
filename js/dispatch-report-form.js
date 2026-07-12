@@ -364,7 +364,7 @@ function buildReportTemplateHtml() {
     ? selectedForLetter.map(c => {
         const title = DISPATCH_DESIGNATION_TITLE[c.designation] || '';
         const line = title
-          ? `Office of the ${title}${c.jurisdiction ? ' ' + c.jurisdiction : ''}`
+          ? `${title}${c.jurisdiction ? ' ' + c.jurisdiction : ''}`
           : (c.office || c.name);
         return escHtml(line);
       })
