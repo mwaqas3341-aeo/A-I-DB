@@ -48,6 +48,17 @@ function openWriteReportModal() {
 
 let _reportGoogleStatus = null;
 
+// Dispatch number format: {seq}/{markaz initials}/{year} — e.g. "23/FPM/2026"
+// for "FATEH PUR - MALE". No zero-padding, no full Markaz name spelled out.
+function markazInitials(markaz) {
+  return (markaz || '')
+    .split(/\s+/)
+    .map(w => w.replace(/[^A-Za-z]/g, ''))
+    .filter(Boolean)
+    .map(w => w[0].toUpperCase())
+    .join('');
+}
+
 // ── Recipient selection helpers (checkbox-based, hierarchy-sorted) ──────
 // Official order regardless of tick order: CEO > DEO > Dy. DEO > AEO >
 // Assistant Director > Head Teacher > Other. Used everywhere a report
@@ -204,12 +215,12 @@ async function onReportDateChange() {
   const { data } = await _sb.from('dispatch_counters').select('last_number').eq('markaz_name', markaz).eq('year', year).maybeSingle();
   const maxUsed = data ? data.last_number : 0;
   const nextSeq = maxUsed + 1;
-  previewEl.value = `${String(nextSeq).padStart(3, '0')}/${markaz}/${year}`;
+  previewEl.value = `${nextSeq}/${markazInitials(markaz)}/${year}`;
 
   if (year === currentYear) {
     hintEl.textContent = 'This is the next dispatch number for your Markaz — it is only finalized once you actually send.';
   } else {
-    hintEl.textContent = `Backdated to ${year}: highest dispatch number already used for your Markaz that year is ${String(maxUsed).padStart(3, '0')}. The next one sent will continue from there.`;
+    hintEl.textContent = `Backdated to ${year}: highest dispatch number already used for your Markaz that year is ${maxUsed}. The next one sent will continue from there.`;
   }
   scheduleDraftAutosave();
 }
@@ -341,18 +352,24 @@ function buildReportTemplateHtml() {
   const dispatchNo = document.getElementById('rpt_dispatchPreview').value || '';
   const date = document.getElementById('rpt_date').value;
   const subject = document.getElementById('rpt_subject').value;
-  const emis = document.getElementById('rpt_emis').value;
-  const schoolName = document.getElementById('rpt_schoolName').value;
   const description = document.getElementById('rpt_description').value;
 
-  // Compact recipient block, already hierarchy-sorted: one office per
-  // line, no commas, no blank lines between them.
+  // Recipient lines never show a personal name — just "Office of the
+  // {full designation title} {jurisdiction}", built from each contact's
+  // Designation + Jurisdiction fields. A contact with no recognized
+  // designation/jurisdiction falls back to its free-text Office field
+  // so nothing renders blank.
   const selectedForLetter = getSelectedReportContacts();
   const toLines = selectedForLetter.length
-    ? selectedForLetter.map(c => escHtml(c.name + (c.office ? ' — ' + c.office : '')))
+    ? selectedForLetter.map(c => {
+        const title = DISPATCH_DESIGNATION_TITLE[c.designation] || '';
+        const line = title
+          ? `Office of the ${title}${c.jurisdiction ? ' ' + c.jurisdiction : ''}`
+          : (c.office || c.name);
+        return escHtml(line);
+      })
     : [escHtml(isUr ? 'منتخب کردہ دفاتر' : 'Office(s) chosen from contacts')];
 
-  const name = currentUser.name || '';
   const designation = currentUser.designation || (isUr ? 'اسسٹنٹ ایجوکیشن آفیسر' : 'Assistant Education Officer');
   const markaz = currentUser.markaz_name || currentUser.markaz || '';
   const sigUrl = (_reportGoogleStatus && _reportGoogleStatus.signature_url) || '';
@@ -361,26 +378,19 @@ function buildReportTemplateHtml() {
     ? new Date(date).toLocaleDateString(isUr ? 'ur-PK' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : '';
 
-  // Only EMIS/school-name reference is shown on the letter — category,
-  // school type and concerned-person are record-keeping fields only.
-  const refLine = emis ? 'EMIS: ' + escHtml(emis) + (schoolName ? ' — ' + escHtml(schoolName) : '') : '';
-
   const L = {
     dispatch: isUr ? 'ڈسپیچ نمبر' : 'Dispatch No.',
     dated: isUr ? 'تاریخ' : 'Dated',
     subject: isUr ? 'موضوع' : 'Subject',
     from: isUr ? 'از' : 'From',
     to: isUr ? 'بجانب' : 'To',
-    signature: isUr ? 'دستخط' : 'Signature',
-    stamp: isUr ? 'سرکاری مہر' : 'Official Stamp',
   };
 
   // Everything below is intentionally black-only (#000) — no theme colors —
   // so the printed/PDF report always comes out in plain black ink.
   // Point sizes are used directly (not px) to match the government
-  // office typography spec exactly: sender/recipient 14pt bold,
-  // Dispatch No./Dated 12pt normal, Subject 12pt bold, body 11pt normal,
-  // Official Stamp 12pt bold.
+  // office typography spec: sender/recipient 14pt bold, Dispatch No./
+  // Dated 12pt normal, Subject 12pt bold, body 11pt normal.
   const senderRecipientStyle = 'font-size:14pt;font-weight:700;color:#000';
   const fieldLabelStyle = 'font-size:12pt;font-weight:400;color:#000;white-space:nowrap;padding-right:8px';
   const fieldValueStyle = 'font-size:12pt;font-weight:400;color:#000;padding-right:28px';
@@ -403,11 +413,10 @@ function buildReportTemplateHtml() {
     ? `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.to}</td><td style="${senderRecipientStyle}padding:4px 0">${toLines.join('<br>')}</td></tr>`
     : `<div style="${senderRecipientStyle};margin-bottom:16px">${toLines.join('<br>')}</div>`;
 
-  // Dispatch No. / Dated: on one line, right-aligned on the page for the
-  // English letter (per spec); kept left-aligned with the rest of the
-  // Urdu block, consistent with how the Urdu letter is otherwise laid out.
+  // Dispatch No. / Dated: same line, left-aligned flush with the sender/
+  // recipient block above it (not floated to the right anymore).
   const dispatchDatedRow = `
-    <div style="display:flex;justify-content:${isUr ? 'flex-start' : 'flex-end'};gap:28px;margin:${isUr ? '10px' : '4px'} 0 18px">
+    <div style="display:flex;gap:28px;margin:${isUr ? '10px' : '4px'} 0 18px">
       <span><span style="${fieldLabelStyle}">${L.dispatch}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dispatchNo) || (isUr ? 'ارسال پر تفویض ہوگا' : 'Assigned on send')}</span></span>
       <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dateDisplay)}</span></span>
     </div>`;
@@ -424,16 +433,13 @@ function buildReportTemplateHtml() {
         <span style="${subjectValueStyle}">${escHtml(subject)}</span>
       </div>
 
-      ${refLine ? `<div style="font-size:10pt;color:#000;margin:-8px 0 14px 0">${refLine}</div>` : ''}
-
       <div style="white-space:pre-wrap;text-align:${align};color:#000;font-size:11pt;font-weight:400;line-height:1.7;min-height:140px;margin-bottom:24px;word-wrap:break-word">${escHtml(description)}</div>
 
       <div style="margin-top:46px;display:flex;justify-content:flex-end">
         <div style="width:280px;text-align:center">
           ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:100px;max-width:260px;display:block;margin:0 auto 6px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:100px"></div>`}
-          <div style="font-size:11pt;color:#000">${L.signature}</div>
-          <div style="font-size:12pt;font-weight:700;color:#000;margin-top:6px">${L.stamp}</div>
           <div style="font-size:11pt;color:#000;margin-top:6px">${escHtml(designation)}</div>
+          <div style="font-size:11pt;color:#000">${escHtml(markaz)}</div>
         </div>
       </div>
 
@@ -652,7 +658,7 @@ async function signAndSendReport() {
     const { data: seqData, error: seqErr } = await _sb.rpc('get_next_dispatch_number', { p_markaz: markaz, p_year: year });
     if (seqErr) { _sendProgressSet('number', 'failed'); throw new Error('Could not assign a dispatch number: ' + seqErr.message); }
     const seq = seqData;
-    const dispatchNumber = `${String(seq).padStart(3, '0')}/${markaz}/${year}`;
+    const dispatchNumber = `${seq}/${markazInitials(markaz)}/${year}`;
     document.getElementById('rpt_dispatchPreview').value = dispatchNumber;
     _sendProgressSet('number', 'done');
     _sendProgressSet('save', 'active');
