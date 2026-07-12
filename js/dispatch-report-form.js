@@ -366,67 +366,74 @@ function buildReportTemplateHtml() {
   const refLine = emis ? 'EMIS: ' + escHtml(emis) + (schoolName ? ' — ' + escHtml(schoolName) : '') : '';
 
   const L = {
-    from: isUr ? 'از' : 'From',
-    to: isUr ? 'بجانب' : 'To',
     dispatch: isUr ? 'ڈسپیچ نمبر' : 'Dispatch No.',
     dated: isUr ? 'تاریخ' : 'Dated',
     subject: isUr ? 'موضوع' : 'Subject',
-    description: isUr ? 'تفصیل' : 'Description',
-    markazLabel: isUr ? 'مرکز' : 'Markaz',
+    from: isUr ? 'از' : 'From',
+    to: isUr ? 'بجانب' : 'To',
+    signature: isUr ? 'دستخط' : 'Signature',
+    stamp: isUr ? 'سرکاری مہر' : 'Official Stamp',
   };
 
   // Everything below is intentionally black-only (#000) — no theme colors —
   // so the printed/PDF report always comes out in plain black ink.
-  // An actual HTML table is used for the whole From/To/Dispatch/Dated/
-  // Subject block instead of ad-hoc flex widths — every label and value
-  // lines up in a clean column/row no matter how long the content is
-  // (a long Markaz name, several recipients, a long subject, …), and
-  // Dispatch No. / Dated sit in the very same <tr> so they're always on
-  // one identical baseline, not two independently-positioned boxes.
-  const cellLabelStyle = 'font-weight:700;font-size:14px;color:#000;padding:7px 12px 7px 0;vertical-align:top;white-space:nowrap;width:1%';
-  const cellValueStyle = 'font-size:14px;padding:7px 0;vertical-align:top;color:#000';
+  // Point sizes are used directly (not px) to match the government
+  // office typography spec exactly: sender/recipient 14pt bold,
+  // Dispatch No./Dated 12pt normal, Subject 12pt bold, body 11pt normal,
+  // Official Stamp 12pt bold.
+  const senderRecipientStyle = 'font-size:14pt;font-weight:700;color:#000';
+  const fieldLabelStyle = 'font-size:12pt;font-weight:400;color:#000;white-space:nowrap;padding-right:8px';
+  const fieldValueStyle = 'font-size:12pt;font-weight:400;color:#000;padding-right:28px';
+  const subjectLabelStyle = 'font-size:12pt;font-weight:700;color:#000;white-space:nowrap;padding-right:8px';
+  const subjectValueStyle = 'font-size:12pt;font-weight:700;color:#000';
 
-  // Sender block: one continuous compact line, no comma before the Markaz.
+  // Sender/recipient blocks: one continuous compact line, no comma, and
+  // — for the English letter specifically — no "From"/"To" caption at
+  // all, just the office details themselves. The Urdu letter keeps its
+  // از / بجانب labels since only the English format was asked to drop them.
   const senderLine = isUr
     ? `دفتر اسسٹنٹ ایجوکیشن آفیسر ${escHtml(markaz)}`
     : `Office of the Assistant Education Officer ${escHtml(markaz)}`;
 
+  const senderBlock = isUr
+    ? `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.from}</td><td style="${senderRecipientStyle}padding:4px 0"><b>${senderLine}</b></td></tr>`
+    : `<div style="${senderRecipientStyle};margin-bottom:10px">${senderLine}</div>`;
+
+  const recipientBlock = isUr
+    ? `<tr><td style="${fieldLabelStyle}vertical-align:top">${L.to}</td><td style="${senderRecipientStyle}padding:4px 0">${toLines.join('<br>')}</td></tr>`
+    : `<div style="${senderRecipientStyle};margin-bottom:16px">${toLines.join('<br>')}</div>`;
+
+  // Dispatch No. / Dated: on one line, right-aligned on the page for the
+  // English letter (per spec); kept left-aligned with the rest of the
+  // Urdu block, consistent with how the Urdu letter is otherwise laid out.
+  const dispatchDatedRow = `
+    <div style="display:flex;justify-content:${isUr ? 'flex-start' : 'flex-end'};gap:28px;margin:${isUr ? '10px' : '4px'} 0 18px">
+      <span><span style="${fieldLabelStyle}">${L.dispatch}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dispatchNo) || (isUr ? 'ارسال پر تفویض ہوگا' : 'Assigned on send')}</span></span>
+      <span><span style="${fieldLabelStyle}">${L.dated}</span><span style="${fieldValueStyle}padding-right:0">${escHtml(dateDisplay)}</span></span>
+    </div>`;
+
   return `
-    <div style="direction:${dir};font-family:${font};font-size:14px;padding:48px 54px;width:794px;box-sizing:border-box;color:#000;line-height:1.6;background:#fff">
+    <div style="direction:${dir};font-family:${font};padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
 
-      <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
-        <tr>
-          <td style="${cellLabelStyle}">${L.from}</td>
-          <td style="${cellValueStyle}" colspan="3"><b>${senderLine}</b></td>
-        </tr>
-        <tr>
-          <td style="${cellLabelStyle}">${L.to}</td>
-          <td style="${cellValueStyle}" colspan="3">${toLines.join('<br>')}</td>
-        </tr>
-        <tr>
-          <td style="${cellLabelStyle}">${L.dispatch}</td>
-          <td style="${cellValueStyle}">${escHtml(dispatchNo) || (isUr ? 'ارسال پر تفویض ہوگا' : 'Assigned on send')}</td>
-          <td style="${cellLabelStyle}">${L.dated}</td>
-          <td style="${cellValueStyle}">${escHtml(dateDisplay)}</td>
-        </tr>
-        <tr>
-          <td style="${cellLabelStyle}">${L.subject}</td>
-          <td style="${cellValueStyle}" colspan="3"><b>${escHtml(subject)}</b></td>
-        </tr>
-      </table>
+      ${isUr ? `<table style="width:100%;border-collapse:collapse;margin-bottom:6px">${senderBlock}${recipientBlock}</table>` : `${senderBlock}${recipientBlock}`}
 
-      ${refLine ? `<div style="font-size:12px;color:#000;margin:0 0 14px 0">${refLine}</div>` : ''}
+      ${dispatchDatedRow}
 
-      <div style="white-space:pre-wrap;text-align:${align};color:#000;font-size:14px;min-height:140px;margin-bottom:20px;word-wrap:break-word">${escHtml(description)}</div>
+      <div style="display:flex;gap:8px;align-items:baseline;margin-bottom:16px">
+        <span style="${subjectLabelStyle}">${L.subject}</span>
+        <span style="${subjectValueStyle}">${escHtml(subject)}</span>
+      </div>
+
+      ${refLine ? `<div style="font-size:10pt;color:#000;margin:-8px 0 14px 0">${refLine}</div>` : ''}
+
+      <div style="white-space:pre-wrap;text-align:${align};color:#000;font-size:11pt;font-weight:400;line-height:1.7;min-height:140px;margin-bottom:24px;word-wrap:break-word">${escHtml(description)}</div>
 
       <div style="margin-top:46px;display:flex;justify-content:flex-end">
-        <div style="width:300px;text-align:center">
-          ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:110px;max-width:280px;display:block;margin:0 auto 4px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:110px"></div>`}
-          <div style="padding-top:6px;font-size:13px;color:#000">
-            <div style="font-weight:700">${escHtml(name)}</div>
-            <div>${escHtml(designation)}</div>
-            <div>${L.markazLabel} ${escHtml(markaz)}</div>
-          </div>
+        <div style="width:280px;text-align:center">
+          ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:100px;max-width:260px;display:block;margin:0 auto 6px;filter:grayscale(1) contrast(1.4) brightness(.8)">` : `<div style="height:100px"></div>`}
+          <div style="font-size:11pt;color:#000">${L.signature}</div>
+          <div style="font-size:12pt;font-weight:700;color:#000;margin-top:6px">${L.stamp}</div>
+          <div style="font-size:11pt;color:#000;margin-top:6px">${escHtml(designation)}</div>
         </div>
       </div>
 
@@ -708,19 +715,37 @@ async function signAndSendReport() {
     // bytes again (the edge function no longer uploads them separately).
     const attachmentsPayload = reportAttachments.map(a => ({ name: a.name, mimeType: a.type, size: a.finalSize }));
 
-    // 5. Hand off to the Edge Function for the actual Drive upload + Gmail send
+    // 5. Hand off to the Edge Function for the actual Drive upload + Gmail send.
+    //    A hard timeout guarantees this never leaves the UI stuck on
+    //    "Sending…" indefinitely — if the connection genuinely stalls
+    //    (e.g. dropped mid-request), it fails cleanly into the catch
+    //    block below like any other error, instead of hanging forever.
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading &amp; sending…';
     const { data: { session } } = await _sb.auth.getSession();
-    const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/dispatch-send-report', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
-      body: JSON.stringify({
-        reportId: reportRow.id,
-        dispatchNumber, dispatchSeq: seq, dispatchYear: year,
-        pdfBase64, attachments: attachmentsPayload, recipients,
-        subject: `Report Dispatch — ${dispatchNumber} — ${subject}`,
-      }),
-    });
+    const sendTimeoutMs = 90000;
+    const sendAbort = new AbortController();
+    const sendTimeoutId = setTimeout(() => sendAbort.abort(), sendTimeoutMs);
+    let res;
+    try {
+      res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/dispatch-send-report', {
+        method: 'POST',
+        signal: sendAbort.signal,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({
+          reportId: reportRow.id,
+          dispatchNumber, dispatchSeq: seq, dispatchYear: year,
+          pdfBase64, attachments: attachmentsPayload, recipients,
+          subject: `Report Dispatch — ${dispatchNumber} — ${subject}`,
+        }),
+      });
+    } catch (fetchErr) {
+      if (fetchErr.name === 'AbortError') {
+        throw new Error(`No response after ${sendTimeoutMs / 1000}s — the connection likely dropped. Your report and dispatch number (${dispatchNumber}) are safely saved; check the Reports list before retrying so you don't send it twice.`);
+      }
+      throw fetchErr;
+    } finally {
+      clearTimeout(sendTimeoutId);
+    }
     const result = await res.json();
 
     if (result.success) {
