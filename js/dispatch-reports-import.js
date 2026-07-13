@@ -51,7 +51,13 @@ function handleImportFileSelected(input) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      // codepage: 65001 forces UTF-8 interpretation for CSV files without
+      // a BOM — without this, SheetJS can misdetect the encoding and
+      // corrupt non-ASCII text (this is exactly what corrupted the Urdu
+      // rows from the very first import into unreadable "mojibake").
+      // .xlsx files aren't affected either way since they don't have
+      // this ambiguity, so this is a safe default for both.
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true, codepage: 65001 });
       const firstSheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
       if (!rows.length) { showToast('That file has no data rows.', false); return; }
