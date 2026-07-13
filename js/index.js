@@ -203,12 +203,40 @@ function restoreSession() {
   if (!saved) return;
   try {
     const user = JSON.parse(saved);
-    if (user && user.cnic) enterApp(user);
+    if (user && user.cnic) {
+      enterApp(user); // instant paint from cache — avoids a blank flash
+      _refreshCurrentUserFromDb(user.id); // then quietly sync with Supabase
+    }
   } catch (e) {
     localStorage.removeItem(CONFIG.SESSION_KEY);
   }
 }
 document.addEventListener('DOMContentLoaded', restoreSession);
+
+// The cached session snapshot can go stale the moment an admin edits this
+// user's profile elsewhere (Markaz, Urdu fields, role, etc.) — without
+// this, those edits silently wouldn't show up until the user manually
+// logged out and back in. Runs silently in the background; failures are
+// non-fatal since the cached snapshot from enterApp() above already works.
+async function _refreshCurrentUserFromDb(userId) {
+  if (!userId || typeof _sb === 'undefined') return;
+  try {
+    const { data, error } = await _sb.from('app_users').select('*').eq('id', userId).single();
+    if (error || !data) return;
+    currentUser = {
+      ...currentUser,
+      id: data.id, name: data.name, cnic: data.cnic, personal_no: data.personal_no,
+      role: data.role, markaz: data.markaz_name, markaz_name: data.markaz_name,
+      markaz_name_ur: data.markaz_name_ur, designation_ur: data.designation_ur,
+      district: data.district, wing: data.wing, tehsil: data.tehsil,
+      cell_no: data.cell_no, email: data.email, designation: data.designation,
+      scope_type: data.scope_type, scope_value: data.scope_value,
+      access_type: data.access_type, email_was_generated: data.email_was_generated,
+    };
+    localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(currentUser));
+    localStorage.setItem('userMarkaz', currentUser.markaz || 'All');
+  } catch (e) { /* non-fatal — cached snapshot already loaded the app */ }
+}
 
 // ─── Logout ───────────────────────────────────────
 function doLogout() {
