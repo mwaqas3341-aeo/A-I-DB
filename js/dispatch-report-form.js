@@ -812,7 +812,7 @@ async function signAndSendReport() {
           subject,
           dated: new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
           details: description,
-          Designation: `${currentUser.designation || 'Assistant Education Officer'}, ${currentUser.markaz_name || currentUser.markaz || ''}`,
+          Stamp: `${currentUser.designation || 'Assistant Education Officer'}, ${currentUser.markaz_name || currentUser.markaz || ''}`,
         }),
       });
     } catch (fetchErr) {
