@@ -18,6 +18,8 @@ const UH = {
   PERSONAL_NO: 'Personal No.',
   NAME:        'Name',
   MARKAZ:      'Markaz Name',
+  MARKAZ_UR:   'Markaz Name (Urdu)',
+  DESIGNATION_UR: 'Designation (Urdu)',
   CELL:        'Cell No',
   CNIC:        'CNIC',
   PASSWORD:    'Password',
@@ -623,6 +625,8 @@ function editUser(cnic) {
     setVal('u_tehsil',      row[UH.TEHSIL]       || '');
     filterMarkazDropdown();
     setVal('u_markaz',      row[UH.MARKAZ]       || '');
+    setVal('u_markaz_ur',   row[UH.MARKAZ_UR]    || '');
+    setVal('u_designation_ur', row[UH.DESIGNATION_UR] || '');
     setVal('u_scope_type',  row[UH.SCOPE_TYPE]   || 'Markaz');
     renderScopeValueUI(row[UH.SCOPE_VALUE] || '');
     userModalInst.show();
@@ -634,7 +638,7 @@ function editUser(cnic) {
 function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
 
 function clearUserForm() {
-  ['u_row_index','u_personal_no','u_name','u_cell','u_cnic','u_email','u_password'].forEach(id => setVal(id, ''));
+  ['u_row_index','u_personal_no','u_name','u_cell','u_cnic','u_email','u_password','u_markaz_ur','u_designation_ur'].forEach(id => setVal(id, ''));
   ['u_role','u_district','u_wing','u_tehsil','u_markaz','u_access_type','u_scope_type'].forEach(id => {
     const el = document.getElementById(id);
     if (el && el.options && el.options.length) el.value = el.options[0].value;
@@ -671,6 +675,8 @@ function submitUser() {
     [UH.PERSONAL_NO]: document.getElementById('u_personal_no').value.trim(),
     [UH.NAME]:        name,
     [UH.MARKAZ]:      document.getElementById('u_markaz').value.trim(),
+    [UH.MARKAZ_UR]:   document.getElementById('u_markaz_ur').value.trim(),
+    [UH.DESIGNATION_UR]: document.getElementById('u_designation_ur').value.trim(),
     [UH.CELL]:        document.getElementById('u_cell').value.trim(),
     [UH.CNIC]:        cnic,
     [UH.EMAIL]:       email,
