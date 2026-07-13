@@ -61,6 +61,8 @@ const USER_COL_MAP = {
   personal_no:  'Personal No.',
   name:         'Name',
   markaz_name:  'Markaz Name',
+  markaz_name_ur: 'Markaz Name (Urdu)',
+  designation_ur: 'Designation (Urdu)',
   cell_no:      'Cell No',
   cnic:         'CNIC',
   role:         'Role',
@@ -399,6 +401,8 @@ async function apiCall(action, payload) {
         cell_no:     fullProfile.cell_no,
         email:       fullProfile.email,
         designation: fullProfile.designation,
+        markaz_name_ur: fullProfile.markaz_name_ur,
+        designation_ur: fullProfile.designation_ur,
         scope_type:  fullProfile.scope_type,
         scope_value: fullProfile.scope_value,
         access_type: fullProfile.access_type,
@@ -1006,6 +1010,8 @@ async function apiCall(action, payload) {
         wing:        data.wing,
         tehsil:      data.tehsil,
         markaz_name: data.markaz_name,
+        markaz_name_ur: data.markaz_name_ur,
+        designation_ur: data.designation_ur,
       };
     }
 
