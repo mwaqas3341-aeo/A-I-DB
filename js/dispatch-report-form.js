@@ -428,8 +428,8 @@ function buildReportTemplateHtml() {
     : '';
 
   const L = {
-    dispatch: isUr ? 'نمبر:' : 'Dispatch No.',
-    dated: isUr ? 'مورخہ:' : 'Dated',
+    dispatch: isUr ? 'نمبر:' : 'No. :',
+    dated: isUr ? 'مورخہ:' : 'Dated:',
     subject: isUr ? 'عنوان' : 'Subject',
     from: isUr ? 'از' : 'From',
     to: isUr ? 'بجانب' : 'To',
@@ -809,7 +809,10 @@ async function signAndSendReport() {
           reportId: reportRow.id,
           dispatchNumber, dispatchSeq: seq, dispatchYear: year,
           pdfBase64, attachments: attachmentsPayload, recipients,
-          subject: `Report Dispatch — ${dispatchNumber} — ${subject}`,
+          subject,
+          dated: new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          details: description,
+          stamp: `${currentUser.designation || 'Assistant Education Officer'}, ${currentUser.markaz_name || currentUser.markaz || ''}`,
         }),
       });
     } catch (fetchErr) {
