@@ -413,8 +413,16 @@ function buildReportTemplateHtml() {
       })
     : [escHtml(isUr ? 'منتخب کردہ دفاتر' : 'Office(s) chosen from contacts')];
 
-  const designation = currentUser.designation || (isUr ? 'اسسٹنٹ ایجوکیشن آفیسر' : 'Assistant Education Officer');
-  const markaz = currentUser.markaz_name || currentUser.markaz || '';
+  // Urdu letters must never show the English Markaz/Designation — use
+  // the admin-set Urdu values (managed in the Admin Panel), falling
+  // back to a generic transliteration only if the admin hasn't filled
+  // them in yet, so nothing renders blank.
+  const designation = isUr
+    ? (currentUser.designation_ur || 'اسسٹنٹ ایجوکیشن آفیسر')
+    : (currentUser.designation || 'Assistant Education Officer');
+  const markaz = isUr
+    ? (currentUser.markaz_name_ur || currentUser.markaz_name || currentUser.markaz || '')
+    : (currentUser.markaz_name || currentUser.markaz || '');
   const sigUrl = (_reportGoogleStatus && _reportGoogleStatus.signature_url) || '';
 
   const dateDisplay = date
@@ -446,7 +454,7 @@ function buildReportTemplateHtml() {
   // left/right CSS needed, just the same relative layout as English.
   // ══════════════════════════════════════════════════════════════════
   if (isUr) {
-    const senderLine = `از دفتر اسسٹنٹ ایجوکیشن آفیسر مرکز ${escHtml(markaz)}`;
+    const senderLine = `از دفتر ${escHtml(designation)} مرکز ${escHtml(markaz)}`;
 
     return `
       <div style="direction:rtl;font-family:${getReportFontStack()};padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
@@ -491,7 +499,7 @@ function buildReportTemplateHtml() {
   //  - Signature: bigger, with a DD/MM/YYYY date to its right;
   //    Designation + Markaz below it, bold, right-aligned
   // ══════════════════════════════════════════════════════════════════
-  const senderLine = `Office of the Assistant Education Officer ${escHtml(markaz)}`;
+  const senderLine = `Office of the ${escHtml(designation)} ${escHtml(markaz)}`;
 
   return `
     <div style="direction:ltr;font-family:${getReportFontStack()};padding:50px 55px;width:794px;box-sizing:border-box;color:#000;line-height:1.65;background:#fff">
@@ -812,7 +820,7 @@ async function signAndSendReport() {
           subject,
           dated: new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
           details: description,
-          Stamp: `${currentUser.designation || 'Assistant Education Officer'}, ${currentUser.markaz_name || currentUser.markaz || ''}`,
+          stamp: `${currentUser.designation || 'Assistant Education Officer'}, ${currentUser.markaz_name || currentUser.markaz || ''}`,
         }),
       });
     } catch (fetchErr) {
