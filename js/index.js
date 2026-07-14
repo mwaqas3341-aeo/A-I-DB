@@ -414,12 +414,37 @@ function loadDashboardKpiCards() {
         document.getElementById('dynamicKpiSection').style.display = 'none';
         return;
       }
-      renderDashboardKpiCards(res.data);
+      const visible = res.data.filter(_kpiCardVisibleToCurrentUser);
+      if (!visible.length) {
+        document.getElementById('dynamicKpiSection').style.display = 'none';
+        return;
+      }
+      renderDashboardKpiCards(visible);
     })
     .withFailureHandler(() => {
       document.getElementById('dynamicKpiSection').style.display = 'none';
     })
     .getKpiCards();
+}
+
+// A card with Scope Type "All" (or none set) shows to everyone, as
+// before. A card scoped to District/Wing/Tehsil/Markaz only shows to
+// users whose OWN matching field equals that value. Admins always see
+// every card regardless of scope, same as their access elsewhere in
+// the portal.
+function _kpiCardVisibleToCurrentUser(card) {
+  const type = card['Scope Type'] || 'All';
+  if (type === 'All' || !type) return true;
+  if (currentUser && String(currentUser.role).toLowerCase() === 'admin') return true;
+
+  const value = card['Scope Value'] || '';
+  if (!value) return true; // misconfigured card (scope picked but no value) — don't hide from everyone
+
+  const fieldByType = { District: 'district', Wing: 'wing', Tehsil: 'tehsil', Markaz: 'markaz' };
+  const field = fieldByType[type];
+  if (!field || !currentUser) return true;
+
+  return (currentUser[field] || '') === value;
 }
 
 const KPI_CARD_COLOR_VAR = {
