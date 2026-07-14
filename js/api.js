@@ -468,6 +468,8 @@ async function apiCall(action, payload) {
         'Action Type':      c.action_type      || 'module',
         'Action Value':     c.action_value     || '',
         'Display Order':    c.display_order    || 99,
+        'Scope Type':       c.jurisdiction_scope_type  || 'All',
+        'Scope Value':      c.jurisdiction_scope_value || '',
         _id: c.id,
       }));
       return { success: true, data: mapped };
@@ -1195,7 +1197,7 @@ async function apiCall(action, payload) {
     case 'getKpiCardsAdmin': {
       const { data, error } = await _sb.from('kpi_cards').select('*').order('display_order');
       if (error) return { success: false, message: error.message };
-      const headers = ['Card Title','Card Icon','Card Color','Card Description','Action Type','Action Value','Display Order'];
+      const headers = ['Card Title','Card Icon','Card Color','Card Description','Action Type','Action Value','Display Order','Scope Type','Scope Value'];
       const mapped = (data||[]).map(c => ({
         'Card Title':       c.card_title       || '',
         'Card Icon':        c.card_icon        || '',
@@ -1204,6 +1206,8 @@ async function apiCall(action, payload) {
         'Action Type':      c.action_type      || '',
         'Action Value':     c.action_value     || '',
         'Display Order':    c.display_order    || '',
+        'Scope Type':       c.jurisdiction_scope_type  || 'All',
+        'Scope Value':      c.jurisdiction_scope_value || '',
         _id: c.id,
       }));
       return { success: true, headers, data: mapped };
@@ -1221,6 +1225,8 @@ async function apiCall(action, payload) {
         action_type:      p['Action Type']      || 'module',
         action_value:     p['Action Value']     || '',
         display_order:    parseInt(p['Display Order']) || 99,
+        jurisdiction_scope_type:  p['Scope Type']  || 'All',
+        jurisdiction_scope_value: p['Scope Value'] || '',
         active:           true,
       };
       if (id) {
