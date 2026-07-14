@@ -690,12 +690,23 @@ function submitUser() {
     [UH.ACCESS_TYPE]: document.getElementById('u_access_type').value.trim()
   };
 
+  const editedUserId = document.getElementById('u_row_index').value.trim();
+
   const btn = document.getElementById('saveUserBtn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
   google.script.run
     .withSuccessHandler(res => {
       btn.disabled = false; btn.innerHTML = '<i class="bi bi-floppy-fill"></i> Save User';
-      if (res.success) { userModalInst.hide(); showToast(res.message || 'User saved!'); loadUsers(); }
+      if (res.success) {
+        userModalInst.hide(); showToast(res.message || 'User saved!'); loadUsers();
+        // If the admin just edited their OWN profile, sync currentUser
+        // immediately — otherwise the write-report form (and anything
+        // else that reads currentUser) would keep using the stale
+        // snapshot from page load until the next reload.
+        if (editedUserId && currentUser && editedUserId === currentUser.id && typeof _refreshCurrentUserFromDb === 'function') {
+          _refreshCurrentUserFromDb(currentUser.id);
+        }
+      }
       else showToast(res.message || 'Save failed.', false);
     })
     .withFailureHandler(err => {
@@ -933,6 +944,7 @@ function renderKpiCardsTable(headers, data) {
       <th>Action Type</th>
       <th>Action Value</th>
       <th>Active</th>
+      <th>Visible To</th>
     </tr>`;
 
   document.getElementById('kpiTBody').innerHTML = data.map(row => {
@@ -972,8 +984,29 @@ function renderKpiCardsTable(headers, data) {
       <td>${aTypeLabel}</td>
       <td style="font-size:.75rem;color:var(--t2);max-width:150px;overflow:hidden;text-overflow:ellipsis">${aVal}</td>
       <td><span class="${active === 'Yes' ? 'active-yes' : 'active-no'}">${active}</span></td>
+      <td>${(row['Scope Type'] && row['Scope Type'] !== 'All')
+            ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700">${escHtml(row['Scope Type'])}: ${escHtml(row['Scope Value'] || '—')}</span>`
+            : `<span style="color:var(--t3);font-size:.75rem">All users</span>`}</td>
     </tr>`;
   }).join('');
+}
+
+// ── Scope Value dropdown for KPI card visibility — simple single-select,
+//    reusing the same jurisdiction lists already loaded for the user
+//    scope picker (jDropdowns), unlike the more complex multi-tag scope
+//    system used for user access, since a card only ever needs one value.
+function renderKpiScopeValueUI(existingValue) {
+  const type = document.getElementById('kc_scope_type').value;
+  const wrap = document.getElementById('kc_scope_value_wrap');
+  const sel  = document.getElementById('kc_scope_value');
+
+  if (type === 'All') { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+
+  const listByType = { District: jDropdowns.districts, Wing: jDropdowns.wings, Tehsil: jDropdowns.tehsils, Markaz: jDropdowns.markazes };
+  const list = listByType[type] || [];
+  wrap.style.display = '';
+  sel.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (existingValue && list.includes(existingValue)) sel.value = existingValue;
 }
 
 // ── Open KPI modal: add ──────────────────────────────────────────
@@ -989,6 +1022,8 @@ function openKpiCardModal() {
   document.getElementById('kc_active').value      = 'Yes';
   document.getElementById('kc_order').value       = '10';
   document.getElementById('kc_rowIndex').value    = '';
+  document.getElementById('kc_scope_type').value  = 'All';
+  renderKpiScopeValueUI();
   onKpiActionTypeChange();
   updateKpiPreview();
   kpiCardModalInst.show();
@@ -1006,6 +1041,8 @@ function editKpiCard(ri) {
   document.getElementById('kc_active').value   = row['Active']           || 'Yes';
   document.getElementById('kc_order').value    = row['Display Order']    || '10';
   document.getElementById('kc_rowIndex').value = ri;
+  document.getElementById('kc_scope_type').value = row['Scope Type'] || 'All';
+  renderKpiScopeValueUI(row['Scope Value'] || '');
 
   const aType = row['Action Type'] || 'module';
   const aVal  = row['Action Value'] || '';
@@ -1059,6 +1096,10 @@ function submitKpiCard() {
   if (!title) { showToast('Card Title is required.', false); return; }
   if (!aVal)  { showToast('Action Value is required.', false); return; }
 
+  const scopeType = document.getElementById('kc_scope_type').value;
+  const scopeValue = scopeType === 'All' ? '' : document.getElementById('kc_scope_value').value.trim();
+  if (scopeType !== 'All' && !scopeValue) { showToast(`Pick a ${scopeType} for this card, or set Visible To back to "All Users".`, false); return; }
+
   const rowData = {
     'Card Title':       title,
     'Card Icon':        document.getElementById('kc_icon').value.trim(),
@@ -1067,7 +1108,9 @@ function submitKpiCard() {
     'Action Type':      aType,
     'Action Value':     aVal,
     'Active':           document.getElementById('kc_active').value.trim(),
-    'Display Order':    document.getElementById('kc_order').value.trim() || '10'
+    'Display Order':    document.getElementById('kc_order').value.trim() || '10',
+    'Scope Type':       scopeType,
+    'Scope Value':      scopeValue
   };
 
   const ri  = document.getElementById('kc_rowIndex').value || null;
