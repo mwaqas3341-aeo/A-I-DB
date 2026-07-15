@@ -122,5 +122,8 @@ async function deleteDispatchReport(id, dispatchNumber) {
 
 function openDispatchReportsView() {
   if (typeof switchGlobalTab === 'function') switchGlobalTab('dispatchReportsView', null);
+  if (typeof loadKpiCardsForModule === 'function') {
+    loadKpiCardsForModule('dispatch', 'dispatchKpiGrid', 'dispatchKpiSection');
+  }
   loadMyDispatchReports();
 }
