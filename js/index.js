@@ -405,45 +405,81 @@ function escHtml(str) {
 }
 
 // ═══════════════════════════════════════════════════
-//  DYNAMIC DASHBOARD KPI / MODULE CARDS
+//  DYNAMIC KPI / MODULE CARDS — reusable across every module
 // ═══════════════════════════════════════════════════
-function loadDashboardKpiCards() {
+//  Same "KPI Card Settings" system that originally only powered the
+//  main Dashboard's Quick Access section, now generalized so any
+//  module page can show its own admin-configured card set. Each card
+//  is tagged with a `Module` key ('dashboard' | 'tools' | 'hr' |
+//  'public_schools' | 'private_schools' | 'dispatch' …) in the Admin
+//  Panel; this loader fetches only the cards for the requested module
+//  and renders them into that module's own grid/section elements.
+//
+//  Cards saved before the Module field existed have module=null on
+//  the backend, which getKpiCards() treats as 'dashboard' — so old
+//  Dashboard cards keep working unchanged.
+function loadKpiCardsForModule(moduleKey, gridId, sectionId) {
+  const grid    = document.getElementById(gridId);
+  const section = document.getElementById(sectionId);
+  if (!grid || !section) return;
+
   google.script.run
     .withSuccessHandler(res => {
       if (!res.success || !res.data || !res.data.length) {
-        document.getElementById('dynamicKpiSection').style.display = 'none';
+        section.style.display = 'none';
         return;
       }
       const visible = res.data.filter(_kpiCardVisibleToCurrentUser);
       if (!visible.length) {
-        document.getElementById('dynamicKpiSection').style.display = 'none';
+        section.style.display = 'none';
         return;
       }
-      renderDashboardKpiCards(visible);
+      renderKpiCardsInto(visible, gridId, sectionId);
     })
     .withFailureHandler(() => {
-      document.getElementById('dynamicKpiSection').style.display = 'none';
+      section.style.display = 'none';
     })
-    .getKpiCards();
+    .getKpiCards(moduleKey);
+}
+
+// Back-compat wrapper: the main Dashboard call site (and Admin Panel's
+// save/delete handlers) still call loadDashboardKpiCards() by name.
+function loadDashboardKpiCards() {
+  loadKpiCardsForModule('dashboard', 'dynamicKpiGrid', 'dynamicKpiSection');
 }
 
 // A card with Scope Type "All" (or none set) shows to everyone, as
 // before. A card scoped to District/Wing/Tehsil/Markaz only shows to
-// users whose OWN matching field equals that value. Admins always see
-// every card regardless of scope, same as their access elsewhere in
-// the portal.
+// users whose OWN jurisdiction matches — and now matches the FULL
+// hierarchy chain the admin picked (e.g. a Markaz-level card checks
+// District AND Wing AND Tehsil AND Markaz, not just the leaf value),
+// via the Scope District/Wing/Tehsil/Markaz columns. Cards saved
+// before that hierarchy existed fall back to the legacy single
+// Scope Type + Scope Value check. Admins always see every card
+// regardless of scope, same as their access elsewhere in the portal.
 function _kpiCardVisibleToCurrentUser(card) {
   const type = card['Scope Type'] || 'All';
   if (type === 'All' || !type) return true;
   if (currentUser && String(currentUser.role).toLowerCase() === 'admin') return true;
-
-  const value = card['Scope Value'] || '';
-  if (!value) return true; // misconfigured card (scope picked but no value) — don't hide from everyone
+  if (!currentUser) return true;
 
   const fieldByType = { District: 'district', Wing: 'wing', Tehsil: 'tehsil', Markaz: 'markaz' };
-  const field = fieldByType[type];
-  if (!field || !currentUser) return true;
+  const hierarchy = [
+    ['District', card['Scope District']],
+    ['Wing',     card['Scope Wing']],
+    ['Tehsil',   card['Scope Tehsil']],
+    ['Markaz',   card['Scope Markaz']],
+  ].filter(([, v]) => v);
 
+  if (hierarchy.length) {
+    return hierarchy.every(([lvl, val]) => (currentUser[fieldByType[lvl]] || '') === val);
+  }
+
+  // Legacy single-field card (no hierarchy columns saved)
+  const value = card['Scope Value'] || '';
+  if (!value) return true; // misconfigured card (scope picked but no value) — don't hide from everyone
+  const field = fieldByType[type];
+  if (!field) return true;
   return (currentUser[field] || '') === value;
 }
 
@@ -453,9 +489,9 @@ const KPI_CARD_COLOR_VAR = {
   accent: 'var(--accent)'
 };
 
-function renderDashboardKpiCards(cards) {
-  const grid    = document.getElementById('dynamicKpiGrid');
-  const section = document.getElementById('dynamicKpiSection');
+function renderKpiCardsInto(cards, gridId, sectionId) {
+  const grid    = document.getElementById(gridId);
+  const section = document.getElementById(sectionId);
   if (!grid || !section) return;
 
   const sorted = [...cards].sort((a, b) =>
@@ -494,6 +530,9 @@ function renderDashboardKpiCards(cards) {
 // ═══════════════════════════════════════════════
 function openToolsView() {
   switchGlobalTab('toolsView', null);
+  if (typeof loadKpiCardsForModule === 'function') {
+    loadKpiCardsForModule('tools', 'toolsKpiGrid', 'toolsKpiSection');
+  }
   document.getElementById('toolsUserContainer').innerHTML = `
     <div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--t3)">
       <span class="spinner-border"></span> Fetching tools...
