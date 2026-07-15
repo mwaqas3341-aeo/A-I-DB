@@ -103,6 +103,9 @@ function openPrivateModule(sheetName) {
       (sheetName === 'Inactive') ? 'none' : 'flex';
 
     if (typeof switchGlobalTab === 'function') switchGlobalTab('privateDataView', null);
+    if (typeof loadKpiCardsForModule === 'function') {
+      loadKpiCardsForModule('private_schools', 'privateKpiGrid', 'privateKpiSection');
+    }
 
     // Reset to empty state
     _privShowEmptyState('Loading data…', true);
