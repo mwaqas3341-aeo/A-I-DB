@@ -177,6 +177,9 @@ window.addEventListener('DOMContentLoaded', () => {
 // ──────────────────────────────────────────────────────────────────
 function openHrModule() {
   switchGlobalTab('hrDataView');
+  if (typeof loadKpiCardsForModule === 'function') {
+    loadKpiCardsForModule('hr', 'hrKpiGrid', 'hrKpiSection');
+  }
   if (hrSchoolCache.length === 0) {
     document.getElementById('hrFilterDistrict').innerHTML = '<option>Loading…</option>';
     const userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
