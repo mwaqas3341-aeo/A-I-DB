@@ -93,6 +93,9 @@ function openPublicModule(sheetName) {
   document.getElementById('btnPubAdd').style.display = 'none';
 
   if (typeof switchGlobalTab === 'function') switchGlobalTab('publicDataView', null);
+  if (typeof loadKpiCardsForModule === 'function') {
+    loadKpiCardsForModule('public_schools', 'publicKpiGrid', 'publicKpiSection');
+  }
 
   _pubShowEmptyState('Loading data…', true);
 
