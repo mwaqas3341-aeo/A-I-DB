@@ -453,6 +453,11 @@ async function apiCall(action, payload) {
     }
 
     case 'getKpiCards': {
+      // payload (optional) is the module key the caller wants cards for,
+      // e.g. 'tools', 'hr', 'public_schools', 'private_schools', 'dispatch'.
+      // Omitted/blank => 'dashboard', which also matches legacy rows saved
+      // before the `module` column existed (module IS NULL).
+      const moduleKey = (typeof payload === 'string' && payload.trim()) ? payload.trim() : 'dashboard';
       const { data, error } = await _sb
         .from('kpi_cards')
         .select('*')
@@ -460,18 +465,25 @@ async function apiCall(action, payload) {
         .order('display_order');
       if (error) return { success: false, message: error.message };
       // Map to the column names the frontend's renderDashboardKpiCards() uses
-      const mapped = (data || []).map(c => ({
-        'Card Title':       c.card_title       || '',
-        'Card Icon':        c.card_icon        || '',
-        'Card Color':       c.card_color       || '',
-        'Card Description': c.card_description || '',
-        'Action Type':      c.action_type      || 'module',
-        'Action Value':     c.action_value     || '',
-        'Display Order':    c.display_order    || 99,
-        'Scope Type':       c.jurisdiction_scope_type  || 'All',
-        'Scope Value':      c.jurisdiction_scope_value || '',
-        _id: c.id,
-      }));
+      const mapped = (data || [])
+        .filter(c => (c.module || 'dashboard') === moduleKey)
+        .map(c => ({
+          'Card Title':       c.card_title       || '',
+          'Card Icon':        c.card_icon        || '',
+          'Card Color':       c.card_color       || '',
+          'Card Description': c.card_description || '',
+          'Action Type':      c.action_type      || 'module',
+          'Action Value':     c.action_value     || '',
+          'Display Order':    c.display_order    || 99,
+          'Scope Type':       c.jurisdiction_scope_type  || 'All',
+          'Scope Value':      c.jurisdiction_scope_value || '',
+          'Scope District':   c.scope_district || '',
+          'Scope Wing':       c.scope_wing     || '',
+          'Scope Tehsil':     c.scope_tehsil   || '',
+          'Scope Markaz':     c.scope_markaz   || '',
+          'Module':           c.module || 'dashboard',
+          _id: c.id,
+        }));
       return { success: true, data: mapped };
     }
 
@@ -1197,7 +1209,7 @@ async function apiCall(action, payload) {
     case 'getKpiCardsAdmin': {
       const { data, error } = await _sb.from('kpi_cards').select('*').order('display_order');
       if (error) return { success: false, message: error.message };
-      const headers = ['Card Title','Card Icon','Card Color','Card Description','Action Type','Action Value','Display Order','Scope Type','Scope Value'];
+      const headers = ['Card Title','Card Icon','Card Color','Card Description','Action Type','Action Value','Display Order','Module','Scope Type','Scope Value','Scope District','Scope Wing','Scope Tehsil','Scope Markaz','Active'];
       const mapped = (data||[]).map(c => ({
         'Card Title':       c.card_title       || '',
         'Card Icon':        c.card_icon        || '',
@@ -1206,8 +1218,14 @@ async function apiCall(action, payload) {
         'Action Type':      c.action_type      || '',
         'Action Value':     c.action_value     || '',
         'Display Order':    c.display_order    || '',
+        'Module':           c.module || 'dashboard',
         'Scope Type':       c.jurisdiction_scope_type  || 'All',
         'Scope Value':      c.jurisdiction_scope_value || '',
+        'Scope District':   c.scope_district || '',
+        'Scope Wing':       c.scope_wing     || '',
+        'Scope Tehsil':     c.scope_tehsil   || '',
+        'Scope Markaz':     c.scope_markaz   || '',
+        'Active':           c.active === false ? 'No' : 'Yes',
         _id: c.id,
       }));
       return { success: true, headers, data: mapped };
@@ -1217,6 +1235,31 @@ async function apiCall(action, payload) {
       const arr = Array.isArray(payload) ? payload : [payload];
       const p = arr[0] || {};
       const id = p._id || arr[1] || null;   // admin.js sends (rowData, rowId, currentUser)
+
+      // ── Server-side hierarchy validation (mirrors the frontend rules) ──
+      // District-level KPI  -> District required
+      // Wing-level KPI      -> District + Wing required
+      // Tehsil-level KPI    -> District + Wing + Tehsil required
+      // Markaz-level KPI    -> District + Wing + Tehsil + Markaz required
+      const scopeType = p['Scope Type'] || 'All';
+      const scopeDistrict = (p['Scope District'] || '').trim();
+      const scopeWing      = (p['Scope Wing']     || '').trim();
+      const scopeTehsil    = (p['Scope Tehsil']   || '').trim();
+      const scopeMarkaz    = (p['Scope Markaz']   || '').trim();
+      const requiredByType = {
+        District: ['District'],
+        Wing:     ['District', 'Wing'],
+        Tehsil:   ['District', 'Wing', 'Tehsil'],
+        Markaz:   ['District', 'Wing', 'Tehsil', 'Markaz'],
+      };
+      if (requiredByType[scopeType]) {
+        const values = { District: scopeDistrict, Wing: scopeWing, Tehsil: scopeTehsil, Markaz: scopeMarkaz };
+        const missing = requiredByType[scopeType].filter(lvl => !values[lvl]);
+        if (missing.length) {
+          return { success: false, message: `Missing required location for a ${scopeType}-level card: ${missing.join(', ')}.` };
+        }
+      }
+
       const dbRow = {
         card_title:       p['Card Title']       || '',
         card_icon:        p['Card Icon']        || '',
@@ -1225,9 +1268,14 @@ async function apiCall(action, payload) {
         action_type:      p['Action Type']      || 'module',
         action_value:     p['Action Value']     || '',
         display_order:    parseInt(p['Display Order']) || 99,
-        jurisdiction_scope_type:  p['Scope Type']  || 'All',
-        jurisdiction_scope_value: p['Scope Value'] || '',
-        active:           true,
+        module:           p['Module'] || 'dashboard',
+        jurisdiction_scope_type:  scopeType,
+        jurisdiction_scope_value: p['Scope Value'] || (scopeMarkaz || scopeTehsil || scopeWing || scopeDistrict) || '',
+        scope_district:   scopeType === 'All' ? '' : scopeDistrict,
+        scope_wing:       (scopeType === 'Wing' || scopeType === 'Tehsil' || scopeType === 'Markaz') ? scopeWing : '',
+        scope_tehsil:     (scopeType === 'Tehsil' || scopeType === 'Markaz') ? scopeTehsil : '',
+        scope_markaz:     scopeType === 'Markaz' ? scopeMarkaz : '',
+        active:           p['Active'] === 'No' ? false : true,
       };
       if (id) {
         const r = await _checkedUpdate('kpi_cards', dbRow, 'id', id);
