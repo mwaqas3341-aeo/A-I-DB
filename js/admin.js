@@ -725,6 +725,27 @@ function confirmDeleteUser(rowIndex, name) {
 // ═══════════════════════════════════════════════
 //  LINKS & APPS
 // ═══════════════════════════════════════════════
+function filterLinksTable(query) {
+  const q = query.trim().toLowerCase();
+  const countEl = document.getElementById('linksSearchCount');
+
+  if (!q) {
+    document.querySelectorAll('#linksTBody tr').forEach(tr => tr.style.display = '');
+    countEl.textContent = '';
+    return;
+  }
+
+  let visible = 0;
+  document.querySelectorAll('#linksTBody tr').forEach(tr => {
+    const show = tr.textContent.toLowerCase().includes(q);
+    tr.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  const total = document.querySelectorAll('#linksTBody tr').length;
+  countEl.textContent = `${visible} of ${total} rows`;
+}
+
 function loadLinksAppsTable() {
   document.getElementById('linksTBody').innerHTML =
     '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
@@ -745,7 +766,7 @@ function renderLinksTable() {
     return;
   }
   document.getElementById('linksTHead').innerHTML =
-    `<tr><th>Actions</th>${linksHeaders.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    `<tr><th>Actions</th>${linksHeaders.map(h => `<th>${h}</th>`).join('')}<th>Visible To</th></tr>`;
   document.getElementById('linksTBody').innerHTML = linksData.map(row => {
     const ri = row._id;
     return `<tr>
@@ -760,6 +781,7 @@ function renderLinksTable() {
           ? `<a href="${v}" target="_blank" style="color:var(--brand);font-size:.75rem">${v.substring(0, 40)}…</a>`
           : v}</td>`;
       }).join('')}
+      <td>${scopeVisibleToBadge(row)}</td>
     </tr>`;
   }).join('');
 }
@@ -770,6 +792,8 @@ function openLinksModal() {
   document.getElementById('la_linkCat').value = '';
   document.getElementById('la_appCat').value  = '';
   document.getElementById('la_rowIndex').value = '';
+  document.getElementById('la_scope_type').value = 'All';
+  renderScopeHierarchyUI('la_scope');
   linksModalInst.show();
 }
 
@@ -785,6 +809,13 @@ function editLinksRow(ri) {
   document.getElementById('la_appUrl').value    = g(LA_COL.APP_URL);
   document.getElementById('la_appCat').value    = g(LA_COL.APP_CATEGORY);
   document.getElementById('la_rowIndex').value  = ri;
+  document.getElementById('la_scope_type').value = row['Scope Type'] || 'All';
+  renderScopeHierarchyUI('la_scope', {
+    district: row['Scope District'] || '',
+    wing:     row['Scope Wing']     || '',
+    tehsil:   row['Scope Tehsil']   || '',
+    markaz:   row['Scope Markaz']   || '',
+  });
   linksModalInst.show();
 }
 
@@ -801,6 +832,16 @@ function submitLinksRow() {
   const hasLink = document.getElementById('la_linkName').value.trim() || document.getElementById('la_linkUrl').value.trim();
   const hasApp  = document.getElementById('la_appName').value.trim()  || document.getElementById('la_appUrl').value.trim();
   if (!hasLink && !hasApp) { showToast('Fill in at least a link or app.', false); return; }
+
+  const scopeType = document.getElementById('la_scope_type').value;
+  const hierarchyError = validateScopeHierarchy('la_scope', 'link/app');
+  if (hierarchyError) { showToast(hierarchyError, false); return; }
+  const h = readScopeHierarchy('la_scope');
+  obj['Scope Type']     = scopeType;
+  obj['Scope District']  = h.district;
+  obj['Scope Wing']      = h.wing;
+  obj['Scope Tehsil']    = h.tehsil;
+  obj['Scope Markaz']    = h.markaz;
 
   const ri  = document.getElementById('la_rowIndex').value || null;
   const btn = document.getElementById('saveLinksBtn');
@@ -826,9 +867,30 @@ function confirmDeleteLinksRow(ri) { pendingDeleteRow = ri; pendingDeleteType = 
 // ═══════════════════════════════════════════════
 //  TOOLS
 // ═══════════════════════════════════════════════
+function filterToolsTable(query) {
+  const q = query.trim().toLowerCase();
+  const countEl = document.getElementById('toolsSearchCount');
+
+  if (!q) {
+    document.querySelectorAll('#toolsTBody tr').forEach(tr => tr.style.display = '');
+    countEl.textContent = '';
+    return;
+  }
+
+  let visible = 0;
+  document.querySelectorAll('#toolsTBody tr').forEach(tr => {
+    const show = tr.textContent.toLowerCase().includes(q);
+    tr.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  const total = document.querySelectorAll('#toolsTBody tr').length;
+  countEl.textContent = `${visible} of ${total} tools`;
+}
+
 function loadToolsTableAdmin() {
   document.getElementById('toolsTBody').innerHTML =
-    '<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+    '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
   google.script.run
     .withSuccessHandler(res => {
       if (!res.success) { showToast(res.message, false); return; }
@@ -846,7 +908,7 @@ function renderToolsTable() {
     return;
   }
   document.getElementById('toolsTHead').innerHTML =
-    `<tr><th>Actions</th>${toolsHeaders.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    `<tr><th>Actions</th>${toolsHeaders.map(h => `<th>${h}</th>`).join('')}<th>Visible To</th></tr>`;
   document.getElementById('toolsTBody').innerHTML = toolsData.map(row => {
     const ri = row._id;
     return `<tr>
@@ -862,6 +924,7 @@ function renderToolsTable() {
           ? `<a href="${v}" target="_blank" style="color:var(--purple)">${v.substring(0, 40)}…</a>`
           : v}</td>`;
       }).join('')}
+      <td>${scopeVisibleToBadge(row)}</td>
     </tr>`;
   }).join('');
 }
@@ -871,6 +934,8 @@ function openToolModal() {
   document.getElementById('tool_name').value     = '';
   document.getElementById('tool_url').value      = '';
   document.getElementById('tool_rowIndex').value = '';
+  document.getElementById('tool_scope_type').value = 'All';
+  renderScopeHierarchyUI('tool_scope');
   toolModalInst.show();
 }
 
@@ -881,6 +946,13 @@ function editToolRow(ri) {
   document.getElementById('tool_name').value     = row[toolsHeaders[0]] || '';
   document.getElementById('tool_url').value      = row[toolsHeaders[1]] || '';
   document.getElementById('tool_rowIndex').value = ri;
+  document.getElementById('tool_scope_type').value = row['Scope Type'] || 'All';
+  renderScopeHierarchyUI('tool_scope', {
+    district: row['Scope District'] || '',
+    wing:     row['Scope Wing']     || '',
+    tehsil:   row['Scope Tehsil']   || '',
+    markaz:   row['Scope Markaz']   || '',
+  });
   toolModalInst.show();
 }
 
@@ -889,6 +961,16 @@ function submitToolRow() {
   if (toolsHeaders[0]) obj[toolsHeaders[0]] = document.getElementById('tool_name').value.trim();
   if (toolsHeaders[1]) obj[toolsHeaders[1]] = document.getElementById('tool_url').value.trim();
   if (!obj[toolsHeaders[0]] || !obj[toolsHeaders[1]]) { showToast('Name and URL required.', false); return; }
+
+  const scopeType = document.getElementById('tool_scope_type').value;
+  const hierarchyError = validateScopeHierarchy('tool_scope', 'tool');
+  if (hierarchyError) { showToast(hierarchyError, false); return; }
+  const h = readScopeHierarchy('tool_scope');
+  obj['Scope Type']     = scopeType;
+  obj['Scope District']  = h.district;
+  obj['Scope Wing']      = h.wing;
+  obj['Scope Tehsil']    = h.tehsil;
+  obj['Scope Markaz']    = h.markaz;
 
   const ri  = document.getElementById('tool_rowIndex').value || null;
   const btn = document.getElementById('saveToolBtn');
@@ -932,6 +1014,18 @@ const KPI_MODULE_LABEL = {
   private_schools: '🏫 Private Schools',
   dispatch:        '📤 Report Dispatch',
 };
+
+// Shared "who can see this" badge — same look everywhere it's used
+// (KPI Cards, Links & Apps, Tools Manager) so visibility reads
+// consistently across the whole Admin Panel.
+function scopeVisibleToBadge(row) {
+  if (row['Scope Type'] && row['Scope Type'] !== 'All') {
+    const parts = [row['Scope District'], row['Scope Wing'], row['Scope Tehsil'], row['Scope Markaz']]
+      .filter(Boolean).join(' → ') || row['Scope Value'] || '—';
+    return `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700">${escHtml(row['Scope Type'])}: ${escHtml(parts)}</span>`;
+  }
+  return `<span style="color:var(--t3);font-size:.75rem">All users</span>`;
+}
 
 function renderKpiCardsTable(headers, data) {
   if (!data.length) {
@@ -995,25 +1089,30 @@ function renderKpiCardsTable(headers, data) {
       <td>${aTypeLabel}</td>
       <td style="font-size:.75rem;color:var(--t2);max-width:150px;overflow:hidden;text-overflow:ellipsis">${aVal}</td>
       <td><span class="${active === 'Yes' ? 'active-yes' : 'active-no'}">${active}</span></td>
-      <td>${(row['Scope Type'] && row['Scope Type'] !== 'All')
-            ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700">${escHtml(row['Scope Type'])}: ${escHtml(row['Scope Value'] || '—')}</span>`
-            : `<span style="color:var(--t3);font-size:.75rem">All users</span>`}</td>
+      <td>${scopeVisibleToBadge(row)}</td>
     </tr>`;
   }).join('');
 }
 
-// ── Hierarchical scope picker for KPI card visibility ──────────────
-// Reuses jDropdowns.jMap (the same District/Wing/Tehsil/Markaz map
-// already loaded for the Admin Panel's user-scope picker) so every
-// dropdown here only ever offers valid child locations for whatever
-// parent was picked above it — District → Wing → Tehsil → Markaz.
-// Levels below the selected Scope Type stay hidden/disabled and are
-// cleared, so no invalid partial combination can be saved.
-const KPI_SCOPE_LEVELS = ['District', 'Wing', 'Tehsil', 'Markaz'];
+// ── Generic hierarchical scope picker — District → Wing → Tehsil → Markaz ──
+// Originally built just for KPI Card visibility; now shared by any modal
+// that needs the same "who can see this" picker (KPI Cards, Links & Apps,
+// Tools Manager). Every set of fields is namespaced by a `prefix`, so a
+// modal just needs a Scope Type select at `${prefix}_type`, a wrapper at
+// `${prefix}_hierarchy_wrap`, and district/wing/tehsil/markaz selects at
+// `${prefix}_district` etc. (with matching `${prefix}_<level>_wrap` divs) —
+// see the KPI Card modal in index.html for the exact markup shape to copy.
+//
+// Reuses jDropdowns.jMap (the same District/Wing/Tehsil/Markaz map already
+// loaded for the Admin Panel's user-scope picker) so every dropdown here
+// only ever offers valid child locations for whatever parent was picked
+// above it. Levels below the selected Scope Type stay hidden/disabled and
+// are cleared, so no invalid partial combination can be saved.
+const SCOPE_LEVELS = ['District', 'Wing', 'Tehsil', 'Markaz'];
 
-function _kpiUniqueSorted(list) { return [...new Set(list.filter(Boolean))].sort(); }
+function _scopeUniqueSorted(list) { return [...new Set(list.filter(Boolean))].sort(); }
 
-function _kpiFillSelect(id, items, placeholder, keepValue) {
+function _scopeFillSelect(id, items, placeholder, keepValue) {
   const el = document.getElementById(id);
   if (!el) return;
   const prev = keepValue !== undefined ? keepValue : el.value;
@@ -1021,10 +1120,10 @@ function _kpiFillSelect(id, items, placeholder, keepValue) {
   if (prev && items.includes(prev)) el.value = prev;
 }
 
-function renderKpiScopeValueUI(existing) {
-  const type = document.getElementById('kc_scope_type').value;
-  const wrap = document.getElementById('kc_scope_hierarchy_wrap');
-  const levelIndex = KPI_SCOPE_LEVELS.indexOf(type); // -1 for "All"
+function renderScopeHierarchyUI(prefix, existing) {
+  const type = document.getElementById(`${prefix}_type`).value;
+  const wrap = document.getElementById(`${prefix}_hierarchy_wrap`);
+  const levelIndex = SCOPE_LEVELS.indexOf(type); // -1 for "All"
 
   if (type === 'All' || levelIndex === -1) {
     wrap.style.display = 'none';
@@ -1032,9 +1131,8 @@ function renderKpiScopeValueUI(existing) {
   }
   wrap.style.display = '';
 
-  // Show/hide each level's field based on how deep this scope type goes.
   ['district', 'wing', 'tehsil', 'markaz'].forEach((lvl, i) => {
-    const fieldWrap = document.getElementById(`kc_scope_${lvl}_wrap`);
+    const fieldWrap = document.getElementById(`${prefix}_${lvl}_wrap`);
     if (fieldWrap) fieldWrap.style.display = (i <= levelIndex) ? '' : 'none';
   });
 
@@ -1043,95 +1141,93 @@ function renderKpiScopeValueUI(existing) {
   // form instead of wiping it, so narrowing from Markaz to Wing (say)
   // keeps the District/Wing the admin already chose.
   const ex = existing || {
-    district: document.getElementById('kc_scope_district') ? document.getElementById('kc_scope_district').value : '',
-    wing:     document.getElementById('kc_scope_wing')     ? document.getElementById('kc_scope_wing').value     : '',
-    tehsil:   document.getElementById('kc_scope_tehsil')   ? document.getElementById('kc_scope_tehsil').value   : '',
-    markaz:   document.getElementById('kc_scope_markaz')   ? document.getElementById('kc_scope_markaz').value   : '',
+    district: document.getElementById(`${prefix}_district`) ? document.getElementById(`${prefix}_district`).value : '',
+    wing:     document.getElementById(`${prefix}_wing`)     ? document.getElementById(`${prefix}_wing`).value     : '',
+    tehsil:   document.getElementById(`${prefix}_tehsil`)   ? document.getElementById(`${prefix}_tehsil`).value   : '',
+    markaz:   document.getElementById(`${prefix}_markaz`)   ? document.getElementById(`${prefix}_markaz`).value   : '',
   };
 
-  // District: always the top of the chain, all districts available.
-  _kpiFillSelect('kc_scope_district', jDropdowns.districts || [], '— Select District —', ex.district || '');
-  document.getElementById('kc_scope_district').disabled = false;
+  _scopeFillSelect(`${prefix}_district`, jDropdowns.districts || [], '— Select District —', ex.district || '');
+  document.getElementById(`${prefix}_district`).disabled = false;
 
-  if (levelIndex >= 1) onKpiScopeDistrictChange(ex.wing || '');
-  if (levelIndex >= 2) onKpiScopeWingChange(ex.tehsil || '');
-  if (levelIndex >= 3) onKpiScopeTehsilChange(ex.markaz || '');
+  if (levelIndex >= 1) onScopeDistrictChange(prefix, ex.wing || '');
+  if (levelIndex >= 2) onScopeWingChange(prefix, ex.tehsil || '');
+  if (levelIndex >= 3) onScopeTehsilChange(prefix, ex.markaz || '');
 }
 
-function onKpiScopeDistrictChange(keepWing) {
-  const district = document.getElementById('kc_scope_district').value;
-  const wingEl   = document.getElementById('kc_scope_wing');
+function onScopeDistrictChange(prefix, keepWing) {
+  const district = document.getElementById(`${prefix}_district`).value;
+  const wingEl   = document.getElementById(`${prefix}_wing`);
   if (!wingEl) return;
   if (!district) {
     wingEl.innerHTML = '<option value="">— Select District first —</option>';
     wingEl.disabled = true;
-    _kpiClearDownstream('wing');
+    _scopeClearDownstream(prefix, 'wing');
     return;
   }
-  const wings = _kpiUniqueSorted((jDropdowns.jMap || []).filter(r => r.district === district).map(r => r.wing));
-  _kpiFillSelect('kc_scope_wing', wings, '— Select Wing —', keepWing);
+  const wings = _scopeUniqueSorted((jDropdowns.jMap || []).filter(r => r.district === district).map(r => r.wing));
+  _scopeFillSelect(`${prefix}_wing`, wings, '— Select Wing —', keepWing);
   wingEl.disabled = false;
-  // Any downstream selections are now stale — clear them unless we're mid-restore.
-  if (keepWing === undefined) _kpiClearDownstream('wing');
+  if (keepWing === undefined) _scopeClearDownstream(prefix, 'wing');
 }
 
-function onKpiScopeWingChange(keepTehsil) {
-  const district = document.getElementById('kc_scope_district').value;
-  const wing     = document.getElementById('kc_scope_wing').value;
-  const tehsilEl = document.getElementById('kc_scope_tehsil');
+function onScopeWingChange(prefix, keepTehsil) {
+  const district = document.getElementById(`${prefix}_district`).value;
+  const wing     = document.getElementById(`${prefix}_wing`).value;
+  const tehsilEl = document.getElementById(`${prefix}_tehsil`);
   if (!tehsilEl) return;
   if (!wing) {
     tehsilEl.innerHTML = '<option value="">— Select Wing first —</option>';
     tehsilEl.disabled = true;
-    _kpiClearDownstream('tehsil');
+    _scopeClearDownstream(prefix, 'tehsil');
     return;
   }
-  const tehsils = _kpiUniqueSorted((jDropdowns.jMap || [])
+  const tehsils = _scopeUniqueSorted((jDropdowns.jMap || [])
     .filter(r => r.district === district && r.wing === wing).map(r => r.tehsil));
-  _kpiFillSelect('kc_scope_tehsil', tehsils, '— Select Tehsil —', keepTehsil);
+  _scopeFillSelect(`${prefix}_tehsil`, tehsils, '— Select Tehsil —', keepTehsil);
   tehsilEl.disabled = false;
-  if (keepTehsil === undefined) _kpiClearDownstream('tehsil');
+  if (keepTehsil === undefined) _scopeClearDownstream(prefix, 'tehsil');
 }
 
-function onKpiScopeTehsilChange(keepMarkaz) {
-  const district = document.getElementById('kc_scope_district').value;
-  const wing     = document.getElementById('kc_scope_wing').value;
-  const tehsil   = document.getElementById('kc_scope_tehsil').value;
-  const markazEl = document.getElementById('kc_scope_markaz');
+function onScopeTehsilChange(prefix, keepMarkaz) {
+  const district = document.getElementById(`${prefix}_district`).value;
+  const wing     = document.getElementById(`${prefix}_wing`).value;
+  const tehsil   = document.getElementById(`${prefix}_tehsil`).value;
+  const markazEl = document.getElementById(`${prefix}_markaz`);
   if (!markazEl) return;
   if (!tehsil) {
     markazEl.innerHTML = '<option value="">— Select Tehsil first —</option>';
     markazEl.disabled = true;
     return;
   }
-  const markazes = _kpiUniqueSorted((jDropdowns.jMap || [])
+  const markazes = _scopeUniqueSorted((jDropdowns.jMap || [])
     .filter(r => r.district === district && r.wing === wing && r.tehsil === tehsil).map(r => r.markaz));
-  _kpiFillSelect('kc_scope_markaz', markazes, '— Select Markaz —', keepMarkaz);
+  _scopeFillSelect(`${prefix}_markaz`, markazes, '— Select Markaz —', keepMarkaz);
   markazEl.disabled = false;
 }
 
 // Changing a parent level clears everything below it, per the
 // "changing a parent must clear lower-level selections" requirement.
-function _kpiClearDownstream(fromLevel) {
+function _scopeClearDownstream(prefix, fromLevel) {
   const order = ['wing', 'tehsil', 'markaz'];
   const startAt = order.indexOf(fromLevel);
   order.forEach((lvl, i) => {
     if (i < startAt) return;
-    const el = document.getElementById(`kc_scope_${lvl}`);
+    const el = document.getElementById(`${prefix}_${lvl}`);
     if (el) el.value = '';
   });
 }
 
 // Reads back the currently-selected hierarchy values, trimmed to
 // whatever the active Scope Type actually requires.
-function _kpiReadScopeHierarchy() {
-  const type = document.getElementById('kc_scope_type').value;
-  const levelIndex = KPI_SCOPE_LEVELS.indexOf(type);
+function readScopeHierarchy(prefix) {
+  const type = document.getElementById(`${prefix}_type`).value;
+  const levelIndex = SCOPE_LEVELS.indexOf(type);
   const raw = {
-    district: document.getElementById('kc_scope_district') ? document.getElementById('kc_scope_district').value : '',
-    wing:     document.getElementById('kc_scope_wing')     ? document.getElementById('kc_scope_wing').value     : '',
-    tehsil:   document.getElementById('kc_scope_tehsil')   ? document.getElementById('kc_scope_tehsil').value   : '',
-    markaz:   document.getElementById('kc_scope_markaz')   ? document.getElementById('kc_scope_markaz').value   : '',
+    district: document.getElementById(`${prefix}_district`) ? document.getElementById(`${prefix}_district`).value : '',
+    wing:     document.getElementById(`${prefix}_wing`)     ? document.getElementById(`${prefix}_wing`).value     : '',
+    tehsil:   document.getElementById(`${prefix}_tehsil`)   ? document.getElementById(`${prefix}_tehsil`).value   : '',
+    markaz:   document.getElementById(`${prefix}_markaz`)   ? document.getElementById(`${prefix}_markaz`).value   : '',
   };
   return {
     district: levelIndex >= 0 ? raw.district : '',
@@ -1147,10 +1243,10 @@ function _kpiReadScopeHierarchy() {
 //   Tehsil level    -> District + Wing + Tehsil
 //   Markaz level    -> District + Wing + Tehsil + Markaz
 // Returns an error message string, or '' if valid.
-function _kpiValidateScopeHierarchy() {
-  const type = document.getElementById('kc_scope_type').value;
+function validateScopeHierarchy(prefix, itemLabel) {
+  const type = document.getElementById(`${prefix}_type`).value;
   if (type === 'All') return '';
-  const h = _kpiReadScopeHierarchy();
+  const h = readScopeHierarchy(prefix);
   const requiredByType = {
     District: ['district'],
     Wing:     ['district', 'wing'],
@@ -1160,10 +1256,19 @@ function _kpiValidateScopeHierarchy() {
   const labels = { district: 'District', wing: 'Wing', tehsil: 'Tehsil', markaz: 'Markaz' };
   const missing = (requiredByType[type] || []).filter(f => !h[f]).map(f => labels[f]);
   if (missing.length) {
-    return `A ${type}-level card needs: ${missing.join(', ')}.`;
+    return `A ${type}-level ${itemLabel || 'item'} needs: ${missing.join(', ')}.`;
   }
   return '';
 }
+
+// ── Thin KPI-specific wrappers (kept so existing onchange="..." calls
+//    in the KPI modal's markup keep working unchanged) ──────────────
+function renderKpiScopeValueUI(existing)      { renderScopeHierarchyUI('kc_scope', existing); }
+function onKpiScopeDistrictChange(keepWing)   { onScopeDistrictChange('kc_scope', keepWing); }
+function onKpiScopeWingChange(keepTehsil)     { onScopeWingChange('kc_scope', keepTehsil); }
+function onKpiScopeTehsilChange(keepMarkaz)   { onScopeTehsilChange('kc_scope', keepMarkaz); }
+function _kpiReadScopeHierarchy()             { return readScopeHierarchy('kc_scope'); }
+function _kpiValidateScopeHierarchy()         { return validateScopeHierarchy('kc_scope', 'card'); }
 
 // ── Open KPI modal: add ──────────────────────────────────────────
 function openKpiCardModal() {
