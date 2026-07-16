@@ -457,31 +457,39 @@ function loadDashboardKpiCards() {
 // before that hierarchy existed fall back to the legacy single
 // Scope Type + Scope Value check. Admins always see every card
 // regardless of scope, same as their access elsewhere in the portal.
-function _kpiCardVisibleToCurrentUser(card) {
-  const type = card['Scope Type'] || 'All';
+// Generic "does this item's visibility scope match the current user's
+// own jurisdiction" check — shared by KPI Cards, Links & Apps, and
+// Tools Manager so all three behave identically. `item` just needs
+// Scope Type / Scope District / Scope Wing / Scope Tehsil / Scope
+// Markaz (and, for old KPI rows saved before the hierarchy existed,
+// a legacy single Scope Value).
+function _isScopedItemVisibleToCurrentUser(item) {
+  const type = item['Scope Type'] || 'All';
   if (type === 'All' || !type) return true;
   if (currentUser && String(currentUser.role).toLowerCase() === 'admin') return true;
   if (!currentUser) return true;
 
   const fieldByType = { District: 'district', Wing: 'wing', Tehsil: 'tehsil', Markaz: 'markaz' };
   const hierarchy = [
-    ['District', card['Scope District']],
-    ['Wing',     card['Scope Wing']],
-    ['Tehsil',   card['Scope Tehsil']],
-    ['Markaz',   card['Scope Markaz']],
+    ['District', item['Scope District']],
+    ['Wing',     item['Scope Wing']],
+    ['Tehsil',   item['Scope Tehsil']],
+    ['Markaz',   item['Scope Markaz']],
   ].filter(([, v]) => v);
 
   if (hierarchy.length) {
     return hierarchy.every(([lvl, val]) => (currentUser[fieldByType[lvl]] || '') === val);
   }
 
-  // Legacy single-field card (no hierarchy columns saved)
-  const value = card['Scope Value'] || '';
-  if (!value) return true; // misconfigured card (scope picked but no value) — don't hide from everyone
+  // Legacy single-field row (no hierarchy columns saved)
+  const value = item['Scope Value'] || '';
+  if (!value) return true; // misconfigured (scope picked but no value) — don't hide from everyone
   const field = fieldByType[type];
   if (!field) return true;
   return (currentUser[field] || '') === value;
 }
+
+function _kpiCardVisibleToCurrentUser(card) { return _isScopedItemVisibleToCurrentUser(card); }
 
 const KPI_CARD_COLOR_VAR = {
   brand: 'var(--brand)', ok: 'var(--ok)', bad: 'var(--bad)',
