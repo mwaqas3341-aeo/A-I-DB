@@ -490,7 +490,11 @@ async function apiCall(action, payload) {
     case 'getLinksAndApps': {
       const { data, error } = await _sb.from('links_apps').select('*');
       if (error) return { success: false, message: error.message };
-      const rows = data || [];
+      const rows = (data || []).filter(r => (typeof _isScopedItemVisibleToCurrentUser !== 'function') || _isScopedItemVisibleToCurrentUser({
+        'Scope Type': r.visibility_scope_type || 'All',
+        'Scope District': r.scope_district || '', 'Scope Wing': r.scope_wing || '',
+        'Scope Tehsil': r.scope_tehsil || '', 'Scope Markaz': r.scope_markaz || '',
+      }));
       return {
         success:       true,
         importantLinks: rows.filter(r => r.link_category === 'Important Link' || r.link_name)
@@ -513,9 +517,14 @@ async function apiCall(action, payload) {
     case 'getToolsUser': {
       const { data, error } = await _sb.from('tools').select('*');
       if (error) return { success: false, message: error.message };
+      const visible = (data || []).filter(t => (typeof _isScopedItemVisibleToCurrentUser !== 'function') || _isScopedItemVisibleToCurrentUser({
+        'Scope Type': t.visibility_scope_type || 'All',
+        'Scope District': t.scope_district || '', 'Scope Wing': t.scope_wing || '',
+        'Scope Tehsil': t.scope_tehsil || '', 'Scope Markaz': t.scope_markaz || '',
+      }));
       return {
         success: true,
-        tools: (data || []).map(t => ({ name: t.tool_name, url: t.tool_url })),
+        tools: visible.map(t => ({ name: t.tool_name, url: t.tool_url })),
       };
     }
 
@@ -1295,7 +1304,41 @@ async function apiCall(action, payload) {
       return { success: true, message: 'KPI card deleted.' };
     }
 
-    // ── ADMIN — LINKS & APPS ──────────────────────────────────────────
+// Same District/Wing/Tehsil/Markaz "who can see this" rules as KPI
+// Cards, shared here so Links & Apps and Tools Manager saves enforce
+// the identical required-selection rule server-side:
+//   District level -> District
+//   Wing level     -> District + Wing
+//   Tehsil level    -> District + Wing + Tehsil
+//   Markaz level    -> District + Wing + Tehsil + Markaz
+function _validateHierarchyScope(p) {
+  const scopeType = p['Scope Type'] || 'All';
+  const requiredByType = {
+    District: ['Scope District'],
+    Wing:     ['Scope District', 'Scope Wing'],
+    Tehsil:   ['Scope District', 'Scope Wing', 'Scope Tehsil'],
+    Markaz:   ['Scope District', 'Scope Wing', 'Scope Tehsil', 'Scope Markaz'],
+  };
+  if (!requiredByType[scopeType]) return null;
+  const missing = requiredByType[scopeType].filter(f => !(p[f] || '').trim());
+  if (missing.length) {
+    return `Missing required location for a ${scopeType}-level visibility scope: ${missing.map(f => f.replace('Scope ', '')).join(', ')}.`;
+  }
+  return null;
+}
+
+function _hierarchyScopeDbFields(p) {
+  const scopeType = p['Scope Type'] || 'All';
+  return {
+    visibility_scope_type: scopeType,
+    scope_district: scopeType === 'All' ? '' : (p['Scope District'] || ''),
+    scope_wing:     ['Wing','Tehsil','Markaz'].includes(scopeType) ? (p['Scope Wing'] || '') : '',
+    scope_tehsil:   ['Tehsil','Markaz'].includes(scopeType) ? (p['Scope Tehsil'] || '') : '',
+    scope_markaz:   scopeType === 'Markaz' ? (p['Scope Markaz'] || '') : '',
+  };
+}
+
+// ── ADMIN — LINKS & APPS ──────────────────────────────────────────
     case 'getLinksAppsAdmin': {
       const { data, error } = await _sb.from('links_apps').select('*');
       if (error) return { success: false, message: error.message };
@@ -1307,6 +1350,11 @@ async function apiCall(action, payload) {
         'App URL':       r.app_url       || '',
         'App Category':  r.app_category  || '',
         'Link Category': r.link_category || '',
+        'Scope Type':     r.visibility_scope_type || 'All',
+        'Scope District': r.scope_district || '',
+        'Scope Wing':     r.scope_wing     || '',
+        'Scope Tehsil':   r.scope_tehsil   || '',
+        'Scope Markaz':   r.scope_markaz   || '',
         _id: r.id,
       }));
       return { success: true, headers, data: mapped };
@@ -1316,6 +1364,10 @@ async function apiCall(action, payload) {
       const arr = Array.isArray(payload) ? payload : [payload];
       const p = arr[0] || {};
       const id = p._id || arr[1] || null;   // admin.js sends (obj, rowId, currentUser)
+
+      const scopeErr = _validateHierarchyScope(p);
+      if (scopeErr) return { success: false, message: scopeErr };
+
       const dbRow = {
         link_name:     p['Link Name']     || p[0] || '',
         link_url:      p['Link URL']      || p[1] || '',
@@ -1323,6 +1375,7 @@ async function apiCall(action, payload) {
         app_url:       p['App URL']       || p[3] || '',
         app_category:  p['App Category']  || p[4] || '',
         link_category: p['Link Category'] || p[5] || '',
+        ..._hierarchyScopeDbFields(p),
       };
       if (id) {
         const r = await _checkedUpdate('links_apps', dbRow, 'id', id);
@@ -1350,6 +1403,11 @@ async function apiCall(action, payload) {
       const mapped = (data||[]).map(r => ({
         'Tool Name': r.tool_name || '',
         'Tool URL':  r.tool_url  || '',
+        'Scope Type':     r.visibility_scope_type || 'All',
+        'Scope District': r.scope_district || '',
+        'Scope Wing':     r.scope_wing     || '',
+        'Scope Tehsil':   r.scope_tehsil   || '',
+        'Scope Markaz':   r.scope_markaz   || '',
         _id: r.id,
       }));
       return { success: true, headers, data: mapped };
@@ -1359,9 +1417,14 @@ async function apiCall(action, payload) {
       const arr = Array.isArray(payload) ? payload : [payload];
       const p = arr[0] || {};
       const id = p._id || arr[1] || null;   // admin.js sends (obj, rowId, currentUser)
+
+      const scopeErr = _validateHierarchyScope(p);
+      if (scopeErr) return { success: false, message: scopeErr };
+
       const dbRow = {
         tool_name: p['Tool Name'] || p[0] || '',
         tool_url:  p['Tool URL']  || p[1] || '',
+        ..._hierarchyScopeDbFields(p),
       };
       if (id) {
         const r = await _checkedUpdate('tools', dbRow, 'id', id);
