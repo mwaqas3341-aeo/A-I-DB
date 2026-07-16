@@ -116,7 +116,11 @@ function openSchoolImportModal(kind) {
   document.getElementById('si_title').innerHTML =
     `<i class="bi bi-cloud-arrow-up-fill"></i> ${cfg.updateOnly ? 'Update' : 'Import Previous'} ${cfg.label} Data`;
   document.getElementById('si_fileInput').value = '';
+  document.getElementById('si_fileInput').onchange = function () { handleSchoolImportFileSelected(this); };
   document.getElementById('si_downloadTemplateBtn').onclick = () => downloadSchoolImportTemplate(kind);
+  document.getElementById('si_nextBtn').onclick = schoolImportGoToMapping;
+  document.getElementById('si_previewBtn').onclick = schoolImportGoToPreview;
+  document.getElementById('si_confirmBtn').onclick = confirmSchoolImport;
   document.getElementById('si_step1').style.display = 'block';
   document.getElementById('si_step2').style.display = 'none';
   document.getElementById('si_step3').style.display = 'none';
