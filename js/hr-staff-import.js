@@ -190,28 +190,56 @@ function hrImportGoToPreview() {
     showToast('Please map at least one of Personal No. or CNIC.', false); return;
   }
 
+  const previewBtn = document.getElementById('si_previewBtn');
+  previewBtn.disabled = true;
+  previewBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking existing employees…';
+
   if (typeof sfmEnsureSchoolCache === 'function') {
-    sfmEnsureSchoolCache(() => _hiFetchExistingAndBuildPreview(targetHeaders));
+    sfmEnsureSchoolCache(() => _hiFetchExistingAndBuildPreview(targetHeaders).finally(() => {
+      previewBtn.disabled = false;
+      previewBtn.innerHTML = 'Next: Preview';
+    }));
   } else {
     showToast('School directory isn\'t loaded yet — open HR once first, then retry.', false);
+    previewBtn.disabled = false;
+    previewBtn.innerHTML = 'Next: Preview';
   }
+}
+
+// Pulls every existing staff row, a page at a time. Deliberately NOT a
+// single `.in('personal_no', [...thousands of values])` query — at a
+// few thousand rows that filter list makes the request URL too long
+// and Supabase/PostgREST rejects it, which was silently emptying the
+// duplicate-check maps and making every row look "new" even when the
+// employee was already on file.
+async function _hiFetchAllStaff() {
+  const PAGE = 1000;
+  let from = 0, all = [];
+  while (true) {
+    const { data, error } = await _sb.from('staff').select('*').range(from, from + PAGE - 1);
+    if (error) {
+      showToast('Could not load existing staff for duplicate-checking: ' + error.message, false);
+      break;
+    }
+    if (!data || !data.length) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 async function _hiFetchExistingAndBuildPreview(targetHeaders) {
   const get = (raw, h) => _hiMapping[h] ? String(raw[_hiMapping[h]] || '').trim() : '';
 
-  const pnos  = _hiRawRows.map(r => get(r, 'PERSONAL NO.').replace(/\D/g, '')).filter(Boolean);
-  const cnics = _hiRawRows.map(r => get(r, 'CNIC').replace(/\D/g, '')).filter(Boolean);
-
-  let byPno = new Map(), byCnic = new Map();
-  if (pnos.length) {
-    const { data } = await _sb.from('staff').select('*').in('personal_no', pnos);
-    (data || []).forEach(r => byPno.set(String(r.personal_no), r));
-  }
-  if (cnics.length) {
-    const { data } = await _sb.from('staff').select('*').in('cnic', cnics);
-    (data || []).forEach(r => byCnic.set(String(r.cnic), r));
-  }
+  const allStaff = await _hiFetchAllStaff();
+  const byPno = new Map(), byCnic = new Map();
+  allStaff.forEach(r => {
+    const pnoKey  = (r.personal_no !== null && r.personal_no !== undefined) ? String(r.personal_no).trim() : '';
+    const cnicKey = (r.cnic !== null && r.cnic !== undefined) ? String(r.cnic).trim() : '';
+    if (pnoKey)  byPno.set(pnoKey, r);
+    if (cnicKey) byCnic.set(cnicKey, r);
+  });
 
   const jur = (typeof _getUserJurisdictions === 'function') ? _getUserJurisdictions() : null;
 
@@ -321,44 +349,86 @@ function hiOnDateEdit(idx, header, newValue) {
 }
 
 // ── Step 4: confirm ──────────────────────────────────────────────
+function _hiBuildDbRow(item, reverseMap) {
+  const dbRow = {};
+  for (const [header, val] of Object.entries(item.raw)) {
+    const col = reverseMap[header];
+    if (!col || val === '') continue;
+    if (item.mode === 'update' && item.existing && item.existing[col] !== null && item.existing[col] !== undefined && String(item.existing[col]).trim() !== '') {
+      continue; // existing field already has a value — never overwrite it
+    }
+    dbRow[col] = val;
+  }
+  if (item.school) {
+    dbRow.district = item.school.d || '';
+    dbRow.wing = item.school.w || '';
+    dbRow.tehsil = item.school.t || '';
+    dbRow.markaz_name = item.school.m || '';
+  }
+  dbRow.changes_made_by = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.name : '';
+  dbRow.changes_made_at = new Date().toISOString();
+  return dbRow;
+}
+
+// Runs `worker` over `items` with up to `concurrency` requests in flight
+// at once, instead of awaiting them one at a time — for thousands of
+// rows this is the difference between ~30 minutes and ~a couple of
+// minutes, since the browser is no longer sitting idle waiting for each
+// single round-trip to Supabase before starting the next one.
+async function _hiRunWithConcurrency(items, worker, concurrency) {
+  let next = 0;
+  async function runner() {
+    while (next < items.length) {
+      const item = items[next++];
+      await worker(item);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runner));
+}
+
 async function confirmHrImport() {
   const reverseMap = Object.fromEntries(Object.entries(STAFF_COL_MAP).map(([col, header]) => [header, col]));
   const toApply = _hiPreviewRows.filter(r => r.status === 'ok');
+  const inserts = toApply.filter(r => r.mode === 'insert');
+  const updates = toApply.filter(r => r.mode === 'update');
+  const total = toApply.length;
 
   const btn = document.getElementById('si_confirmBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
+  let done = 0;
+  const paint = () => { btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Saving… ${done} / ${total}`; };
+  paint();
 
   let updated = 0, inserted = 0, failed = 0;
-  for (const item of toApply) {
-    const dbRow = {};
-    for (const [header, val] of Object.entries(item.raw)) {
-      const col = reverseMap[header];
-      if (!col || val === '') continue;
-      if (item.mode === 'update' && item.existing && item.existing[col] !== null && item.existing[col] !== undefined && String(item.existing[col]).trim() !== '') {
-        continue; // existing field already has a value — never overwrite it
-      }
-      dbRow[col] = val;
-    }
-    if (item.school) {
-      dbRow.district = item.school.d || '';
-      dbRow.wing = item.school.w || '';
-      dbRow.tehsil = item.school.t || '';
-      dbRow.markaz_name = item.school.m || '';
-    }
-    dbRow.changes_made_by = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.name : '';
-    dbRow.changes_made_at = new Date().toISOString();
 
-    if (item.mode === 'update') {
-      delete dbRow.personal_no; // never overwrite the primary key
-      const { error } = await _sb.from('staff').update(dbRow).eq('personal_no', item.existing.personal_no);
-      if (error) failed++; else updated++;
-    } else {
-      dbRow.status = 'active';
-      const { error } = await _sb.from('staff').insert([dbRow]);
-      if (error) failed++; else inserted++;
-    }
+  // New employees don't need per-row logic (nothing to "leave untouched"
+  // yet), so they go in as real batch inserts — hundreds of rows in a
+  // single request instead of one request each.
+  const INSERT_CHUNK = 500;
+  for (let i = 0; i < inserts.length; i += INSERT_CHUNK) {
+    const chunk = inserts.slice(i, i + INSERT_CHUNK).map(item => {
+      const row = _hiBuildDbRow(item, reverseMap);
+      row.status = 'active';
+      return row;
+    });
+    const { error } = await _sb.from('staff').insert(chunk);
+    if (error) failed += chunk.length; else inserted += chunk.length;
+    done += chunk.length;
+    paint();
   }
+
+  // Updates each fill in a different set of blank columns per employee,
+  // so they can't be batched into one request the way inserts can — but
+  // running many of them at once (instead of one at a time) is still a
+  // large speedup.
+  await _hiRunWithConcurrency(updates, async (item) => {
+    const dbRow = _hiBuildDbRow(item, reverseMap);
+    delete dbRow.personal_no; // never overwrite the primary key
+    const { error } = await _sb.from('staff').update(dbRow).eq('personal_no', item.existing.personal_no);
+    if (error) failed++; else updated++;
+    done++;
+    paint();
+  }, 20);
 
   btn.disabled = false;
   btn.innerHTML = '<i class="bi bi-check2-circle"></i> Save These Records';
