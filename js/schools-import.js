@@ -387,17 +387,35 @@ function _siRenderPreview(cfg) {
 }
 
 // ── Step 4: confirm — update (public) or insert (private) the "ok" rows ──
+async function _siRunWithConcurrency(items, worker, concurrency) {
+  let next = 0;
+  async function runner() {
+    while (next < items.length) {
+      const item = items[next++];
+      await worker(item);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runner));
+}
+
+function _siGenId() {
+  const year = new Date().getFullYear();
+  return `PS-${year}-` + Array.from({ length: 8 }, () => '0123456789ABCDEF'[Math.floor(Math.random() * 16)]).join('');
+}
+
 async function confirmSchoolImport() {
   const cfg = SCHOOL_IMPORT_CONFIG[_siKind];
   const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
   const toApply = _siPreviewRows.filter(r => r.status === 'ok');
+  const total = toApply.length;
 
   const btn = document.getElementById('si_confirmBtn');
   btn.disabled = true;
-  btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${cfg.updateOnly ? 'Updating…' : 'Importing…'}`;
-
   let done = 0, failed = 0;
-  for (const item of toApply) {
+  const paint = () => { btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${cfg.updateOnly ? 'Updating' : 'Importing'}… ${done + failed} / ${total}`; };
+  paint();
+
+  const buildRow = (item) => {
     const dbRow = {};
     for (const [header, val] of Object.entries(item.row)) {
       if (_siKind === 'private' && SI_LOCATION_HEADERS.includes(header)) continue;
@@ -405,23 +423,52 @@ async function confirmSchoolImport() {
       if (col && val !== '') dbRow[col] = val;
     }
     dbRow.updated_at = new Date().toISOString();
+    return dbRow;
+  };
 
-    if (cfg.updateOnly) {
+  if (cfg.updateOnly) {
+    // Public: each row updates by its own Emis — different rows, same
+    // request shape, but a real bulk "update many with different values"
+    // isn't a single REST call, so these run many-at-once instead of
+    // one-at-a-time, which is still a large speedup over fully sequential.
+    await _siRunWithConcurrency(toApply, async (item) => {
+      const dbRow = buildRow(item);
       const { error } = await _sb.from(cfg.table).update(dbRow).eq(cfg.uniqueCol, item.uniqueVal);
       if (error) failed++; else done++;
-    } else {
-      dbRow.district = item.location.district;
-      dbRow.tehsil = item.location.tehsil;
-      dbRow.markaz_name = item.location.markaz_name;
-      dbRow.status = dbRow.status || 'Active';
-      const year = new Date().getFullYear();
-      dbRow.unique_id = `PS-${year}-` + Array.from({ length: 8 }, () => '0123456789ABCDEF'[Math.floor(Math.random() * 16)]).join('');
-      let { error } = await _sb.from(cfg.table).insert([dbRow]);
-      if (error && error.code === '23505') {
-        dbRow.unique_id = `PS-${year}-` + Array.from({ length: 8 }, () => '0123456789ABCDEF'[Math.floor(Math.random() * 16)]).join('');
-        ({ error } = await _sb.from(cfg.table).insert([dbRow]));
+      paint();
+    }, 20);
+  } else {
+    // Private: brand-new rows have nothing they depend on each other for,
+    // so they go in as real batch inserts — hundreds per request instead
+    // of one request per school. If a chunk fails (e.g. an astronomically
+    // unlikely unique_id collision), fall back to inserting that chunk's
+    // rows one at a time so a single bad row can't sink the whole batch.
+    const CHUNK = 300;
+    for (let i = 0; i < toApply.length; i += CHUNK) {
+      const chunkItems = toApply.slice(i, i + CHUNK);
+      const chunkRows = chunkItems.map(item => {
+        const dbRow = buildRow(item);
+        dbRow.district = item.location.district;
+        dbRow.tehsil = item.location.tehsil;
+        dbRow.markaz_name = item.location.markaz_name;
+        dbRow.status = dbRow.status || 'Active';
+        dbRow.unique_id = _siGenId();
+        return dbRow;
+      });
+      const { error } = await _sb.from(cfg.table).insert(chunkRows);
+      if (!error) {
+        done += chunkRows.length;
+      } else {
+        for (const row of chunkRows) {
+          let { error: rowErr } = await _sb.from(cfg.table).insert([row]);
+          if (rowErr && rowErr.code === '23505') {
+            row.unique_id = _siGenId();
+            ({ error: rowErr } = await _sb.from(cfg.table).insert([row]));
+          }
+          if (rowErr) failed++; else done++;
+        }
       }
-      if (error) failed++; else done++;
+      paint();
     }
   }
 
