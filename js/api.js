@@ -1444,6 +1444,70 @@ function _hierarchyScopeDbFields(p) {
       return { success: true, message: 'Tool deleted.' };
     }
 
+    // ── GENERAL MANAGEMENT — simple name lookup lists ──────────────────
+    // Staff Designations (Staff Form) and Private School Categories
+    // (Private School form) are both just an admin-managed name list —
+    // same shape, same CRUD, just two different tables — so one small
+    // set of generic helpers backs both instead of duplicating logic.
+    case 'getStaffDesignations':
+    case 'getPrivateCategories': {
+      const table = action === 'getStaffDesignations' ? 'staff_designations' : 'private_school_categories';
+      const { data, error } = await _sb.from(table).select('*').eq('active', true).order('display_order');
+      if (error) return { success: false, message: error.message };
+      return { success: true, items: (data || []).map(r => r.name) };
+    }
+
+    case 'getStaffDesignationsAdmin':
+    case 'getPrivateCategoriesAdmin': {
+      const table = action === 'getStaffDesignationsAdmin' ? 'staff_designations' : 'private_school_categories';
+      const { data, error } = await _sb.from(table).select('*').order('display_order');
+      if (error) return { success: false, message: error.message };
+      const headers = ['Name', 'Display Order', 'Active'];
+      const mapped = (data || []).map(r => ({
+        'Name': r.name || '',
+        'Display Order': r.display_order || 99,
+        'Active': r.active === false ? 'No' : 'Yes',
+        _id: r.id,
+      }));
+      return { success: true, headers, data: mapped };
+    }
+
+    case 'saveDesignationRow':
+    case 'saveCategoryRow': {
+      const table = action === 'saveDesignationRow' ? 'staff_designations' : 'private_school_categories';
+      const arr = Array.isArray(payload) ? payload : [payload];
+      const p = arr[0] || {};
+      const id = p._id || arr[1] || null;
+      const name = (p['Name'] || '').trim();
+      if (!name) return { success: false, message: 'Name is required.' };
+
+      const dbRow = {
+        name,
+        display_order: parseInt(p['Display Order']) || 99,
+        active: p['Active'] === 'No' ? false : true,
+      };
+      if (id) {
+        const r = await _checkedUpdate(table, dbRow, 'id', id);
+        if (!r.ok) return { success: false, message: r.message };
+      } else {
+        const { data: dupe } = await _sb.from(table).select('id').ilike('name', name).maybeSingle();
+        if (dupe) return { success: false, message: `"${name}" already exists.` };
+        const { error } = await _sb.from(table).insert([dbRow]);
+        if (error) return { success: false, message: error.message };
+      }
+      return { success: true, message: 'Saved.' };
+    }
+
+    case 'deleteDesignationRow':
+    case 'deleteCategoryRow': {
+      const table = action === 'deleteDesignationRow' ? 'staff_designations' : 'private_school_categories';
+      const p = Array.isArray(payload) ? payload[0] : payload;
+      const id = p?._id || p?.id || p;
+      const r = await _checkedDelete(table, 'id', id);
+      if (!r.ok) return { success: false, message: r.message };
+      return { success: true, message: 'Deleted.' };
+    }
+
     // ── FALLTHROUGH ───────────────────────────────────────────────────
     default:
       console.warn(`[api.js] Unknown action: "${action}"`);
