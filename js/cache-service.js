@@ -74,7 +74,12 @@
     'getSchoolsListForScope',
   ];
 
-  var LS_PREFIX = 'aeo_cache_';          // localStorage key prefix
+  var LS_PREFIX = 'aeo_cache_v2_';       // localStorage key prefix
+                                          // (bumped from aeo_cache_ — schools
+                                          // hierarchy shape changed to add
+                                          // school_name; old cached entries
+                                          // under the v1 prefix are now
+                                          // simply never read again)
   var BC_CHANNEL = 'aeo_cache_sync';     // BroadcastChannel name
 
   // ═══════════════════════════════════════════════════════════════════
