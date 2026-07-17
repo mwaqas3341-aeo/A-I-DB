@@ -900,7 +900,7 @@ function filterLinksTable(query) {
 
 function loadLinksAppsTable() {
   document.getElementById('linksTBody').innerHTML =
-    '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+    '<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
   google.script.run
     .withSuccessHandler(res => {
       if (!res.success) { showToast(res.message, false); return; }
@@ -918,15 +918,23 @@ function renderLinksTable() {
     return;
   }
   document.getElementById('linksTHead').innerHTML =
-    `<tr><th>Actions</th>${linksHeaders.map(h => `<th>${h}</th>`).join('')}<th>Visible To</th></tr>`;
+    `<tr><th>Actions</th><th>Type</th>${linksHeaders.map(h => `<th>${h}</th>`).join('')}<th>Visible To</th></tr>`;
   document.getElementById('linksTBody').innerHTML = linksData.map(row => {
     const ri = row._id;
+    const hasLink = row['Link Name'] || row['Link URL'];
+    const hasApp  = row['App Name']  || row['App URL'];
+    const typeBadge = hasLink && hasApp
+      ? `<span style="background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700">Link + App</span>`
+      : hasApp
+        ? `<span style="background:var(--ok-bg);color:var(--ok);padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700">App</span>`
+        : `<span style="background:var(--teal-bg);color:var(--teal);padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700">Link</span>`;
     return `<tr>
       <td style="display:flex;gap:4px">
         <button class="tbl-btn btn-edit" onclick="editLinksRow('${ri}')"><i class="bi bi-pencil"></i></button>
         <button class="tbl-btn" style="border-color:var(--bad);color:var(--bad);background:var(--bad-bg)"
           onclick="confirmDeleteLinksRow('${ri}')"><i class="bi bi-trash"></i></button>
       </td>
+      <td>${typeBadge}</td>
       ${linksHeaders.map(h => {
         const v = row[h] || '';
         return `<td>${String(v).startsWith('http')
@@ -938,11 +946,49 @@ function renderLinksTable() {
   }).join('');
 }
 
+// Category options depend on what's being added — a Link only ever
+// has one category, an App has two. Reduces the modal to one clear
+// path instead of showing both a Link section and an App section at
+// the same time regardless of which one the admin actually wants.
+const LA_CATEGORY_OPTIONS = {
+  link: [{ value: 'Important Link', label: 'Important Link' }],
+  app:  [{ value: 'Official/Departmental', label: 'Official / Departmental' },
+         { value: 'By Team AEOs',         label: 'By Team AEOs' }],
+};
+
+function onLinksTypeChange() {
+  const type = document.getElementById('la_type').value;
+  document.getElementById('la_nameLabel').textContent = type === 'app' ? 'App Name' : 'Link Name';
+  document.getElementById('la_urlLabel').textContent  = type === 'app' ? 'App URL'  : 'Link URL';
+  document.getElementById('la_catLabel').textContent  = type === 'app' ? 'App Category' : 'Link Category';
+  const catSel = document.getElementById('la_cat');
+  catSel.innerHTML = '<option value="">— None —</option>' +
+    LA_CATEGORY_OPTIONS[type].map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+
+  // Editing an existing row: switching sides restores whatever that
+  // side already had saved, instead of starting blank each time.
+  const name = type === 'app' ? (_laEditingRow ? _laEditingRow['App Name'] || '' : '') : (_laEditingRow ? _laEditingRow['Link Name'] || '' : '');
+  const url  = type === 'app' ? (_laEditingRow ? _laEditingRow['App URL']  || '' : '') : (_laEditingRow ? _laEditingRow['Link URL']  || '' : '');
+  const cat  = type === 'app' ? (_laEditingRow ? _laEditingRow['App Category'] || '' : '') : (_laEditingRow ? _laEditingRow['Link Category'] || '' : '');
+  document.getElementById('la_name').value = name;
+  document.getElementById('la_url').value  = url;
+  if (cat && !LA_CATEGORY_OPTIONS[type].some(o => o.value === cat)) {
+    catSel.insertAdjacentHTML('beforeend', `<option value="${cat}">${cat}</option>`);
+  }
+  catSel.value = cat;
+}
+
+// Holds the full row being edited (both its link_* and app_* fields,
+// even though the modal only shows one side at a time) so switching
+// Type and saving never silently erases the other side's data on an
+// older row that happened to have both a link and an app on it.
+let _laEditingRow = null;
+
 function openLinksModal() {
   document.getElementById('linksModalTitle').textContent = 'Add New Row';
-  ['la_linkName','la_linkUrl','la_appName','la_appUrl'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('la_linkCat').value = '';
-  document.getElementById('la_appCat').value  = '';
+  _laEditingRow = null;
+  document.getElementById('la_type').value = 'link';
+  onLinksTypeChange(); // clears Name/URL/Category since _laEditingRow is null
   document.getElementById('la_rowIndex').value = '';
   document.getElementById('la_scope_type').value = 'All';
   renderScopeHierarchyUI('la_scope');
@@ -952,14 +998,14 @@ function openLinksModal() {
 function editLinksRow(ri) {
   const row = linksData.find(r => String(r._id) === String(ri));
   if (!row) return;
-  const g = ci => row[linksHeaders[ci]] || '';
+  _laEditingRow = row;
+
+  const hasApp = row['App Name'] || row['App URL'];
+  const type = hasApp ? 'app' : 'link'; // an old row with both defaults to showing its Link side first
+
   document.getElementById('linksModalTitle').textContent = 'Edit Row';
-  document.getElementById('la_linkName').value  = g(LA_COL.LINK_NAME);
-  document.getElementById('la_linkUrl').value   = g(LA_COL.LINK_URL);
-  document.getElementById('la_linkCat').value   = g(LA_COL.LINK_CATEGORY);
-  document.getElementById('la_appName').value   = g(LA_COL.APP_NAME);
-  document.getElementById('la_appUrl').value    = g(LA_COL.APP_URL);
-  document.getElementById('la_appCat').value    = g(LA_COL.APP_CATEGORY);
+  document.getElementById('la_type').value = type;
+  onLinksTypeChange(); // populates Name/URL/Category from _laEditingRow for this type
   document.getElementById('la_rowIndex').value  = ri;
   document.getElementById('la_scope_type').value = row['Scope Type'] || 'All';
   renderScopeHierarchyUI('la_scope', {
@@ -972,18 +1018,22 @@ function editLinksRow(ri) {
 }
 
 function submitLinksRow() {
-  const obj = {};
-  const s   = (ci, v) => { if (linksHeaders[ci] !== undefined) obj[linksHeaders[ci]] = v; };
-  s(LA_COL.LINK_NAME,     document.getElementById('la_linkName').value.trim());
-  s(LA_COL.LINK_URL,      document.getElementById('la_linkUrl').value.trim());
-  s(LA_COL.APP_NAME,      document.getElementById('la_appName').value.trim());
-  s(LA_COL.APP_URL,       document.getElementById('la_appUrl').value.trim());
-  s(LA_COL.APP_CATEGORY,  document.getElementById('la_appCat').value.trim());
-  s(LA_COL.LINK_CATEGORY, document.getElementById('la_linkCat').value.trim());
+  const type = document.getElementById('la_type').value;
+  const name = document.getElementById('la_name').value.trim();
+  const url  = document.getElementById('la_url').value.trim();
+  const cat  = document.getElementById('la_cat').value;
+  if (!name || !url) { showToast('Name and URL are required.', false); return; }
 
-  const hasLink = document.getElementById('la_linkName').value.trim() || document.getElementById('la_linkUrl').value.trim();
-  const hasApp  = document.getElementById('la_appName').value.trim()  || document.getElementById('la_appUrl').value.trim();
-  if (!hasLink && !hasApp) { showToast('Fill in at least a link or app.', false); return; }
+  // Whichever side isn't being edited right now keeps its previously
+  // saved value (blank for a brand-new row) instead of being wiped out.
+  const obj = {
+    'Link Name':     type === 'link' ? name : (_laEditingRow ? (_laEditingRow['Link Name'] || '') : ''),
+    'Link URL':      type === 'link' ? url  : (_laEditingRow ? (_laEditingRow['Link URL']  || '') : ''),
+    'Link Category': type === 'link' ? cat  : (_laEditingRow ? (_laEditingRow['Link Category'] || '') : ''),
+    'App Name':      type === 'app'  ? name : (_laEditingRow ? (_laEditingRow['App Name'] || '') : ''),
+    'App URL':       type === 'app'  ? url  : (_laEditingRow ? (_laEditingRow['App URL']  || '') : ''),
+    'App Category':  type === 'app'  ? cat  : (_laEditingRow ? (_laEditingRow['App Category'] || '') : ''),
+  };
 
   const scopeType = document.getElementById('la_scope_type').value;
   const hierarchyError = validateScopeHierarchy('la_scope', 'link/app');
