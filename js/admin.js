@@ -49,6 +49,7 @@ window.addEventListener('DOMContentLoaded', () => {
   toolModalInst       = new bootstrap.Modal(document.getElementById('toolModal'));
   deleteModalInst     = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
   kpiCardModalInst    = new bootstrap.Modal(document.getElementById('kpiCardModal'));
+  generalListModalInst = new bootstrap.Modal(document.getElementById('generalListModal'));
 
   // Generic delete handler (links / tools / kpi)
   document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
@@ -62,6 +63,8 @@ window.addEventListener('DOMContentLoaded', () => {
         showToast('Deleted.');
         if (pendingDeleteType === 'tools')      loadToolsTableAdmin();
         else if (pendingDeleteType === 'kpi')   { loadKpiCardsTable(); if (typeof loadDashboardKpiCards === 'function') loadDashboardKpiCards(); }
+        else if (pendingDeleteType === 'designation') { loadGeneralList('designation'); if (typeof refreshDesignationOptions === 'function') refreshDesignationOptions(); }
+        else if (pendingDeleteType === 'category')    { loadGeneralList('category');    if (typeof refreshPrivateCategoryOptions === 'function') refreshPrivateCategoryOptions(); }
         else { loadLinksAppsTable(); if (typeof loadDashboardLinksApps === 'function') loadDashboardLinksApps(); }
       } else showToast(res.message || 'Delete failed.', false);
     };
@@ -69,6 +72,10 @@ window.addEventListener('DOMContentLoaded', () => {
       google.script.run.withSuccessHandler(done).deleteToolRow(pendingDeleteRow, currentUser);
     else if (pendingDeleteType === 'kpi')
       google.script.run.withSuccessHandler(done).deleteKpiCard(pendingDeleteRow, currentUser);
+    else if (pendingDeleteType === 'designation')
+      google.script.run.withSuccessHandler(done).deleteDesignationRow(pendingDeleteRow, currentUser);
+    else if (pendingDeleteType === 'category')
+      google.script.run.withSuccessHandler(done).deleteCategoryRow(pendingDeleteRow, currentUser);
     else
       google.script.run.withSuccessHandler(done).deleteLinksAppsRow(pendingDeleteRow, currentUser);
   });
@@ -97,15 +104,160 @@ window.addEventListener('DOMContentLoaded', () => {
 //  TAB SWITCHER
 // ═══════════════════════════════════════════════
 function switchAdminTab(tab, btn) {
-  document.getElementById('adminPanelUsers').style.display = tab === 'users' ? 'block' : 'none';
-  document.getElementById('adminPanelLinks').style.display = tab === 'links' ? 'block' : 'none';
-  document.getElementById('adminPanelTools').style.display = tab === 'tools' ? 'block' : 'none';
-  document.getElementById('adminPanelKpi').style.display   = tab === 'kpi'   ? 'block' : 'none';
+  document.getElementById('adminPanelUsers').style.display   = tab === 'users'   ? 'block' : 'none';
+  document.getElementById('adminPanelLinks').style.display   = tab === 'links'   ? 'block' : 'none';
+  document.getElementById('adminPanelTools').style.display   = tab === 'tools'   ? 'block' : 'none';
+  document.getElementById('adminPanelKpi').style.display     = tab === 'kpi'     ? 'block' : 'none';
+  document.getElementById('adminPanelGeneral').style.display = tab === 'general' ? 'block' : 'none';
   document.querySelectorAll('.admin-sub-tab').forEach(b => b.classList.remove('active-admin-tab'));
   btn.classList.add('active-admin-tab');
-  if (tab === 'links') loadLinksAppsTable();
-  if (tab === 'tools') loadToolsTableAdmin();
-  if (tab === 'kpi')   loadKpiCardsTable();
+  if (tab === 'links')   loadLinksAppsTable();
+  if (tab === 'tools')   loadToolsTableAdmin();
+  if (tab === 'kpi')     loadKpiCardsTable();
+  if (tab === 'general') loadGeneralList('designation');
+}
+
+// ═══════════════════════════════════════════════
+//  GENERAL MANAGEMENT — Staff Designations & Private School Categories
+// ═══════════════════════════════════════════════
+// Both are just an admin-managed name list (Name + Display Order +
+// Active) — same shape, same CRUD, just a different backend table —
+// so one set of functions backs both instead of duplicating the panel.
+const GENERAL_LIST_CONFIG = {
+  designation: {
+    label: 'Designation', getAdmin: 'getStaffDesignationsAdmin', save: 'saveDesignationRow', del: 'deleteDesignationRow',
+    tbody: 'designationTBody', thead: 'designationTHead', searchCount: 'designationSearchCount',
+  },
+  category: {
+    label: 'Category', getAdmin: 'getPrivateCategoriesAdmin', save: 'saveCategoryRow', del: 'deleteCategoryRow',
+    tbody: 'categoryTBody', thead: 'categoryTHead', searchCount: 'categorySearchCount',
+  },
+};
+let generalListData = { designation: [], category: [] };
+let generalListLoaded = { designation: false, category: false };
+
+function switchGeneralTab(kind, btn) {
+  document.getElementById('genPanelDesignations').style.display = kind === 'designation' ? 'block' : 'none';
+  document.getElementById('genPanelCategories').style.display   = kind === 'category'    ? 'block' : 'none';
+  document.querySelectorAll('.general-sub-tab').forEach(b => b.classList.remove('active-admin-tab'));
+  btn.classList.add('active-admin-tab');
+  if (!generalListLoaded[kind]) loadGeneralList(kind);
+}
+
+function loadGeneralList(kind) {
+  const cfg = GENERAL_LIST_CONFIG[kind];
+  document.getElementById(cfg.tbody).innerHTML =
+    '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { showToast(res.message || 'Load failed.', false); return; }
+      generalListData[kind] = res.data;
+      generalListLoaded[kind] = true;
+      renderGeneralTable(kind, res.headers, res.data);
+    })
+    .withFailureHandler(err => showToast('Error: ' + err.message, false))
+    [cfg.getAdmin]();
+}
+
+function renderGeneralTable(kind, headers, data) {
+  const cfg = GENERAL_LIST_CONFIG[kind];
+  document.getElementById(cfg.thead).innerHTML =
+    `<tr><th>Actions</th><th>Name</th><th>Display Order</th><th>Active</th></tr>`;
+  document.getElementById(cfg.tbody).innerHTML = data.map(row => `
+    <tr>
+      <td style="display:flex;gap:4px">
+        <button class="tbl-btn btn-edit" style="border-color:#b45309;color:#b45309;background:#fffbeb"
+          onclick="editGeneralListRow('${kind}','${row._id}')"><i class="bi bi-pencil"></i></button>
+        <button class="tbl-btn" style="border-color:var(--bad);color:var(--bad);background:var(--bad-bg)"
+          onclick="confirmDeleteGeneralRow('${kind}','${row._id}')"><i class="bi bi-trash"></i></button>
+      </td>
+      <td style="font-weight:700;color:var(--t1)">${escHtml(row['Name'])}</td>
+      <td>${row['Display Order']}</td>
+      <td>${row['Active'] === 'No'
+        ? '<span style="color:var(--t3)">Hidden</span>'
+        : '<span style="color:var(--ok)">Shown</span>'}</td>
+    </tr>`).join('') || `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--t3)">No ${cfg.label.toLowerCase()}s yet.</td></tr>`;
+}
+
+function filterGeneralTable(kind, query) {
+  const cfg = GENERAL_LIST_CONFIG[kind];
+  const q = query.trim().toLowerCase();
+  const countEl = document.getElementById(cfg.searchCount);
+  const rows = document.querySelectorAll(`#${cfg.tbody} tr`);
+  if (!q) { rows.forEach(tr => tr.style.display = ''); countEl.textContent = ''; return; }
+  let visible = 0;
+  rows.forEach(tr => {
+    const show = tr.textContent.toLowerCase().includes(q);
+    tr.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  countEl.textContent = `${visible} of ${rows.length}`;
+}
+
+function openGeneralListModal(kind) {
+  const cfg = GENERAL_LIST_CONFIG[kind];
+  document.getElementById('glModalTitle').textContent = `Add ${cfg.label}`;
+  document.getElementById('glModalSub').textContent = kind === 'designation' ? 'Staff Designations' : 'Private School Categories';
+  document.getElementById('gl_name').value  = '';
+  document.getElementById('gl_order').value = '99';
+  document.getElementById('gl_active').value = 'Yes';
+  document.getElementById('gl_kind').value = kind;
+  document.getElementById('gl_rowIndex').value = '';
+  generalListModalInst.show();
+}
+
+function editGeneralListRow(kind, ri) {
+  const cfg = GENERAL_LIST_CONFIG[kind];
+  const row = generalListData[kind].find(r => String(r._id) === String(ri));
+  if (!row) return;
+  document.getElementById('glModalTitle').textContent = `Edit ${cfg.label}`;
+  document.getElementById('glModalSub').textContent = kind === 'designation' ? 'Staff Designations' : 'Private School Categories';
+  document.getElementById('gl_name').value  = row['Name'] || '';
+  document.getElementById('gl_order').value = row['Display Order'] || '99';
+  document.getElementById('gl_active').value = row['Active'] || 'Yes';
+  document.getElementById('gl_kind').value = kind;
+  document.getElementById('gl_rowIndex').value = ri;
+  generalListModalInst.show();
+}
+
+function submitGeneralListRow() {
+  const kind = document.getElementById('gl_kind').value;
+  const cfg  = GENERAL_LIST_CONFIG[kind];
+  const name = document.getElementById('gl_name').value.trim();
+  if (!name) { showToast('Name is required.', false); return; }
+
+  const rowData = {
+    'Name': name,
+    'Display Order': document.getElementById('gl_order').value.trim() || '99',
+    'Active': document.getElementById('gl_active').value,
+  };
+  const ri  = document.getElementById('gl_rowIndex').value || null;
+  const btn = document.getElementById('saveGeneralListBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
+
+  google.script.run
+    .withSuccessHandler(res => {
+      btn.disabled = false; btn.innerHTML = '<i class="bi bi-floppy-fill"></i> Save';
+      if (res.success) {
+        generalListModalInst.hide();
+        showToast(res.message || 'Saved!');
+        loadGeneralList(kind);
+        // Keep the live forms in sync immediately — no page reload needed.
+        if (kind === 'designation' && typeof refreshDesignationOptions === 'function') refreshDesignationOptions();
+        if (kind === 'category' && typeof refreshPrivateCategoryOptions === 'function') refreshPrivateCategoryOptions();
+      } else showToast(res.message || 'Save failed.', false);
+    })
+    .withFailureHandler(err => {
+      btn.disabled = false; btn.innerHTML = '<i class="bi bi-floppy-fill"></i> Save';
+      showToast('Error: ' + err.message, false);
+    })
+    [cfg.save](rowData, ri, currentUser);
+}
+
+function confirmDeleteGeneralRow(kind, ri) {
+  pendingDeleteRow = ri;
+  pendingDeleteType = kind; // 'designation' | 'category'
+  deleteModalInst.show();
 }
 
 function openAdminModule() {
