@@ -28,7 +28,7 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'District',                                                                                     id: 'priv_district',    readonly: true  },
   { header: 'Tehsil',                                                                                      id: 'priv_tehsil',      readonly: true  },
   { header: 'Markaz Name',                                                                                  id: 'priv_markaz',      readonly: true  },
-  { header: 'School Category',   hint: 'School Category (Private,Pef,Piema,Academy)',                       id: 'priv_cat',         type: 'select', options: ['Private', 'Pef', 'Piema', 'Academy'] },
+  { header: 'School Category',   hint: 'School Category',                       id: 'priv_cat',         type: 'select', options: [] },
   { header: 'School Name',                                                                                  id: 'priv_name',        wide: true },
   { header: 'Registeration Status', hint: 'Registeration Status (Registered/Non Registered/Expired)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
   { header: 'Registeration No',  hint: 'Registeration No in Case of registered (EMIS Code)',                id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
@@ -144,7 +144,7 @@ function openPrivateModule(sheetName) {
             // ★ Populate dropdowns from schoolHierarchy (not from privData)
             populatePrivFiltersFromHierarchy();
 
-            buildPrivateForm();
+            refreshPrivateCategoryOptions(buildPrivateForm);
 
             // Show "apply filter" prompt — do NOT render rows yet
             _privShowEmptyState('Select your filters above and click Filter Data to load records.', false);
@@ -379,6 +379,23 @@ function quickSearchPriv() {
 function filterPrivateTable() { quickSearchPriv(); }
 
 // ══════════════════════════════════════════════════════════════════════
+//  SCHOOL CATEGORY — loaded from General Management (was hardcoded)
+// ══════════════════════════════════════════════════════════════════════
+// Adding/editing/removing a category in Admin Panel → General Management
+// → Private School Categories updates this list (and therefore the form)
+// with no code change — this just re-fetches it before the form builds.
+function refreshPrivateCategoryOptions(callback) {
+  google.script.run
+    .withSuccessHandler(res => {
+      const catField = PRIVATE_FIELD_CONFIG.find(f => f.header === 'School Category');
+      if (catField) catField.options = (res && res.success) ? res.items : catField.options;
+      if (callback) callback();
+    })
+    .withFailureHandler(() => { if (callback) callback(); })
+    .getPrivateCategories();
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  FORM BUILD
 // ══════════════════════════════════════════════════════════════════════
 function buildPrivateForm() {
@@ -520,7 +537,15 @@ function editPrivate(keyVal) {
   document.getElementById('privEditId').value = keyVal;
   PRIVATE_FIELD_CONFIG.forEach(f => {
     const el = document.getElementById(f.id);
-    if (el) el.value = row[f.header] || '';
+    if (!el) return;
+    el.value = row[f.header] || '';
+    // If this record's saved value isn't in the (possibly since-edited)
+    // select options, keep it visible/selected instead of silently
+    // resetting to blank — otherwise saving again would erase it.
+    if (f.type === 'select' && row[f.header] && el.value !== row[f.header]) {
+      el.insertAdjacentHTML('beforeend', `<option>${row[f.header]}</option>`);
+      el.value = row[f.header];
+    }
   });
 
   handleRegStatus(true);
