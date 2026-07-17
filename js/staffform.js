@@ -634,10 +634,45 @@ function sfmValidate() {
 }
 
 // ---------- Open modal ----------
+// ---------- Designations (General Management) ----------
+// The dropdown used to be a hardcoded <option> list; it now loads from
+// the Admin Panel's General Management → Staff Designations list, so
+// adding/editing/removing a designation there needs no code change.
+var sfmDesignationsLoaded = false;
+
+function refreshDesignationOptions(callback) {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res.success) { if (callback) callback(); return; }
+      var sel = document.getElementById('sf_designation');
+      if (sel) {
+        var keep = sel.value;
+        sel.innerHTML = '<option value="">Select…</option>' +
+          res.items.map(function(name) { return '<option>' + name + '</option>'; }).join('');
+        if (keep && res.items.indexOf(keep) !== -1) sel.value = keep;
+        else if (keep) { // designation this employee already has, but it's no longer on the active list — keep it selectable so their record isn't silently changed
+          sel.insertAdjacentHTML('beforeend', '<option>' + keep + '</option>');
+          sel.value = keep;
+        }
+      }
+      sfmDesignationsLoaded = true;
+      if (callback) callback();
+    })
+    .withFailureHandler(function() { if (callback) callback(); })
+    .getStaffDesignations();
+}
+
 function openStaffFormModal(mode, row) {
   sfmMode       = mode;
   sfmCurrentRow = row || null;
   sfmSubmitting = false;
+
+  refreshDesignationOptions(function() {
+    if (row && row['DESIGNATION']) {
+      var sel = document.getElementById('sf_designation');
+      if (sel && sel.value !== row['DESIGNATION']) sel.value = row['DESIGNATION'];
+    }
+  });
 
   sfmEnsureSchoolCache(function() {
     if (sfmMode !== 'add' || (document.getElementById('sf_emis') || {}).value) {
