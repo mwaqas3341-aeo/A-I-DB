@@ -503,21 +503,51 @@ async function apiCall(action, payload) {
       // by a user's PRIMARY posting but doesn't know about ADDITIONAL
       // scope_type/scope_value tags (extra Markaz/Tehsil/Wing/District
       // assignments), so a plain count() over-counted for any user with
-      // extra scope. We now fetch the minimal columns needed and apply
-      // the same additive-group filter used for row data/dropdowns, so
-      // the KPI cards match what the user actually sees elsewhere.
+      // extra scope.
+      //
+      // Fetching+filtering every row (as the correctness fix first did)
+      // is only actually necessary for users who HAVE extra scope tags
+      // — an additive OR-of-groups can't be expressed as simple .eq()
+      // filters. For the common case (a user with just their one
+      // primary posting, no extra tags) we can push the filter down to
+      // Postgres as indexed .eq() calls and use a fast head:true count,
+      // same performance as before. Only the minority with extra scope
+      // pays for the slower fetch-then-filter path.
       try {
-        const reqUser = payload || user;
-        const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+        const reqUser  = payload || user;
+        const isAdmin  = !reqUser || String(reqUser.role || '').toLowerCase() === 'admin';
+        const scopeType  = (reqUser && reqUser.scope_type  || '').trim();
+        const scopeValue = (reqUser && reqUser.scope_value || '').trim();
+        const hasExtraScope = !isAdmin && !!scopeType && !!scopeValue;
+        const filterFn = hasExtraScope ? _buildUserSchoolFilter(reqUser, { idKey: 'emis' }) : null;
 
-        const countOf = async (table, statusVal, idKey) => {
+        const fastCount = async (table, statusVal) => {
+          let q = _sb.from(table).select('*', { count: 'exact', head: true }).eq('status', statusVal);
+          if (!isAdmin) {
+            const d = (reqUser.district || '').trim();
+            const w = (reqUser.wing     || '').trim();
+            const t = (reqUser.tehsil   || '').trim();
+            const m = (reqUser.markaz_name || reqUser.markaz || '').trim();
+            if (d) q = q.eq('district', d);
+            if (w && table === 'public_schools') q = q.eq('wing', w);
+            if (t) q = q.eq('tehsil', t);
+            if (m) q = q.eq('markaz_name', m);
+          }
+          const { count, error } = await q;
+          if (error) throw error;
+          return count || 0;
+        };
+
+        const slowFilteredCount = async (table, statusVal, idKey) => {
           const cols = table === 'private_schools'
             ? 'unique_id, district, tehsil, markaz_name, status'
             : 'emis, district, wing, tehsil, markaz_name, status';
           const rows = await _fetchAllRows(table, cols, null, q => q.eq('status', statusVal), idKey);
-          if (!filterFn) return (rows || []).length;
-          return (rows || []).filter(filterFn).length;
+          return filterFn ? (rows || []).filter(filterFn).length : (rows || []).length;
         };
+
+        const countOf = (table, statusVal, idKey) =>
+          hasExtraScope ? slowFilteredCount(table, statusVal, idKey) : fastCount(table, statusVal);
 
         const [publicCount, outsourcedCount, privateCount, inactiveCount] = await Promise.all([
           countOf('public_schools',  'Active',      'emis'),
