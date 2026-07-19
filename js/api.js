@@ -751,9 +751,28 @@ async function apiCall(action, payload) {
     // by the "Download SNE" button in the HR module. Sanctioned figures
     // come from sne_subject_sanctioned (uploaded per Excel); filled
     // figures are always computed live from active staff records.
+    //
+    // Filters are pushed down to the DB query (not fetched-then-filtered
+    // in JS) — public_schools has 38k+ rows nationwide, so pulling
+    // everything before scoping it down was the cause of the export
+    // hanging on slower connections. Non-admins are scoped to their own
+    // district by default even with no explicit filter selected.
     case 'getSneSummary': {
-      const reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
-      const data = await _fetchAllRows('sne_summary', '*', null, null, 'emis');
+      const args    = Array.isArray(payload) ? payload : [payload];
+      const reqUser = args[0] || user;
+      const filters = args[1] || {};
+      const isAdmin = !reqUser || String(reqUser.role || '').toLowerCase() === 'admin';
+
+      const data = await _fetchAllRows('sne_summary', '*', q => {
+        if (filters.district) q = q.eq('district', filters.district);
+        else if (!isAdmin && reqUser?.district) q = q.eq('district', reqUser.district);
+        if (filters.wing)   q = q.eq('wing', filters.wing);
+        if (filters.tehsil) q = q.eq('tehsil', filters.tehsil);
+        if (filters.markaz) q = q.eq('markaz_name', filters.markaz);
+        if (filters.emis)   q = q.eq('emis', filters.emis);
+        return q;
+      }, null, 'emis');
+
       const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
       const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
       return { success: true, rows: visible };

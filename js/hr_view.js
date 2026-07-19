@@ -869,6 +869,13 @@ function _hrDownloadCsv(rows, cols) {
 // ──────────────────────────────────────────────────────────────────
 function downloadSNE() {
   const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name: 'Admin' };
+  const filters = {
+    district: document.getElementById('hrFilterDistrict')?.value || '',
+    wing:     document.getElementById('hrFilterWing')?.value || '',
+    tehsil:   document.getElementById('hrFilterTehsil')?.value || '',
+    markaz:   document.getElementById('hrFilterMarkaz')?.value || '',
+    emis:     document.getElementById('hrFilterEmis')?.value || '',
+  };
   showLoading();
   google.script.run
     .withFailureHandler(err => {
@@ -878,12 +885,12 @@ function downloadSNE() {
     .withSuccessHandler(res => {
       hideLoading();
       if (!res || !res.success || !res.rows || !res.rows.length) {
-        hrShowToast('No SNE data available for the current scope.', false);
+        hrShowToast('No SNE data available for the current filter.', false);
         return;
       }
       _buildSneExcel(res.rows);
     })
-    .getSneSummary(userPayload);
+    .getSneSummary(userPayload, filters);
 }
 
 function _buildSneExcel(rows) {
