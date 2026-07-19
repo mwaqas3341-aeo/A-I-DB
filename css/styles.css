@@ -561,6 +561,28 @@
 
 /* transfer / action form misc */
 .transfer-info-box { background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; font-size:.83rem; }
+
+.hr-filter-status-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; margin: 0 0 12px 0; border-radius: 8px;
+  font-size: .85rem; line-height: 1.35;
+}
+.hr-filter-status-banner.hr-status-loading {
+  background: #FFF7ED; border: 1px solid #FED7AA; color: #9A3412;
+}
+.hr-filter-status-banner.hr-status-error {
+  background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B;
+}
+.hr-filter-status-banner .hr-status-spinner {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.15); border-top-color: currentColor;
+  animation: hr-status-spin 0.8s linear infinite; flex-shrink: 0;
+}
+.hr-filter-status-banner button {
+  margin-left: auto; border: 1px solid currentColor; background: transparent;
+  color: inherit; padding: 3px 10px; border-radius: 6px; font-size: .8rem; cursor: pointer;
+}
+@keyframes hr-status-spin { to { transform: rotate(360deg); } }
 .transfer-err { font-size:.72rem; color:#dc2626; margin-top:4px; min-height:16px; }
 .invalid { border-color:#dc2626 !important; }
 
