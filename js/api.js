@@ -498,18 +498,28 @@ async function apiCall(action, payload) {
 
     // ── DASHBOARD KPIs ─────────────────────────────────────────────────
     case 'getSummaryCounts': {
+      // Scoping happens automatically here: RLS SELECT policies on
+      // public_schools/private_schools (see supabase_jurisdiction_rls.sql)
+      // mean these queries can only ever see rows in the signed-in
+      // user's jurisdiction, so a plain count() is already correct per
+      // user without any manual filtering in this function. Using
+      // { count:'exact', head:true } instead of fetching full rows
+      // avoids downloading 38k+ rows to the browser just to count them.
       try {
-        const [pub, priv] = await Promise.all([
-          _fetchAllRows('public_schools', 'status'),
-          _fetchAllRows('private_schools', 'status'),
+        const countOf = (table, statusVal) => _sb
+          .from(table)
+          .select('*', { count: 'exact', head: true })
+          .eq('status', statusVal)
+          .then(r => r.count || 0);
+
+        const [publicCount, outsourcedCount, privateCount, inactiveCount] = await Promise.all([
+          countOf('public_schools',  'Active'),
+          countOf('public_schools',  'Out Sourced'),
+          countOf('private_schools', 'Active'),
+          countOf('private_schools', 'Inactive'),
         ]);
-        return {
-          success:        true,
-          publicCount:    pub.filter(r => r.status === 'Active').length,
-          outsourcedCount:pub.filter(r => r.status === 'Out Sourced').length,
-          privateCount:   priv.filter(r => r.status === 'Active').length,
-          inactiveCount:  priv.filter(r => r.status === 'Inactive').length,
-        };
+
+        return { success: true, publicCount, outsourcedCount, privateCount, inactiveCount };
       } catch (e) {
         return { success: false, message: e && e.message ? e.message : 'Failed to load summary counts.' };
       }
@@ -592,6 +602,13 @@ async function apiCall(action, payload) {
     }
 
     // ── SCHOOL HIERARCHY (dropdown cascade) ───────────────────────────
+    // NOTE: this used to return the full national hierarchy to every
+    // user regardless of jurisdiction — the `reqUser`/payload argument
+    // was accepted but never actually used to filter anything, so
+    // Public/Private/HR dropdowns showed every district to everyone.
+    // As of supabase_jurisdiction_rls.sql, SELECT on `schools` is
+    // scoped by RLS, so this plain fetch is now correctly restricted
+    // per user without needing any filtering logic here.
     case 'getSchoolHierarchy':
     case 'getSchoolHierarchyForUser': {
       try {

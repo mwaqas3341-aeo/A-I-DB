@@ -123,6 +123,15 @@ function openPublicModule(sheetName) {
           setupPubFilterHeaders();
           // Populate dropdowns from schoolHierarchy (not from pubData)
           populatePubFiltersFromHierarchy();
+          // Lock/grey out dropdowns per the user's jurisdiction level.
+          // Option restriction itself comes from RLS on `schools` —
+          // this only controls which selects are interactive.
+          if (typeof applyJurisdictionLock === 'function') {
+            applyJurisdictionLock(
+              { district: 'pubFltDistrict', wing: 'pubFltWing', tehsil: 'pubFltTehsil', markaz: 'pubFltMarkaz' },
+              typeof currentUser !== 'undefined' ? currentUser : null
+            );
+          }
 
           buildPublicForm();
 

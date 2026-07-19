@@ -143,6 +143,17 @@ function openPrivateModule(sheetName) {
             setupPrivFilterHeaders();
             // ★ Populate dropdowns from schoolHierarchy (not from privData)
             populatePrivFiltersFromHierarchy();
+            // Lock/grey out dropdowns per the user's jurisdiction level.
+            // No Wing filter exists in this module, so it's simply
+            // omitted from the ids map below. Option restriction itself
+            // comes from RLS on `schools` — this only controls which
+            // selects are interactive.
+            if (typeof applyJurisdictionLock === 'function') {
+              applyJurisdictionLock(
+                { district: 'privFltDistrict', tehsil: 'privFltTehsil', markaz: 'privFltMarkaz' },
+                activeUser
+              );
+            }
 
             refreshPrivateCategoryOptions(buildPrivateForm);
 

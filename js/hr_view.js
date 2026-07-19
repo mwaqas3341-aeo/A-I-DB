@@ -246,9 +246,13 @@ function _hrHideFilterStatus() {
 
 // ──────────────────────────────────────────────────────────────────
 //  FILTER DROPDOWNS
-//  All dropdowns show only values from the user's assigned jurisdiction
-//  pool (columns K, L, M). Dropdowns are NEVER disabled — the user
-//  can freely navigate within their allowed pool.
+//  Dropdown OPTIONS only ever contain values from the user's
+//  jurisdiction pool (columns K, L, M) — enforced server-side by RLS
+//  on the `schools` table (see supabase_jurisdiction_rls.sql), so
+//  hrSchoolCache is already scoped correctly by the time it gets here.
+//  Which of the four selects are interactive vs. locked/greyed-out is
+//  now decided by applyJurisdictionLock() (js/jurisdiction-lock.js),
+//  matching the same rules used by Public and Private Schools.
 // ──────────────────────────────────────────────────────────────────
 function buildHrDistrictDropdown() {
   const pool  = hrSchoolCache; // already jurisdiction-filtered server-side for non-admins
@@ -259,8 +263,7 @@ function buildHrDistrictDropdown() {
   hrPopulateSelect('hrFilterTehsil',  [],    'All Tehsils');
   hrPopulateSelect('hrFilterMarkaz',  [],    'All Markazs');
 
-  // Convenience preselect of the user's primary location — fields stay
-  // fully enabled, so they can still widen the selection within their pool.
+  // Convenience preselect of the user's primary location.
   const u = typeof currentUser !== 'undefined' ? currentUser : null;
   const isAdmin = u && String(u.role || '').toLowerCase() === 'admin';
   if (u && !isAdmin && u.district) {
@@ -275,6 +278,15 @@ function buildHrDistrictDropdown() {
       onHrTehsilChange();
     }
     if (u.markaz) document.getElementById('hrFilterMarkaz').value = u.markaz;
+  }
+
+  // Lock/grey out per the user's jurisdiction level (District > Wing >
+  // Tehsil > Markaz) — same rules as Public/Private Schools.
+  if (typeof applyJurisdictionLock === 'function') {
+    applyJurisdictionLock(
+      { district: 'hrFilterDistrict', wing: 'hrFilterWing', tehsil: 'hrFilterTehsil', markaz: 'hrFilterMarkaz' },
+      u
+    );
   }
 }
 function onHrDistrictChange() {
