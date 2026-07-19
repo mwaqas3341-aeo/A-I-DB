@@ -111,6 +111,28 @@
     }
   }
 
+  // ── Clear everything on logout ─────────────────────────────────────
+  // This cache's keys don't include which user asked (getLinksAndApps,
+  // getKpiCards, etc. are often called with the same/no payload
+  // regardless of who's logged in) — so without clearing on logout, the
+  // next user to log in within the 60s TTL was served the PREVIOUS
+  // user's cached data until it expired or they manually refreshed.
+  function _clearCache() {
+    _cache.clear();
+    _summaryCountsRpcAvailable = null;
+  }
+
+  function _installLogoutHook() {
+    const _origLogout = window.doLogout;
+    if (typeof _origLogout === 'function') {
+      window.doLogout = function () {
+        _clearCache();
+        _origLogout.apply(this, arguments);
+      };
+    }
+  }
+  window.addEventListener('load', _installLogoutHook);
+
   // ── The actual wrapper ─────────────────────────────────────────────
   apiCall = async function (action, payload) {
     _loadingBarStart();
