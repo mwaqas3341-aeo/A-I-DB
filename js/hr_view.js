@@ -181,21 +181,67 @@ function openHrModule() {
     loadKpiCardsForModule('hr', 'hrKpiGrid', 'hrKpiSection');
   }
   if (hrSchoolCache.length === 0) {
-    document.getElementById('hrFilterDistrict').innerHTML = '<option>Loading…</option>';
-    const userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
-    google.script.run
-      .withSuccessHandler(data => {
-        hrSchoolCache = data || [];
-        buildHrDistrictDropdown();
-      })
-      .withFailureHandler(err => {
-        document.getElementById('hrFilterDistrict').innerHTML = '<option value="">Error loading</option>';
-        hrShowToast('Error loading school data: ' + err.message, false);
-      })
-      .getSchoolHierarchyForUser(userPayload);
+    _hrLoadSchoolHierarchy(1);
   } else {
     buildHrDistrictDropdown();
   }
+}
+
+// Retries the school-list fetch (which feeds all four filter dropdowns)
+// with backoff. On a slow/flaky mobile connection this request is the
+// most likely thing to time out — instead of leaving the filters
+// silently blank, this keeps the user informed and retries automatically
+// before finally offering a manual retry.
+const HR_SCHOOL_LOAD_MAX_ATTEMPTS = 4;
+const HR_SCHOOL_LOAD_BACKOFF_MS   = [1500, 3000, 6000]; // between attempts 1→2, 2→3, 3→4
+
+function _hrLoadSchoolHierarchy(attempt) {
+  document.getElementById('hrFilterDistrict').innerHTML = '<option>Loading…</option>';
+  _hrShowFilterStatus(
+    attempt === 1 ? 'loading' : 'retrying',
+    attempt === 1
+      ? 'Loading school list…'
+      : `Slow internet connection — retrying (attempt ${attempt} of ${HR_SCHOOL_LOAD_MAX_ATTEMPTS})… please wait.`
+  );
+
+  const userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
+  google.script.run
+    .withSuccessHandler(data => {
+      hrSchoolCache = data || [];
+      buildHrDistrictDropdown();
+      _hrHideFilterStatus();
+    })
+    .withFailureHandler(err => {
+      if (attempt < HR_SCHOOL_LOAD_MAX_ATTEMPTS) {
+        const delay = HR_SCHOOL_LOAD_BACKOFF_MS[attempt - 1] || 6000;
+        _hrShowFilterStatus('loading', `Slow internet connection — taking longer than usual, please wait…`);
+        setTimeout(() => _hrLoadSchoolHierarchy(attempt + 1), delay);
+      } else {
+        document.getElementById('hrFilterDistrict').innerHTML = '<option value="">Failed to load</option>';
+        _hrShowFilterStatus(
+          'error',
+          'Could not load the school list — your connection may be too slow or unstable right now.',
+          true // show a manual Retry button
+        );
+      }
+    })
+    .getSchoolHierarchyForUser(userPayload);
+}
+
+function _hrShowFilterStatus(kind, message, showRetryBtn) {
+  const el = document.getElementById('hrFilterStatusBanner');
+  if (!el) return;
+  el.classList.remove('hidden', 'hr-status-loading', 'hr-status-error');
+  el.classList.add(kind === 'error' ? 'hr-status-error' : 'hr-status-loading');
+  el.innerHTML =
+    (kind === 'error' ? '<span class="material-icons-round" style="font-size:18px;">wifi_off</span>' : '<span class="hr-status-spinner"></span>') +
+    '<span>' + message + '</span>' +
+    (showRetryBtn ? '<button type="button" onclick="_hrLoadSchoolHierarchy(1)">Retry</button>' : '');
+}
+
+function _hrHideFilterStatus() {
+  const el = document.getElementById('hrFilterStatusBanner');
+  if (el) el.classList.add('hidden');
 }
 
 // ──────────────────────────────────────────────────────────────────
