@@ -157,6 +157,68 @@ function _toHeadersData(data, colMap) {
   return { headers, data: mapped };
 }
 
+/**
+ * Builds a row-filtering predicate reflecting a user's visibility scope:
+ *   - PRIMARY jurisdiction: their own posting (district/wing/tehsil/markaz_name).
+ *   - Plus whatever ADDITIONAL scope is assigned via scope_type/scope_value
+ *     (Markaz: extra markaz names within their wing/tehsil; Tehsil: "Tehsil:Wing"
+ *     pairs; Wing: "District:Wing" pairs; District: whole districts;
+ *     Schools: exact EMIS/unique_id list, independent of location).
+ * Admins (or a falsy user) get `null` back, meaning "no filter — show all".
+ *
+ * This mirrors the scope semantics defined in admin.js (renderScopeValueUI) —
+ * keep both in sync if the scope model changes.
+ */
+function _buildUserSchoolFilter(user, opts) {
+  const idKey = (opts && opts.idKey) || 'emis'; // 'emis' for public_schools, 'unique_id' for private_schools
+  if (!user || String(user.role || '').toLowerCase() === 'admin') return null;
+
+  const primary = {
+    district: (user.district || '').trim(),
+    wing:     (user.wing     || '').trim(),
+    tehsil:   (user.tehsil   || '').trim(),
+    markaz:   (user.markaz_name || user.markaz || '').trim(),
+  };
+
+  const scopeType  = (user.scope_type || '').trim();
+  const scopeValue = (user.scope_value || '').trim();
+  const extraTags  = scopeValue ? scopeValue.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const groups = [];
+  if (primary.district || primary.wing || primary.tehsil || primary.markaz) groups.push(primary);
+
+  if (extraTags.length) {
+    if (scopeType === 'Markaz') {
+      // Extra markazes are always within the user's own wing/tehsil.
+      extraTags.forEach(m => groups.push({ district: primary.district, wing: primary.wing, tehsil: primary.tehsil, markaz: m }));
+    } else if (scopeType === 'Tehsil') {
+      extraTags.forEach(pair => {
+        const [tehsil, wing] = pair.split(':').map(s => (s || '').trim());
+        if (tehsil) groups.push({ district: '', wing: wing || '', tehsil, markaz: '' });
+      });
+    } else if (scopeType === 'Wing') {
+      extraTags.forEach(pair => {
+        const [district, wing] = pair.split(':').map(s => (s || '').trim());
+        if (district || wing) groups.push({ district: district || '', wing: wing || '', tehsil: '', markaz: '' });
+      });
+    } else if (scopeType === 'District') {
+      extraTags.forEach(d => groups.push({ district: d, wing: '', tehsil: '', markaz: '' }));
+    }
+  }
+
+  const schoolIds = scopeType === 'Schools' ? new Set(extraTags.map(s => s.toLowerCase())) : null;
+
+  return function (row) {
+    if (schoolIds && row[idKey] && schoolIds.has(String(row[idKey]).trim().toLowerCase())) return true;
+    return groups.some(g =>
+      (!g.district || row.district === g.district) &&
+      (!g.wing     || row.wing === g.wing) &&
+      (!g.tehsil   || row.tehsil === g.tehsil) &&
+      (!g.markaz   || row.markaz_name === g.markaz)
+    );
+  };
+}
+
 /** Current logged-in user from localStorage. */
 function _getUser() {
   try {
@@ -559,6 +621,7 @@ async function apiCall(action, payload) {
     case 'loadSheetForClient': {
       // payload: 'Staff' | ['Staff', user] | ['Staff', user, filters]
       const sheetName = Array.isArray(payload) ? payload[0] : (payload || 'Staff');
+      const reqUser   = Array.isArray(payload) ? payload[1] : null;
       const statusMap = {
         'Staff':             'active',
         'Termination':       'terminated',
@@ -571,8 +634,10 @@ async function apiCall(action, payload) {
 
       const data = await _fetchAllRows('staff', '*',
         q => q.order('name_of_teacher'), q => q.eq('status', status));
+      const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
+      const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
 
-      const { headers, rows } = _toHeadersRows(data, STAFF_COL_MAP);
+      const { headers, rows } = _toHeadersRows(visible, STAFF_COL_MAP);
       return { headers, rows };
     }
 
@@ -664,7 +729,7 @@ async function apiCall(action, payload) {
       if (!targetEmis) return { success: false, error: 'Missing destination EMIS.' };
 
       const { data: s } = await _sb.from('staff')
-        .select('name_of_teacher, school_emis_code, school_name, markaz_name, tehsil, district, wing, date_of_posting_present_school, status')
+        .select('name_of_teacher, school_emis_code, markaz_name, tehsil, district, wing')
         .eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
@@ -677,20 +742,6 @@ async function apiCall(action, payload) {
         .select('district, wing, tehsil, markaz, school_name')
         .eq('emis', targetEmis).maybeSingle();
       if (!dest) return { success: false, error: `EMIS "${targetEmis}" was not found in the schools list.` };
-
-      // Full pre-transfer snapshot — lets a revert restore everything
-      // exactly (EMIS, school, markaz/tehsil/district/wing, posting date,
-      // status), not just flip a status flag.
-      const previousSnapshot = {
-        school_emis_code:               s.school_emis_code,
-        school_name:                    s.school_name,
-        markaz_name:                    s.markaz_name,
-        tehsil:                         s.tehsil,
-        district:                       s.district,
-        wing:                           s.wing,
-        date_of_posting_present_school: s.date_of_posting_present_school,
-        status:                         s.status,
-      };
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
         school_emis_code:              targetEmis,
@@ -718,7 +769,6 @@ async function apiCall(action, payload) {
           from_markaz:  s?.markaz_name || '',
           to_markaz:    dest.markaz || '',
           to_school:    dest.school_name || '',
-          previous_snapshot: previousSnapshot,
         },
         created_by: user?.name || '',
       }]);
@@ -730,60 +780,32 @@ async function apiCall(action, payload) {
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
       if (!pno) return { success: false, error: 'Missing employee personal number.' };
 
-      const { data: s } = await _sb.from('staff')
-        .select('name_of_teacher, designation, bps, pps, school_emis_code, school_name, markaz_name, tehsil, district, wing, date_of_posting_present_school, date_of_joining_present_scale')
-        .eq('personal_no', pno).single();
+      const { data: s } = await _sb.from('staff').select('name_of_teacher, designation, bps').eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
-      // EMIS is always required on promotion. If it's unchanged from the
-      // staff member's current school, the schools-table lookup below just
-      // resolves back to the same markaz/tehsil/district/wing — i.e. no
-      // actual location change happens, which is correct. If it *is*
-      // different, those fields cascade to the new school automatically.
       const targetEmis = p.targetEmis || p.to_emis;
-      if (!targetEmis) return { success: false, error: 'Target EMIS is required for a promotion.' };
-
-      const { data: dest } = await _sb.from('schools')
-        .select('district, wing, tehsil, markaz, school_name')
-        .eq('emis', targetEmis).maybeSingle();
-      if (!dest) return { success: false, error: `EMIS "${targetEmis}" was not found in the schools list.` };
-
-      const emisChanged = String(targetEmis) !== String(s.school_emis_code || '');
-      const destFields = {
-        school_emis_code: targetEmis,
-        school_name:      dest.school_name,
-        markaz_name:      dest.markaz,
-        tehsil:           dest.tehsil,
-        district:         dest.district,
-        wing:             dest.wing,
-      };
-
-      // Full pre-promotion snapshot — covers designation/BPS/PPS-only
-      // changes, EMIS + cascaded location fields, and both dates — so a
-      // revert restores the record exactly as it was, whatever combination
-      // of fields actually changed (sometimes it's only PPS).
-      const previousSnapshot = {
-        designation:                     s.designation,
-        bps:                             s.bps,
-        pps:                             s.pps,
-        school_emis_code:                s.school_emis_code,
-        school_name:                     s.school_name,
-        markaz_name:                     s.markaz_name,
-        tehsil:                          s.tehsil,
-        district:                        s.district,
-        wing:                            s.wing,
-        date_of_posting_present_school:  s.date_of_posting_present_school,
-        date_of_joining_present_scale:   s.date_of_joining_present_scale,
-      };
+      let destFields = {};
+      if (targetEmis) {
+        const { data: dest } = await _sb.from('schools')
+          .select('district, wing, tehsil, markaz, school_name')
+          .eq('emis', targetEmis).maybeSingle();
+        if (dest) {
+          destFields = {
+            school_emis_code: targetEmis,
+            school_name:      dest.school_name,
+            markaz_name:      dest.markaz,
+            tehsil:           dest.tehsil,
+            district:         dest.district,
+            wing:             dest.wing,
+          };
+        }
+      }
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
-        designation:                  p.newDesignation || p.new_designation || p['New Designation'] || s.designation,
-        bps:                          p.newBps         || p.new_bps         || p['New BPS'] || s.bps,
-        pps:                          p.newPps         || p.new_pps         || s.pps,
-        // Only touch the "present school" posting date if the EMIS actually
-        // changed — a PPS-only or same-school promotion shouldn't overwrite it.
-        date_of_posting_present_school:emisChanged ? (p.newPostingDate || s.date_of_posting_present_school) : s.date_of_posting_present_school,
-        date_of_joining_present_scale:p.newScaleJoiningDate || p.effective_date  || s.date_of_joining_present_scale,
+        designation:                  p.newDesignation || p.new_designation || p['New Designation'] || '',
+        bps:                          p.newBps         || p.new_bps         || p['New BPS'] || '',
+        date_of_posting_present_school:p.newPostingDate || '',
+        date_of_joining_present_scale:p.newScaleJoiningDate || p.effective_date  || '',
         ...destFields,
         changes_made_by:              user?.name || '',
         changes_made_at:              new Date().toISOString(),
@@ -801,10 +823,6 @@ async function apiCall(action, payload) {
           new_designation: p.newDesignation || p.new_designation || '',
           old_bps:         s?.bps || '',
           new_bps:         p.newBps || p.new_bps || '',
-          old_pps:         s?.pps || '',
-          new_pps:         p.newPps || p.new_pps || '',
-          emis_changed:    emisChanged,
-          previous_snapshot: previousSnapshot,
         },
         created_by: user?.name || '',
       }]);
@@ -852,7 +870,6 @@ async function apiCall(action, payload) {
     case 'revertToActiveStaff': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
-      const sourceSheet = p.sourceSheetName || p.source_sheet_name || '';
       const { data: s } = await _sb.from('staff').select('name_of_teacher, status, changes_made_at').eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
@@ -870,43 +887,6 @@ async function apiCall(action, payload) {
         }
       }
 
-      // Promotions and transfers restore the exact pre-change snapshot
-      // (designation/BPS/PPS/EMIS/school/markaz/tehsil/district/wing/dates)
-      // rather than just flipping status back to active.
-      if (sourceSheet === 'Promotions_History' || sourceSheet === 'Transfer_History') {
-        const eventType = sourceSheet === 'Promotions_History' ? 'promotion' : 'transfer';
-        const { data: ev } = await _sb.from('staff_events')
-          .select('id, details')
-          .eq('personal_no', pno)
-          .eq('event_type', eventType)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const snap = ev?.details?.previous_snapshot;
-        if (!snap) {
-          return { success: false, error: `No ${eventType} snapshot found to revert to. It may predate this feature.` };
-        }
-
-        const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
-          ...snap,
-          changes_made_by: user?.name || '',
-          changes_made_at: new Date().toISOString(),
-        }));
-        if (!r.ok) return { success: false, error: r.message };
-
-        await _sb.from('staff_events').insert([{
-          personal_no:   pno,
-          employee_name: s?.name_of_teacher || '',
-          event_type:    'revert',
-          details:       { reverted_event_type: eventType, reverted_event_id: ev.id, restored_snapshot: snap },
-          created_by:    user?.name || '',
-        }]);
-        return { success: true, message: (eventType === 'promotion' ? 'Promotion' : 'Transfer') + ' reverted — record restored to its previous state.' };
-      }
-
-      // Status-based actions (retired/resigned/terminated/deceased): just
-      // flip status back to active.
       const r = await _staffPrivilegedUpdate(pno, {
         status: 'active',
         changes_made_by: user?.name || '',
@@ -957,7 +937,9 @@ async function apiCall(action, payload) {
       // The frontend sends the SHEET NAME the user clicked ('Public' /
       // 'Out Sourced School'), not the actual DB status value — map it
       // the same way exportSheetData already does below.
-      const sheetName = Array.isArray(payload) ? payload[1] : (payload?.status || 'Public');
+      const p = Array.isArray(payload) ? payload : [payload];
+      const reqUser  = p[0];
+      const sheetName = p[1] || 'Public';
       const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
       // Keyset pagination on emis (unique, indexed) instead of OFFSET —
       // this table has 38,000+ rows, and OFFSET pagination was hitting
@@ -966,7 +948,9 @@ async function apiCall(action, payload) {
       // order here doesn't need to match what the user sees.
       const data = await _fetchAllRows('public_schools', '*',
         null, q => q.eq('status', status), 'emis');
-      return { success: true, ..._toHeadersData(data, PUB_COL_MAP) };
+      const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+      const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
+      return { success: true, ..._toHeadersData(visible, PUB_COL_MAP) };
     }
 
     case 'savePublicSchool': {
@@ -1007,11 +991,14 @@ async function apiCall(action, payload) {
     case 'exportSheetData': {
       // Used by public/private export buttons — returns { success, headers, rows (2D) }
       const sheetName = Array.isArray(payload) ? payload[0] : (payload?.sheet || payload);
+      const reqUser   = Array.isArray(payload) ? payload[1] : payload?.user;
       if (sheetName === 'Public' || sheetName === 'Out Sourced School') {
         const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
         const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status), 'emis');
+        const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+        const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
         const hdrs = _headers(PUB_COL_MAP);
-        const rows2d = (data||[]).map(r => hdrs.map(h => {
+        const rows2d = visible.map(r => hdrs.map(h => {
           const col = Object.entries(PUB_COL_MAP).find(([,v])=>v===h)?.[0];
           return col ? (r[col] ?? '') : '';
         }));
@@ -1020,8 +1007,10 @@ async function apiCall(action, payload) {
       if (sheetName === 'Private' || sheetName === 'Inactive') {
         const status = sheetName === 'Inactive' ? 'Inactive' : 'Active';
         const data = await _fetchAllRows('private_schools', '*', null, q => q.eq('status', status));
+        const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'unique_id' });
+        const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
         const hdrs = _headers(PRIV_COL_MAP);
-        const rows2d = (data||[]).map(r => hdrs.map(h => {
+        const rows2d = visible.map(r => hdrs.map(h => {
           const col = Object.entries(PRIV_COL_MAP).find(([,v])=>v===h)?.[0];
           return col ? (r[col] ?? '') : '';
         }));
@@ -1031,8 +1020,10 @@ async function apiCall(action, payload) {
       const statusMap3 = { Staff:'active', Termination:'terminated', Retirement:'retired', Resignation:'resigned', Deceased:'deceased', Deleted_Archive:'deleted' };
       const st = statusMap3[sheetName] || 'active';
       const data = await _fetchAllRows('staff', '*', null, q => q.eq('status', st));
+      const staffFilterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
+      const visibleStaff = staffFilterFn ? (data || []).filter(staffFilterFn) : (data || []);
       const hdrs = _headers(STAFF_COL_MAP);
-      const rows2d = (data||[]).map(r => hdrs.map(h => {
+      const rows2d = visibleStaff.map(r => hdrs.map(h => {
         const col = Object.entries(STAFF_COL_MAP).find(([,v])=>v===h)?.[0];
         return col ? (r[col] ?? '') : '';
       }));
@@ -1044,11 +1035,15 @@ async function apiCall(action, payload) {
       // Same fix as getPublicDashboardData: 'Private' sheet → Active rows,
       // 'Inactive' sheet → Inactive rows. Previously this filtered on the
       // literal sheet name, so almost nothing matched.
-      const sheetName = Array.isArray(payload) ? payload[1] : (payload?.status || 'Private');
+      const p = Array.isArray(payload) ? payload : [payload];
+      const reqUser  = p[0];
+      const sheetName = p[1] || 'Private';
       const status = sheetName === 'Inactive' ? 'Inactive' : 'Active';
       const data = await _fetchAllRows('private_schools', '*',
         q => q.order('school_name'), q => q.eq('status', status));
-      return { success: true, ..._toHeadersData(data, PRIV_COL_MAP) };
+      const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'unique_id' });
+      const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
+      return { success: true, ..._toHeadersData(visible, PRIV_COL_MAP) };
     }
 
     case 'savePrivateSchool': {
