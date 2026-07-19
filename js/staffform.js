@@ -172,7 +172,7 @@ function sfmOnPersonalNoInput() {
   if (!pno || sfmMode !== 'add') return;
   if (pno.length < 8) return;
 
-  var mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  var mainSheets = ['Staff','Deleted_Archive',
                     'Deceased','Termination','Retirement','Resignation'];
   var foundIn = null;
 
@@ -188,19 +188,6 @@ function sfmOnPersonalNoInput() {
     if (cache.rows.some(function(r) { return safeVal(r[pnoHdr]).trim() === pno; }))
       foundIn = sh;
   });
-
-  if (!foundIn) {
-    var thCache = sheetDataCache['Transfer_History'];
-    if (thCache && thCache.rows) {
-      var thHdr = null;
-      (thCache.headers || []).forEach(function(h) {
-        if (h && h.toString().trim() === 'Employee Personal No') thHdr = h;
-      });
-      if (thHdr && thCache.rows.some(function(r) {
-        return safeVal(r[thHdr]).trim() === pno;
-      })) foundIn = 'Transfer_History';
-    }
-  }
 
   if (foundIn) {
     sfmPnoStatus = 'duplicate';
@@ -273,7 +260,7 @@ function sfmOnCnicInput() {
     return;
   }
 
-  var mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  var mainSheets = ['Staff','Deleted_Archive',
                     'Deceased','Termination','Retirement','Resignation'];
   var foundIn = null;
 
@@ -290,19 +277,6 @@ function sfmOnCnicInput() {
       return safeVal(r[cnicHdr]).trim() === cnic;
     })) foundIn = sh;
   });
-
-  if (!foundIn) {
-    var thCache = sheetDataCache['Transfer_History'];
-    if (thCache && thCache.rows) {
-      var thHdr = null;
-      (thCache.headers || []).forEach(function(h) {
-        if (h && h.toString().trim() === 'Employee CNIC') thHdr = h;
-      });
-      if (thHdr && thCache.rows.some(function(r) {
-        return safeVal(r[thHdr]).trim() === cnic;
-      })) foundIn = 'Transfer_History';
-    }
-  }
 
   if (foundIn) {
     sfmCnicStatus = 'duplicate';
@@ -374,7 +348,7 @@ function sfmOnIbanInput() {
     return;
   }
 
-  var mainSheets = ['Staff','Deleted_Archive','Promotions_History',
+  var mainSheets = ['Staff','Deleted_Archive',
                     'Deceased','Termination','Retirement','Resignation'];
   var foundIn = null;
 

@@ -712,13 +712,17 @@ async function apiCall(action, payload) {
 
     // Staff (active) whose SCHOOL EMIS CODE doesn't exist anywhere in
     // public_schools — e.g. typo'd EMIS, school since removed/merged, or
-    // never entered correctly. Staff list is scoped to the requesting
-    // user's jurisdiction (same additive-group rules as everywhere else);
-    // the EMIS existence check itself is against the FULL national
+    // never entered correctly. Unlike other staff views, this is scoped
+    // by DISTRICT only (not the full markaz/tehsil/wing hierarchy) — any
+    // user should see every flagged staff member in their own district,
+    // since fixing these often needs district-level coordination. The
+    // EMIS existence check itself is against the FULL national
     // public_schools table, since an invalid code isn't "invalid within
     // a jurisdiction" — it either exists somewhere or it doesn't.
     case 'getStaffEmisNotInPublicSchools': {
       const reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
+      const isAdmin = !reqUser || String(reqUser.role || '').toLowerCase() === 'admin';
+      const district = (reqUser && reqUser.district || '').trim();
 
       const [staffRows, schoolRows] = await Promise.all([
         _fetchAllRows('staff', 'personal_no, name_of_teacher, designation, school_emis_code, school_name, markaz_name, tehsil, district, wing, status',
@@ -730,8 +734,9 @@ async function apiCall(action, payload) {
         (schoolRows || []).map(r => String(r.emis || '').trim().toLowerCase()).filter(Boolean)
       );
 
-      const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
-      const scopedStaff = filterFn ? (staffRows || []).filter(filterFn) : (staffRows || []);
+      const scopedStaff = (isAdmin || !district)
+        ? (staffRows || [])
+        : (staffRows || []).filter(r => (r.district || '').trim() === district);
 
       const missing = scopedStaff.filter(r => {
         const emis = String(r.school_emis_code || '').trim().toLowerCase();
