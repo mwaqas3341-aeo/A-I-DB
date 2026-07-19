@@ -2062,6 +2062,18 @@
             </div>
           </div>
 
+          <!-- Card: Staff with EMIS not in Public Schools -->
+          <div class="hr-summary-card hr-card-red">
+            <div class="hr-card-icon-wrap" style="background:rgba(239,68,68,0.12);">
+              <span class="material-icons-round" style="color:#DC2626;">report_problem</span>
+            </div>
+            <div class="hr-card-body">
+              <div class="hr-card-value" id="scEmisMismatch">—</div>
+              <div class="hr-card-label">Staff EMIS Not in Public Schools</div>
+              <div class="hr-card-sub" id="scEmisMismatchSub" style="cursor:pointer;text-decoration:underline;color:#991B1B;" onclick="openEmisMismatchModal()">Check list</div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -2197,6 +2209,18 @@
       <button type="button" onclick="document.getElementById('hrNoHeadModal').style.display='none'" style="background:transparent;border:none;color:white;font-size:26px;cursor:pointer;line-height:1;">&times;</button>
     </div>
     <div style="padding:20px 24px;max-height:70vh;overflow-y:auto;" id="hrNoHeadBody">
+    </div>
+  </div>
+</div>
+
+<!-- ══ STAFF EMIS NOT IN PUBLIC SCHOOLS MODAL ══ -->
+<div id="hrEmisMismatchModal" class="hr-modal" style="display:none;">
+  <div class="hr-modal-content" style="max-width:780px;">
+    <div style="background:#DC2626;color:white;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:17px;font-weight:700;">⚠️ Staff with EMIS Not in Public Schools</span>
+      <button type="button" onclick="document.getElementById('hrEmisMismatchModal').style.display='none'" style="background:transparent;border:none;color:white;font-size:26px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="padding:20px 24px;max-height:70vh;overflow-y:auto;" id="hrEmisMismatchBody">
     </div>
   </div>
 </div>
