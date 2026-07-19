@@ -664,7 +664,7 @@ async function apiCall(action, payload) {
       if (!targetEmis) return { success: false, error: 'Missing destination EMIS.' };
 
       const { data: s } = await _sb.from('staff')
-        .select('name_of_teacher, school_emis_code, markaz_name, tehsil, district, wing')
+        .select('name_of_teacher, school_emis_code, school_name, markaz_name, tehsil, district, wing, date_of_posting_present_school, status')
         .eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
@@ -677,6 +677,20 @@ async function apiCall(action, payload) {
         .select('district, wing, tehsil, markaz, school_name')
         .eq('emis', targetEmis).maybeSingle();
       if (!dest) return { success: false, error: `EMIS "${targetEmis}" was not found in the schools list.` };
+
+      // Full pre-transfer snapshot — lets a revert restore everything
+      // exactly (EMIS, school, markaz/tehsil/district/wing, posting date,
+      // status), not just flip a status flag.
+      const previousSnapshot = {
+        school_emis_code:               s.school_emis_code,
+        school_name:                    s.school_name,
+        markaz_name:                    s.markaz_name,
+        tehsil:                         s.tehsil,
+        district:                       s.district,
+        wing:                           s.wing,
+        date_of_posting_present_school: s.date_of_posting_present_school,
+        status:                         s.status,
+      };
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
         school_emis_code:              targetEmis,
@@ -704,6 +718,7 @@ async function apiCall(action, payload) {
           from_markaz:  s?.markaz_name || '',
           to_markaz:    dest.markaz || '',
           to_school:    dest.school_name || '',
+          previous_snapshot: previousSnapshot,
         },
         created_by: user?.name || '',
       }]);
@@ -715,32 +730,60 @@ async function apiCall(action, payload) {
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
       if (!pno) return { success: false, error: 'Missing employee personal number.' };
 
-      const { data: s } = await _sb.from('staff').select('name_of_teacher, designation, bps').eq('personal_no', pno).single();
+      const { data: s } = await _sb.from('staff')
+        .select('name_of_teacher, designation, bps, pps, school_emis_code, school_name, markaz_name, tehsil, district, wing, date_of_posting_present_school, date_of_joining_present_scale')
+        .eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
+      // EMIS is always required on promotion. If it's unchanged from the
+      // staff member's current school, the schools-table lookup below just
+      // resolves back to the same markaz/tehsil/district/wing — i.e. no
+      // actual location change happens, which is correct. If it *is*
+      // different, those fields cascade to the new school automatically.
       const targetEmis = p.targetEmis || p.to_emis;
-      let destFields = {};
-      if (targetEmis) {
-        const { data: dest } = await _sb.from('schools')
-          .select('district, wing, tehsil, markaz, school_name')
-          .eq('emis', targetEmis).maybeSingle();
-        if (dest) {
-          destFields = {
-            school_emis_code: targetEmis,
-            school_name:      dest.school_name,
-            markaz_name:      dest.markaz,
-            tehsil:           dest.tehsil,
-            district:         dest.district,
-            wing:             dest.wing,
-          };
-        }
-      }
+      if (!targetEmis) return { success: false, error: 'Target EMIS is required for a promotion.' };
+
+      const { data: dest } = await _sb.from('schools')
+        .select('district, wing, tehsil, markaz, school_name')
+        .eq('emis', targetEmis).maybeSingle();
+      if (!dest) return { success: false, error: `EMIS "${targetEmis}" was not found in the schools list.` };
+
+      const emisChanged = String(targetEmis) !== String(s.school_emis_code || '');
+      const destFields = {
+        school_emis_code: targetEmis,
+        school_name:      dest.school_name,
+        markaz_name:      dest.markaz,
+        tehsil:           dest.tehsil,
+        district:         dest.district,
+        wing:             dest.wing,
+      };
+
+      // Full pre-promotion snapshot — covers designation/BPS/PPS-only
+      // changes, EMIS + cascaded location fields, and both dates — so a
+      // revert restores the record exactly as it was, whatever combination
+      // of fields actually changed (sometimes it's only PPS).
+      const previousSnapshot = {
+        designation:                     s.designation,
+        bps:                             s.bps,
+        pps:                             s.pps,
+        school_emis_code:                s.school_emis_code,
+        school_name:                     s.school_name,
+        markaz_name:                     s.markaz_name,
+        tehsil:                          s.tehsil,
+        district:                        s.district,
+        wing:                            s.wing,
+        date_of_posting_present_school:  s.date_of_posting_present_school,
+        date_of_joining_present_scale:   s.date_of_joining_present_scale,
+      };
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
-        designation:                  p.newDesignation || p.new_designation || p['New Designation'] || '',
-        bps:                          p.newBps         || p.new_bps         || p['New BPS'] || '',
-        date_of_posting_present_school:p.newPostingDate || '',
-        date_of_joining_present_scale:p.newScaleJoiningDate || p.effective_date  || '',
+        designation:                  p.newDesignation || p.new_designation || p['New Designation'] || s.designation,
+        bps:                          p.newBps         || p.new_bps         || p['New BPS'] || s.bps,
+        pps:                          p.newPps         || p.new_pps         || s.pps,
+        // Only touch the "present school" posting date if the EMIS actually
+        // changed — a PPS-only or same-school promotion shouldn't overwrite it.
+        date_of_posting_present_school:emisChanged ? (p.newPostingDate || s.date_of_posting_present_school) : s.date_of_posting_present_school,
+        date_of_joining_present_scale:p.newScaleJoiningDate || p.effective_date  || s.date_of_joining_present_scale,
         ...destFields,
         changes_made_by:              user?.name || '',
         changes_made_at:              new Date().toISOString(),
@@ -758,6 +801,10 @@ async function apiCall(action, payload) {
           new_designation: p.newDesignation || p.new_designation || '',
           old_bps:         s?.bps || '',
           new_bps:         p.newBps || p.new_bps || '',
+          old_pps:         s?.pps || '',
+          new_pps:         p.newPps || p.new_pps || '',
+          emis_changed:    emisChanged,
+          previous_snapshot: previousSnapshot,
         },
         created_by: user?.name || '',
       }]);
@@ -805,6 +852,7 @@ async function apiCall(action, payload) {
     case 'revertToActiveStaff': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
+      const sourceSheet = p.sourceSheetName || p.source_sheet_name || '';
       const { data: s } = await _sb.from('staff').select('name_of_teacher, status, changes_made_at').eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
@@ -822,6 +870,43 @@ async function apiCall(action, payload) {
         }
       }
 
+      // Promotions and transfers restore the exact pre-change snapshot
+      // (designation/BPS/PPS/EMIS/school/markaz/tehsil/district/wing/dates)
+      // rather than just flipping status back to active.
+      if (sourceSheet === 'Promotions_History' || sourceSheet === 'Transfer_History') {
+        const eventType = sourceSheet === 'Promotions_History' ? 'promotion' : 'transfer';
+        const { data: ev } = await _sb.from('staff_events')
+          .select('id, details')
+          .eq('personal_no', pno)
+          .eq('event_type', eventType)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const snap = ev?.details?.previous_snapshot;
+        if (!snap) {
+          return { success: false, error: `No ${eventType} snapshot found to revert to. It may predate this feature.` };
+        }
+
+        const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
+          ...snap,
+          changes_made_by: user?.name || '',
+          changes_made_at: new Date().toISOString(),
+        }));
+        if (!r.ok) return { success: false, error: r.message };
+
+        await _sb.from('staff_events').insert([{
+          personal_no:   pno,
+          employee_name: s?.name_of_teacher || '',
+          event_type:    'revert',
+          details:       { reverted_event_type: eventType, reverted_event_id: ev.id, restored_snapshot: snap },
+          created_by:    user?.name || '',
+        }]);
+        return { success: true, message: (eventType === 'promotion' ? 'Promotion' : 'Transfer') + ' reverted — record restored to its previous state.' };
+      }
+
+      // Status-based actions (retired/resigned/terminated/deceased): just
+      // flip status back to active.
       const r = await _staffPrivilegedUpdate(pno, {
         status: 'active',
         changes_made_by: user?.name || '',
