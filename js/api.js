@@ -606,17 +606,32 @@ async function apiCall(action, payload) {
     // user regardless of jurisdiction — the `reqUser`/payload argument
     // was accepted but never actually used to filter anything, so
     // Public/Private/HR dropdowns showed every district to everyone.
-    // As of supabase_jurisdiction_rls.sql, SELECT on `schools` is
-    // scoped by RLS, so this plain fetch is now correctly restricted
-    // per user without needing any filtering logic here.
+    // RLS on `schools` (supabase_jurisdiction_rls.sql) restricts rows
+    // by the user's PRIMARY posting, but it does not know about a
+    // user's ADDITIONAL scope_type/scope_value tags (e.g. a Tehsil
+    // officer with a couple of extra Markazes assigned) — RLS let the
+    // whole tehsil's markaz list through instead of just the assigned
+    // ones. So we apply the same additive-group filter here that
+    // loadSheetForClient already uses for row data, keeping dropdown
+    // options and row visibility in sync for every scope type
+    // (Markaz/Tehsil/Wing/District).
     case 'getSchoolHierarchy':
     case 'getSchoolHierarchyForUser': {
       try {
         const data = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, school_name, emis',
           null, null, 'emis');
+        const reqUser = payload || user;
+        const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+        // _buildUserSchoolFilter checks row.markaz_name (the column name
+        // used by public_schools/private_schools/staff) — the `schools`
+        // table names the same column plain `markaz`, so alias it here
+        // or the markaz-level check would silently never match.
+        const visible = filterFn
+          ? (data || []).filter(r => filterFn({ ...r, markaz_name: r.markaz }))
+          : (data || []);
         // Shape: [{d, w, t, m, s, e}] — exactly what core.js schoolCache expects
         // (s = school_name, distinct from m = markaz/cluster name)
-        return (data || []).map(r => ({
+        return visible.map(r => ({
           d: r.district,
           w: r.wing,
           t: r.tehsil,
