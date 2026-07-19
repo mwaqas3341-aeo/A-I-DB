@@ -94,9 +94,9 @@ const PUB_COL_MAP = {
   boundary_wall_status: 'Boundary Wall', required_boundary_wall: 'Required Boundary Wall',
   total_furniture: 'Total Furniture', total_enrollment: 'Total Enrollment',
   school_category: 'School Category',
-  grade16_sanctioned: 'Grade16', grade15_sanctioned: 'Grade15',
-  grade14_sanctioned: 'Grade14',
-  grade1_12_nonteaching_sanctioned: 'Grade1-12 Non Teaching',
+  ecce_room_available: 'ECCE Room Available', ecce_under_project: 'ECCE Under Project',
+  ecce_caregiver_name: 'Caregiver Name', ecce_caregiver_gender: 'Caregiver Gender',
+  ecce_caregiver_cnic: 'Caregiver CNIC', ecce_caregiver_cell_no: 'Caregiver Cell No',
   bank_name: 'Bank Name', bank_address: 'Address',
   branch_code: 'Branch Code', iban_no: 'IBAN NO.', status: 'Status',
 };
@@ -393,7 +393,6 @@ const _NUMERIC_COLUMNS = new Set([
   'total_area_sqft', 'total_covered_area_sqft', 'total_uncovered_area_sqft',
   'total_rooms', 'used_for_teaching', 'non_teaching_activities', 'total_washrooms',
   'required_boundary_wall', 'total_furniture', 'total_enrollment',
-  'grade16_sanctioned', 'grade15_sanctioned', 'grade14_sanctioned', 'grade1_12_nonteaching_sanctioned',
   // private_schools
   'latitude', 'longitude', 'total_rooms', 'total_teaching_staff', 'total_non_teaching_staff',
   'total_enrollment', 'entry_gates', 'operational_gates', 'cctv_cameras', 'security_guards',

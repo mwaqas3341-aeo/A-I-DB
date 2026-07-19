@@ -41,10 +41,12 @@ const PUB_EDITABLE_FIELDS = [
   { header: 'Total Furniture',     hint: 'Total Furniture (Write no of students for which available) (Number Only)',                       id: 'pub_Furniture',   type: 'number' },
   { header: 'Total Enrollment',    hint: 'Total Enrollment (Number Only)',                                                                 id: 'pub_Enroll',      type: 'number',  oninput: 'calcPubLand()' },
   { header: 'School Category',     hint: 'School Category (Auto Calculated on Front End)',                                                 id: 'pub_Category',    readonly: true },
-  { header: 'Grade16',             hint: 'Grade 16 Sanctioned Seats (Number Only)',                                                        id: 'pub_G16',         type: 'number' },
-  { header: 'Grade15',             hint: 'Grade 15 Sanctioned Seats (Number Only)',                                                        id: 'pub_G15',         type: 'number' },
-  { header: 'Grade14',             hint: 'Grade 14 Sanctioned Seats (Number Only)',                                                        id: 'pub_G14',         type: 'number' },
-  { header: 'Grade1-12 Non Teaching', hint: 'Grade 1-12 All Non Teaching Sanctioned Seats (Number Only)',                                  id: 'pub_GNon',        type: 'number' },
+  { header: 'ECCE Room Available', hint: 'Is ECCE Room Available (Yes/No)',                                                                id: 'pub_ECCEAvail',   type: 'select',  options: ['Yes', 'No'], onchange: 'handlePubECCE()' },
+  { header: 'ECCE Under Project',  hint: 'Under Project — only applies if ECCE Room Available is Yes',                                    id: 'pub_ECCEProject', type: 'select',  options: ['PHCIP', 'QAED', 'Prepared by School', 'Other'], hidden: true },
+  { header: 'Caregiver Name',      hint: 'Care Giver Name — only applies if ECCE Room Available is Yes',                                  id: 'pub_CGName',      hidden: true },
+  { header: 'Caregiver Gender',    hint: 'Care Giver Gender — only applies if ECCE Room Available is Yes',                                 id: 'pub_CGGender',    type: 'select',  options: ['Male', 'Female'], hidden: true },
+  { header: 'Caregiver CNIC',      hint: 'Care Giver CNIC — only applies if ECCE Room Available is Yes',                                   id: 'pub_CGCnic',      hidden: true },
+  { header: 'Caregiver Cell No',   hint: 'Care Giver Cell No — only applies if ECCE Room Available is Yes',                                id: 'pub_CGCell',      hidden: true },
   { header: 'Bank Name',                                                                                                                   id: 'pub_Bank' },
   { header: 'Address',                                                                                                                     id: 'pub_BankAddr' },
   { header: 'Branch Code',                                                                                                                 id: 'pub_Branch' },
@@ -415,6 +417,7 @@ function editPublic(keyVal) {
     if (el) el.value = row[f.header] || '';
   });
   handlePubBW();
+  handlePubECCE();
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
   pubModal.show();
 }
@@ -479,6 +482,20 @@ function handlePubBW() {
       if (feetEl) feetEl.value = '';
     }
   }
+}
+
+function handlePubECCE() {
+  const avail = document.getElementById('pub_ECCEAvail')?.value;
+  const show  = avail === 'Yes';
+  const ids   = ['pub_ECCEProject', 'pub_CGName', 'pub_CGGender', 'pub_CGCnic', 'pub_CGCell'];
+  ids.forEach(id => {
+    const wrap = document.getElementById('wrap_' + id);
+    if (wrap) wrap.style.display = show ? 'block' : 'none';
+    if (!show) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    }
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════
