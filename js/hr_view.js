@@ -450,6 +450,9 @@ function resetSummaryCards() {
   document.getElementById('scRetiring1Yr').textContent = '—';
   document.getElementById('scNoHead').textContent      = '—';
   document.getElementById('scHeadCount').textContent   = '—';
+  document.getElementById('scEmisMismatch').textContent = '—';
+  document.getElementById('scEmisMismatchSub').textContent = 'Check list';
+  window._hrEmisMismatchRows = null;  // force a fresh backend check next time it's opened
 }
 
 function updateSummaryCards(filteredRows) {
@@ -628,6 +631,82 @@ function openNoHeadModal() {
       <table class="nohead-table">
         <thead>
           <tr><th>EMIS Code</th><th>District</th><th>Wing</th><th>Tehsil</th><th>Markaz</th></tr>
+        </thead>
+        <tbody>${rows_html}</tbody>
+      </table>
+    </div>`;
+  modal.style.display = 'flex';
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  STAFF EMIS NOT IN PUBLIC SCHOOLS MODAL
+//  Unlike the Retiring/No-Head cards (which recompute from data
+//  already loaded for the HR filters), this needs the full national
+//  public_schools EMIS list, which isn't loaded on this page — so it's
+//  fetched fresh from the backend the first time the card is opened,
+//  then cached for the rest of the session.
+// ──────────────────────────────────────────────────────────────────
+function openEmisMismatchModal() {
+  const modal = document.getElementById('hrEmisMismatchModal');
+  const body  = document.getElementById('hrEmisMismatchBody');
+
+  if (window._hrEmisMismatchRows) {
+    _renderEmisMismatchModal(window._hrEmisMismatchRows);
+    return;
+  }
+
+  body.innerHTML = '<p style="color:#6B7280;text-align:center;padding:20px 0;">Checking staff EMIS codes against Public Schools…</p>';
+  modal.style.display = 'flex';
+
+  const userPayload = typeof currentUser !== 'undefined' ? currentUser : null;
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res || res.success === false) {
+        body.innerHTML = '<p style="color:#DC2626;text-align:center;padding:20px 0;">Could not check EMIS codes: ' + (res && res.message ? res.message : 'Unknown error') + '</p>';
+        return;
+      }
+      window._hrEmisMismatchRows = res.rows || [];
+      document.getElementById('scEmisMismatch').textContent = res.count || 0;
+      document.getElementById('scEmisMismatchSub').textContent =
+        (res.count || 0) > 0 ? 'Check list (' + res.count + ')' : 'No mismatches found';
+      _renderEmisMismatchModal(window._hrEmisMismatchRows);
+    })
+    .withFailureHandler(err => {
+      body.innerHTML = '<p style="color:#DC2626;text-align:center;padding:20px 0;">Could not check EMIS codes: ' + (err && err.message ? err.message : 'Unknown error') + '</p>';
+    })
+    .getStaffEmisNotInPublicSchools(userPayload);
+}
+
+function _renderEmisMismatchModal(rows) {
+  const modal = document.getElementById('hrEmisMismatchModal');
+  const body  = document.getElementById('hrEmisMismatchBody');
+
+  if (!rows.length) {
+    body.innerHTML = '<p style="color:#6B7280;text-align:center;padding:20px 0;">Every active staff member\u2019s School EMIS Code was found in Public Schools.</p>';
+    modal.style.display = 'flex';
+    return;
+  }
+
+  const rows_html = rows.map(r => `
+    <tr>
+      <td>${r['PERSONAL NO.'] || ''}</td>
+      <td>${r['NAME OF TEACHER'] || ''}</td>
+      <td>${r['DESIGNATION'] || ''}</td>
+      <td style="color:#DC2626;font-weight:600;">${r['SCHOOL EMIS CODE'] || '(blank)'}</td>
+      <td>${r['SCHOOL NAME'] || ''}</td>
+      <td>${r['MARKAZ NAME'] || ''}</td>
+      <td>${r['Tehsil'] || ''}</td>
+    </tr>`).join('');
+
+  body.innerHTML = `
+    <p style="font-size:13px;color:#475569;margin-bottom:14px;">
+      <b>${rows.length}</b> active staff member(s) have a School EMIS Code that doesn\u2019t match any record in Public Schools
+      — likely a typo, a merged/closed school, or a code that was never entered correctly.
+    </p>
+    <div style="overflow-x:auto;">
+      <table class="nohead-table">
+        <thead>
+          <tr><th>P.No.</th><th>Name</th><th>Designation</th><th>EMIS</th><th>School Name (on staff record)</th><th>Markaz</th><th>Tehsil</th></tr>
         </thead>
         <tbody>${rows_html}</tbody>
       </table>

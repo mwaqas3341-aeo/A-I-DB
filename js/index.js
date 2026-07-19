@@ -248,6 +248,10 @@ function doLogout() {
   clearJurisdiction();
   // ──────────────────────────────────────────────
 
+  // ── Clear HR EMIS-mismatch cache (not covered by cache-service/perf-cache) ──
+  window._hrEmisMismatchRows = null;
+  // ──────────────────────────────────────────────
+
   document.getElementById('appWrapper').style.display = 'none';
   document.getElementById('loginView').style.display  = 'flex';
   document.getElementById('pass').value = '';

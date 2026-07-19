@@ -710,6 +710,38 @@ async function apiCall(action, payload) {
       return { headers, rows };
     }
 
+    // Staff (active) whose SCHOOL EMIS CODE doesn't exist anywhere in
+    // public_schools — e.g. typo'd EMIS, school since removed/merged, or
+    // never entered correctly. Staff list is scoped to the requesting
+    // user's jurisdiction (same additive-group rules as everywhere else);
+    // the EMIS existence check itself is against the FULL national
+    // public_schools table, since an invalid code isn't "invalid within
+    // a jurisdiction" — it either exists somewhere or it doesn't.
+    case 'getStaffEmisNotInPublicSchools': {
+      const reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
+
+      const [staffRows, schoolRows] = await Promise.all([
+        _fetchAllRows('staff', 'personal_no, name_of_teacher, designation, school_emis_code, school_name, markaz_name, tehsil, district, wing, status',
+          q => q.order('name_of_teacher'), q => q.eq('status', 'active')),
+        _fetchAllRows('public_schools', 'emis', null, null, 'emis'),
+      ]);
+
+      const validEmis = new Set(
+        (schoolRows || []).map(r => String(r.emis || '').trim().toLowerCase()).filter(Boolean)
+      );
+
+      const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
+      const scopedStaff = filterFn ? (staffRows || []).filter(filterFn) : (staffRows || []);
+
+      const missing = scopedStaff.filter(r => {
+        const emis = String(r.school_emis_code || '').trim().toLowerCase();
+        return !emis || !validEmis.has(emis);
+      });
+
+      const { headers, rows } = _toHeadersRows(missing, STAFF_COL_MAP);
+      return { success: true, headers, rows, count: missing.length };
+    }
+
     case 'addStaffRow': {
       const row = Array.isArray(payload) ? payload[0] : payload;
       // Convert display-header keys back to Supabase column names
