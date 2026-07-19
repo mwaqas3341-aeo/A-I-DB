@@ -865,6 +865,81 @@ function _hrDownloadCsv(rows, cols) {
 }
 
 // ──────────────────────────────────────────────────────────────────
+//  DOWNLOAD SNE (Sanctioned / Filled / Vacant, grade-wise per school)
+// ──────────────────────────────────────────────────────────────────
+function downloadSNE() {
+  const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name: 'Admin' };
+  showLoading();
+  google.script.run
+    .withFailureHandler(err => {
+      hideLoading();
+      hrShowToast('SNE export failed: ' + (err && err.message ? err.message : 'Unknown error'), false);
+    })
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res || !res.success || !res.rows || !res.rows.length) {
+        hrShowToast('No SNE data available for the current scope.', false);
+        return;
+      }
+      _buildSneExcel(res.rows);
+    })
+    .getSneSummary(userPayload);
+}
+
+function _buildSneExcel(rows) {
+  // Sort by Markaz then School Name for a readable report.
+  const sorted = rows.slice().sort((a, b) => {
+    const m = (a.markaz_name || '').localeCompare(b.markaz_name || '');
+    return m !== 0 ? m : (a.school_name || '').localeCompare(b.school_name || '');
+  });
+
+  const headerRow1 = ['Sr No.', 'Markaz Name', 'Emis', 'School Name',
+    'Grade 16', '', '', 'Grade 15', '', '', 'Grade 14', '', '', 'Non-Teaching', '', ''];
+  const headerRow2 = ['', '', '', '',
+    'Sanctioned', 'Filled', 'Vacant', 'Sanctioned', 'Filled', 'Vacant',
+    'Sanctioned', 'Filled', 'Vacant', 'Sanctioned', 'Filled', 'Vacant'];
+
+  const aoa = [headerRow1, headerRow2];
+  sorted.forEach((r, i) => {
+    aoa.push([
+      i + 1, r.markaz_name || '', r.emis || '', r.school_name || '',
+      r.grade16_sanctioned || 0, r.grade16_filled || 0, r.grade16_vacant || 0,
+      r.grade15_sanctioned || 0, r.grade15_filled || 0, r.grade15_vacant || 0,
+      r.grade14_sanctioned || 0, r.grade14_filled || 0, r.grade14_vacant || 0,
+      r.nonteaching_sanctioned || 0, r.nonteaching_filled || 0, r.nonteaching_vacant || 0,
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Merge Sr No./Markaz/Emis/School Name down both header rows, and
+  // each grade group across its 3 sub-columns.
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 },  e: { r: 1, c: 0 } },  // Sr No.
+    { s: { r: 0, c: 1 },  e: { r: 1, c: 1 } },  // Markaz Name
+    { s: { r: 0, c: 2 },  e: { r: 1, c: 2 } },  // Emis
+    { s: { r: 0, c: 3 },  e: { r: 1, c: 3 } },  // School Name
+    { s: { r: 0, c: 4 },  e: { r: 0, c: 6 } },  // Grade 16
+    { s: { r: 0, c: 7 },  e: { r: 0, c: 9 } },  // Grade 15
+    { s: { r: 0, c: 10 }, e: { r: 0, c: 12 } }, // Grade 14
+    { s: { r: 0, c: 13 }, e: { r: 0, c: 15 } }, // Non-Teaching
+  ];
+
+  ws['!cols'] = [
+    { wch: 6 }, { wch: 22 }, { wch: 10 }, { wch: 30 },
+    { wch: 10 }, { wch: 8 }, { wch: 8 },
+    { wch: 10 }, { wch: 8 }, { wch: 8 },
+    { wch: 10 }, { wch: 8 }, { wch: 8 },
+    { wch: 12 }, { wch: 8 }, { wch: 8 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'SNE Summary');
+  XLSX.writeFile(wb, 'SNE_Summary_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  hrShowToast('SNE report downloaded (' + sorted.length + ' schools).', true);
+}
+
+// ──────────────────────────────────────────────────────────────────
 //  TABLE RENDER
 // ──────────────────────────────────────────────────────────────────
 function renderHrTable() {

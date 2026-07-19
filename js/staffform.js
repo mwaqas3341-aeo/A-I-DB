@@ -913,7 +913,7 @@ function tfOnTargetEmis() {
     '<div><b>Tehsil:</b> ' + escHtml(found.t) + ' &nbsp;|&nbsp; <b>Markaz:</b> ' + escHtml(found.m) + '</div>';
 }
 
-function tfSubmit() {
+async function tfSubmit() {
   if (tfSubmitting) return;
 
   var targetEmis  = (document.getElementById('tf_targetEmis').value || '').trim();
@@ -944,6 +944,19 @@ function tfSubmit() {
   if (!ok) {
     showToast('Please fix the highlighted errors before confirming.', 'warning');
     return;
+  }
+
+  // SNE vacancy pre-check — the teacher keeps their current grade on a
+  // transfer, so confirm the destination EMIS has a vacant seat there.
+  var currentBps = parseInt(safeVal(transferRowData['BPS']), 10);
+  if (!isNaN(currentBps)) {
+    try {
+      var vacCheck = await _sb.rpc('check_grade_vacancy', { p_emis: targetEmis, p_grade: currentBps });
+      if (!vacCheck.error && vacCheck.data === false) {
+        showToast('Vacant seat not available for BPS-' + currentBps + ' at EMIS ' + targetEmis + '.', 'error');
+        return;
+      }
+    } catch (e) { /* fail open — server-side check in executeTransfer still applies */ }
   }
 
   var newSchool     = sfmEmisMap[targetEmis.toLowerCase()];
@@ -1127,7 +1140,7 @@ function pmOnTargetEmis() {
     '<div><b>Tehsil:</b> ' + escHtml(found.t) + ' &nbsp;|&nbsp; <b>Markaz:</b> ' + escHtml(found.m) + '</div>';
 }
 
-function pmSubmit() {
+async function pmSubmit() {
   if (pmSubmitting) return;
 
   var notifNo     = (document.getElementById('pm_notifNo').value || '').trim();
@@ -1174,6 +1187,19 @@ function pmSubmit() {
   if (!ok) {
     showToast('Please fix the highlighted errors before confirming.', 'warning');
     return;
+  }
+
+  // SNE vacancy pre-check — promotion moves the employee to a NEW grade,
+  // so confirm the target EMIS has a vacant seat at that new grade.
+  var newBpsNum = parseInt(bps, 10);
+  if (!isNaN(newBpsNum)) {
+    try {
+      var vacCheck = await _sb.rpc('check_grade_vacancy', { p_emis: targetEmis, p_grade: newBpsNum });
+      if (!vacCheck.error && vacCheck.data === false) {
+        showToast('Vacant seat not available for BPS-' + newBpsNum + ' at EMIS ' + targetEmis + '.', 'error');
+        return;
+      }
+    } catch (e) { /* fail open — server-side check in executePromotion still applies */ }
   }
 
   var teacherName      = safeVal(promotionRowData['NAME OF TEACHER']);

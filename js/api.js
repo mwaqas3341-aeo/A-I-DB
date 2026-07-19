@@ -94,9 +94,9 @@ const PUB_COL_MAP = {
   boundary_wall_status: 'Boundary Wall', required_boundary_wall: 'Required Boundary Wall',
   total_furniture: 'Total Furniture', total_enrollment: 'Total Enrollment',
   school_category: 'School Category',
-  ecce_room_available: 'ECCE Room Available', ecce_under_project: 'ECCE Under Project',
-  ecce_caregiver_name: 'Caregiver Name', ecce_caregiver_gender: 'Caregiver Gender',
-  ecce_caregiver_cnic: 'Caregiver CNIC', ecce_caregiver_cell_no: 'Caregiver Cell No',
+  grade16_sanctioned: 'Grade16', grade15_sanctioned: 'Grade15',
+  grade14_sanctioned: 'Grade14',
+  grade1_12_nonteaching_sanctioned: 'Grade1-12 Non Teaching',
   bank_name: 'Bank Name', bank_address: 'Address',
   branch_code: 'Branch Code', iban_no: 'IBAN NO.', status: 'Status',
 };
@@ -393,6 +393,7 @@ const _NUMERIC_COLUMNS = new Set([
   'total_area_sqft', 'total_covered_area_sqft', 'total_uncovered_area_sqft',
   'total_rooms', 'used_for_teaching', 'non_teaching_activities', 'total_washrooms',
   'required_boundary_wall', 'total_furniture', 'total_enrollment',
+  'grade16_sanctioned', 'grade15_sanctioned', 'grade14_sanctioned', 'grade1_12_nonteaching_sanctioned',
   // private_schools
   'latitude', 'longitude', 'total_rooms', 'total_teaching_staff', 'total_non_teaching_staff',
   'total_enrollment', 'entry_gates', 'operational_gates', 'cctv_cameras', 'security_guards',
@@ -746,6 +747,18 @@ async function apiCall(action, payload) {
       return { success: true, headers, rows, count: missing.length };
     }
 
+    // SNE (Sanctioned/Filled/Vacant) grade-wise summary per school, used
+    // by the "Download SNE" button in the HR module. Sanctioned figures
+    // come from sne_subject_sanctioned (uploaded per Excel); filled
+    // figures are always computed live from active staff records.
+    case 'getSneSummary': {
+      const reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
+      const data = await _fetchAllRows('sne_summary', '*', null, null, 'emis');
+      const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+      const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
+      return { success: true, rows: visible };
+    }
+
     case 'addStaffRow': {
       const row = Array.isArray(payload) ? payload[0] : payload;
       // Convert display-header keys back to Supabase column names
@@ -834,7 +847,7 @@ async function apiCall(action, payload) {
       if (!targetEmis) return { success: false, error: 'Missing destination EMIS.' };
 
       const { data: s } = await _sb.from('staff')
-        .select('name_of_teacher, school_emis_code, markaz_name, tehsil, district, wing')
+        .select('name_of_teacher, school_emis_code, markaz_name, tehsil, district, wing, bps')
         .eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
@@ -847,6 +860,19 @@ async function apiCall(action, payload) {
         .select('district, wing, tehsil, markaz, school_name')
         .eq('emis', targetEmis).maybeSingle();
       if (!dest) return { success: false, error: `EMIS "${targetEmis}" was not found in the schools list.` };
+
+      // SNE vacancy check: the employee keeps their current grade on a
+      // transfer, so confirm the destination EMIS has a vacant seat at
+      // that grade before moving them.
+      const targetGrade = parseInt(s?.bps, 10);
+      if (!isNaN(targetGrade)) {
+        const { data: hasVacancy, error: vacErr } = await _sb.rpc('check_grade_vacancy', {
+          p_emis: targetEmis, p_grade: targetGrade,
+        });
+        if (!vacErr && hasVacancy === false) {
+          return { success: false, error: `Vacant seat not available for BPS-${targetGrade} at EMIS ${targetEmis}.` };
+        }
+      }
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
         school_emis_code:              targetEmis,
@@ -903,6 +929,20 @@ async function apiCall(action, payload) {
             district:         dest.district,
             wing:             dest.wing,
           };
+        }
+      }
+
+      // SNE vacancy check: promotion moves the employee to a NEW grade,
+      // so confirm the (destination, or current if unchanged) EMIS has
+      // a vacant seat at the new grade before recording it.
+      const newBps = parseInt(p.newBps || p.new_bps || p['New BPS'], 10);
+      const checkEmis = targetEmis || s?.school_emis_code;
+      if (!isNaN(newBps) && checkEmis) {
+        const { data: hasVacancy, error: vacErr } = await _sb.rpc('check_grade_vacancy', {
+          p_emis: checkEmis, p_grade: newBps,
+        });
+        if (!vacErr && hasVacancy === false) {
+          return { success: false, error: `Vacant seat not available for BPS-${newBps} at EMIS ${checkEmis}.` };
         }
       }
 
