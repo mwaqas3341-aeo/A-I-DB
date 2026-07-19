@@ -498,25 +498,32 @@ async function apiCall(action, payload) {
 
     // ── DASHBOARD KPIs ─────────────────────────────────────────────────
     case 'getSummaryCounts': {
-      // Scoping happens automatically here: RLS SELECT policies on
-      // public_schools/private_schools (see supabase_jurisdiction_rls.sql)
-      // mean these queries can only ever see rows in the signed-in
-      // user's jurisdiction, so a plain count() is already correct per
-      // user without any manual filtering in this function. Using
-      // { count:'exact', head:true } instead of fetching full rows
-      // avoids downloading 38k+ rows to the browser just to count them.
+      // NOTE: this used to assume RLS alone was enough (same wrong
+      // assumption getSchoolHierarchyForUser used to make) — RLS scopes
+      // by a user's PRIMARY posting but doesn't know about ADDITIONAL
+      // scope_type/scope_value tags (extra Markaz/Tehsil/Wing/District
+      // assignments), so a plain count() over-counted for any user with
+      // extra scope. We now fetch the minimal columns needed and apply
+      // the same additive-group filter used for row data/dropdowns, so
+      // the KPI cards match what the user actually sees elsewhere.
       try {
-        const countOf = (table, statusVal) => _sb
-          .from(table)
-          .select('*', { count: 'exact', head: true })
-          .eq('status', statusVal)
-          .then(r => r.count || 0);
+        const reqUser = payload || user;
+        const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+
+        const countOf = async (table, statusVal, idKey) => {
+          const cols = table === 'private_schools'
+            ? 'unique_id, district, tehsil, markaz_name, status'
+            : 'emis, district, wing, tehsil, markaz_name, status';
+          const rows = await _fetchAllRows(table, cols, null, q => q.eq('status', statusVal), idKey);
+          if (!filterFn) return (rows || []).length;
+          return (rows || []).filter(filterFn).length;
+        };
 
         const [publicCount, outsourcedCount, privateCount, inactiveCount] = await Promise.all([
-          countOf('public_schools',  'Active'),
-          countOf('public_schools',  'Out Sourced'),
-          countOf('private_schools', 'Active'),
-          countOf('private_schools', 'Inactive'),
+          countOf('public_schools',  'Active',      'emis'),
+          countOf('public_schools',  'Out Sourced', 'emis'),
+          countOf('private_schools', 'Active',      'unique_id'),
+          countOf('private_schools', 'Inactive',    'unique_id'),
         ]);
 
         return { success: true, publicCount, outsourcedCount, privateCount, inactiveCount };
