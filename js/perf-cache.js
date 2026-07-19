@@ -40,6 +40,18 @@
   let _summaryCountsRpcAvailable = null; // null = unknown yet, true/false once checked
 
   async function _fastSummaryCounts(payload) {
+    // get_summary_counts() takes no arguments — it returns raw,
+    // system-wide totals with no awareness of a user's jurisdiction or
+    // extra scope_type/scope_value tags. That's fine (and fast) for an
+    // admin, who's meant to see everything anyway, but it silently
+    // showed every scoped user the full system count regardless of
+    // their Markaz/Tehsil/Wing/District assignment. Only take the fast
+    // RPC path for admins; every scoped user goes through the slower
+    // but correctly-filtered path in api.js.
+    const isAdmin = payload && String(payload.role || '').toLowerCase() === 'admin';
+    if (!isAdmin) {
+      return _originalApiCall('getSummaryCounts', payload);
+    }
     try {
       const { data, error } = await _sb.rpc('get_summary_counts');
       if (error) throw error;
