@@ -894,10 +894,10 @@ function downloadSNE() {
 }
 
 function _buildSneExcel(rows) {
-  // Sort by Markaz then School Name for a readable report.
+  // Sort by Markaz then EMIS (both A→Z) for a predictable, scannable report.
   const sorted = rows.slice().sort((a, b) => {
     const m = (a.markaz_name || '').localeCompare(b.markaz_name || '');
-    return m !== 0 ? m : (a.school_name || '').localeCompare(b.school_name || '');
+    return m !== 0 ? m : String(a.emis || '').localeCompare(String(b.emis || ''));
   });
 
   const headerRow1 = ['Sr No.', 'Markaz Name', 'Emis', 'School Name',
