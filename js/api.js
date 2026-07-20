@@ -76,57 +76,49 @@ const USER_COL_MAP = {
   email:        'Email',
 };
 
-// Public school: Supabase column → display header
-const PUB_COL_MAP = {
-  emis: 'Emis', school_name: 'School Name', district: 'District',
-  wing: 'Wing', tehsil: 'Tehsil', markaz_name: 'Markaz Name',
-  level: 'Level', type: 'Type', area: 'Area',
-  physical_address: 'Physical Address of School',
-  latitude: 'Latitude', longitude: 'Longitude',
-  uc_name: 'Uc Name', uc_no: 'Uc No.', na_no: 'Na', pp_no: 'Pp',
-  kanal: 'Kanal', marlas: 'Marlas', sarsai: 'Sarsai',
-  total_area_sqft: 'Total Area Square Feet',
-  total_covered_area_sqft: 'Total Covered Area Square Feet',
-  total_uncovered_area_sqft: 'Total Uncovered Area Square Feet',
-  total_rooms: 'Total rooms', used_for_teaching: 'Used For Teaching',
-  non_teaching_activities: 'Non Teaching Activities',
-  total_washrooms: 'Total Washrooms', electricity_source: 'Electricity Source',
-  boundary_wall_status: 'Boundary Wall', required_boundary_wall: 'Required Boundary Wall',
-  total_furniture: 'Total Furniture', total_enrollment: 'Total Enrollment',
-  school_category: 'School Category',
-  grade16_sanctioned: 'Grade16', grade15_sanctioned: 'Grade15',
-  grade14_sanctioned: 'Grade14',
-  grade1_12_nonteaching_sanctioned: 'Grade1-12 Non Teaching',
-  bank_name: 'Bank Name', bank_address: 'Address',
-  branch_code: 'Branch Code', iban_no: 'IBAN NO.', status: 'Status',
-};
+// Public school: Supabase column → display header.
+//
+// This is DERIVED from PUB_EDITABLE_FIELDS (js/public_schools.js) rather
+// than hand-duplicated, so adding/removing/renaming a question on the
+// actual Add/Edit Public School form automatically updates everything
+// that reads this map: save/load, the Download Template button, and the
+// bulk-import column matcher — with nothing to remember to edit here.
+// It's a function (not a top-level const) because api.js loads before
+// public_schools.js; calling it lazily at use-time avoids a load-order
+// problem while a top-level const would silently see an empty array.
+//
+// A few identity/system columns aren't user-editable "questions" on the
+// form (they're auto-filled from EMIS or shown read-only elsewhere), so
+// they're listed here directly rather than expected to appear in
+// PUB_EDITABLE_FIELDS.
+function getPubColMap() {
+  const map = {
+    emis: 'Emis', school_name: 'School Name', district: 'District',
+    wing: 'Wing', tehsil: 'Tehsil', markaz_name: 'Markaz Name',
+    level: 'Level', type: 'Type', area: 'Area',
+  };
+  if (typeof PUB_EDITABLE_FIELDS !== 'undefined') {
+    for (const f of PUB_EDITABLE_FIELDS) {
+      if (f.col) map[f.col] = f.header;
+    }
+  }
+  return map;
+}
 
-// Private school: Supabase column → display header
-const PRIV_COL_MAP = {
-  unique_id: 'Unique ID', district: 'District', tehsil: 'Tehsil',
-  markaz_name: 'Markaz Name', school_category: 'School Category',
-  school_name: 'School Name', registration_status: 'Registeration Status',
-  registration_no: 'Registeration No',
-  registration_expiry_date: 'Date of Expiry of Registeration',
-  level: 'Level', school_gender: 'School Gender',
-  physical_address: 'School Physical Address', zebra_crossing: 'Zebra Crossing',
-  latitude: 'Latitude', longitude: 'Longitude',
-  owner_name: 'Owner name', owner_cnic: 'Owner CNIC', owner_cell_no: 'Owner Cell No',
-  principal_name: 'Principal Name', principal_cnic: 'Principal CNIC',
-  principal_cell_no: 'Principal Cell No',
-  building_certificate_expiry: 'Building Certificate Expirey',
-  health_hygiene_cert_expiry: 'Health and hygiene Certificate Expirey',
-  total_rooms: 'Total Rooms', total_teaching_staff: 'Total Teaching Staff',
-  total_non_teaching_staff: 'Total Non Teaching Staff',
-  total_enrollment: 'Total Enrolment', security_category: 'Security Category',
-  entry_gates: 'Entry Gates', operational_gates: 'Operational Gates',
-  cctv_cameras: 'CCTV Cameras', security_guards: 'Security Guards',
-  boundary_wall_height_ft: 'Height of boundary walls',
-  barbed_wires: 'Barbed wires', firefighting_system: 'Fire fighting system',
-  nearby_key_installations: 'Nearby key installations',
-  key_installation_name: 'Name of Key Installation',
-  gate_facing_ki: 'Gate facing KI', status: 'Status',
-};
+
+// Private school: Supabase column → display header.
+// Derived from PRIVATE_FIELD_CONFIG (js/private_schools.js) — see the
+// comment on getPubColMap() above for why this is a function.
+function getPrivColMap() {
+  const map = {};
+  if (typeof PRIVATE_FIELD_CONFIG !== 'undefined') {
+    for (const f of PRIVATE_FIELD_CONFIG) {
+      if (f.col) map[f.col] = f.header;
+    }
+  }
+  return map;
+}
+
 
 // ── Helpers ──────────────────────────────────────────────────────────
 /** Map a Supabase row object to display-header keys using a col map. */
@@ -393,7 +385,6 @@ const _NUMERIC_COLUMNS = new Set([
   'total_area_sqft', 'total_covered_area_sqft', 'total_uncovered_area_sqft',
   'total_rooms', 'used_for_teaching', 'non_teaching_activities', 'total_washrooms',
   'required_boundary_wall', 'total_furniture', 'total_enrollment',
-  'grade16_sanctioned', 'grade15_sanctioned', 'grade14_sanctioned', 'grade1_12_nonteaching_sanctioned',
   // private_schools
   'latitude', 'longitude', 'total_rooms', 'total_teaching_staff', 'total_non_teaching_staff',
   'total_enrollment', 'entry_gates', 'operational_gates', 'cctv_cameras', 'security_guards',
@@ -1151,7 +1142,7 @@ async function apiCall(action, payload) {
         null, q => q.eq('status', status), 'emis');
       const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
       const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
-      return { success: true, ..._toHeadersData(visible, PUB_COL_MAP) };
+      return { success: true, ..._toHeadersData(visible, getPubColMap()) };
     }
 
     case 'savePublicSchool': {
@@ -1160,7 +1151,7 @@ async function apiCall(action, payload) {
       const emis = p['Emis'] || p.emis;
       if (!emis) return { success: false, message: 'Emis code is required.' };
       // Convert display keys back to db columns
-      const reverseMap = Object.fromEntries(Object.entries(PUB_COL_MAP).map(([c,h])=>[h,c]));
+      const reverseMap = Object.fromEntries(Object.entries(getPubColMap()).map(([c,h])=>[h,c]));
       let dbRow = {};
       for (const [h, v] of Object.entries(p)) {
         const col = reverseMap[h];
@@ -1198,9 +1189,9 @@ async function apiCall(action, payload) {
         const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status), 'emis');
         const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
         const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
-        const hdrs = _headers(PUB_COL_MAP);
+        const hdrs = _headers(getPubColMap());
         const rows2d = visible.map(r => hdrs.map(h => {
-          const col = Object.entries(PUB_COL_MAP).find(([,v])=>v===h)?.[0];
+          const col = Object.entries(getPubColMap()).find(([,v])=>v===h)?.[0];
           return col ? (r[col] ?? '') : '';
         }));
         return { success: true, headers: hdrs, rows: rows2d };
@@ -1210,9 +1201,9 @@ async function apiCall(action, payload) {
         const data = await _fetchAllRows('private_schools', '*', null, q => q.eq('status', status));
         const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'unique_id' });
         const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
-        const hdrs = _headers(PRIV_COL_MAP);
+        const hdrs = _headers(getPrivColMap());
         const rows2d = visible.map(r => hdrs.map(h => {
-          const col = Object.entries(PRIV_COL_MAP).find(([,v])=>v===h)?.[0];
+          const col = Object.entries(getPrivColMap()).find(([,v])=>v===h)?.[0];
           return col ? (r[col] ?? '') : '';
         }));
         return { success: true, headers: hdrs, rows: rows2d };
@@ -1244,13 +1235,13 @@ async function apiCall(action, payload) {
         q => q.order('school_name'), q => q.eq('status', status));
       const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'unique_id' });
       const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
-      return { success: true, ..._toHeadersData(visible, PRIV_COL_MAP) };
+      return { success: true, ..._toHeadersData(visible, getPrivColMap()) };
     }
 
     case 'savePrivateSchool': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const uid = p['Unique ID'] || p.unique_id;
-      const reverseMap = Object.fromEntries(Object.entries(PRIV_COL_MAP).map(([c,h])=>[h,c]));
+      const reverseMap = Object.fromEntries(Object.entries(getPrivColMap()).map(([c,h])=>[h,c]));
       let dbRow = {};
       for (const [h, v] of Object.entries(p)) {
         const col = reverseMap[h];
@@ -1292,7 +1283,7 @@ async function apiCall(action, payload) {
         .ilike('school_name', `%${query}%`)
         .limit(20);
       if (error) return [];
-      return (data||[]).map(r => _remap(r, PRIV_COL_MAP));
+      return (data||[]).map(r => _remap(r, getPrivColMap()));
     }
 
     // ── ADMIN — USERS ─────────────────────────────────────────────────

@@ -37,7 +37,7 @@ const SCHOOL_IMPORT_CONFIG = {
   public: {
     label: 'Public Schools',
     table: 'public_schools',
-    colMap: () => PUB_COL_MAP,
+    colMap: () => getPubColMap(),
     uniqueCol: 'emis', uniqueHeader: 'Emis',
     hasWing: true,
     updateOnly: true,
@@ -50,7 +50,7 @@ const SCHOOL_IMPORT_CONFIG = {
   private: {
     label: 'Private Schools',
     table: 'private_schools',
-    colMap: () => PRIV_COL_MAP,
+    colMap: () => getPrivColMap(),
     hasWing: false, // private_schools has no Wing column in this system
     updateOnly: false,
     dupCheckHeader: 'School Name',

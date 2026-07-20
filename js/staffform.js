@@ -11,39 +11,47 @@ var sfmCnicStatus = 'unchecked';
 var sfmIbanStatus = 'unchecked';
 
 // ---------- Field map ----------
-var SF_FIELD_MAP = {
-  sf_emis:                 'SCHOOL EMIS CODE',
-  sf_schoolName:           'SCHOOL NAME',
-  sf_markaz:               'MARKAZ NAME',
-  sf_district:             'District',
-  sf_wing:                 'Wing',
-  sf_tehsil:               'Tehsil',
-  sf_personalNo:           'PERSONAL NO.',
-  sf_name:                 'NAME OF TEACHER',
-  sf_parentName:           'PARENT NAME',
-  sf_dob:                  'DATE OF BIRTH',
-  sf_gender:               'GENDER',
-  sf_designation:          'DESIGNATION',
-  sf_workingAsHead:        'WORKING AS HEAD',
-  sf_bps:                  'BPS',
-  sf_pps:                  'PPS',
-  sf_natureOfJob:          'NATURE OF JOB',
-  sf_regularizationDate:   'date of regularization',
-  sf_govtEntry:            'DATE OF ENTRY IN GOVT- SERVICE',
-  sf_firstPosting:         'FIRST PLACE OF POSTING',
-  sf_presentSchoolPosting: 'DATE OF POSTING IN PRESENT SCHOOL',
-  sf_presentScaleJoining:  'DATE OF JOINING IN PRESENT SCALE',
-  sf_subject:              'SUBJECT',
-  sf_academicQual:         'ACADEMIC QUALIFICATION',
-  sf_profQual:             'PROFESSIONAL QUALIFICATION',
-  sf_cellNo:               'CELL NO',
-  sf_whatsapp:             'WHATSAPP NO.',
-  sf_email:                'EMAIL ID',
-  sf_cnic:                 'CNIC',
-  sf_address:              'ADDRESS AS PER CNIC',
-  sf_bankName:             'BANK NAME & BRANCH CODE WHERE SALARY IS CREDIT',
-  sf_iban:                 'SALARY ACCOUNT IBAN NO.'
+// Add/Edit Staff form field id → Supabase column. The actual display
+// header shown on the form (and used when saving) is looked up from
+// STAFF_COL_MAP (js/api.js) rather than retyped here, so a header-text
+// change only ever needs to happen in one place. staffform.js loads
+// after api.js, so STAFF_COL_MAP is already defined by this point.
+var SF_ID_TO_COL = {
+  sf_emis:                 'school_emis_code',
+  sf_schoolName:           'school_name',
+  sf_markaz:               'markaz_name',
+  sf_district:             'district',
+  sf_wing:                 'wing',
+  sf_tehsil:               'tehsil',
+  sf_personalNo:           'personal_no',
+  sf_name:                 'name_of_teacher',
+  sf_parentName:           'parent_name',
+  sf_dob:                  'date_of_birth',
+  sf_gender:               'gender',
+  sf_designation:          'designation',
+  sf_workingAsHead:        'working_as_head',
+  sf_bps:                  'bps',
+  sf_pps:                  'pps',
+  sf_natureOfJob:          'nature_of_job',
+  sf_regularizationDate:   'date_of_permanentization',
+  sf_govtEntry:            'date_of_entry_govt_service',
+  sf_firstPosting:         'first_place_of_posting',
+  sf_presentSchoolPosting: 'date_of_posting_present_school',
+  sf_presentScaleJoining:  'date_of_joining_present_scale',
+  sf_subject:              'subject',
+  sf_academicQual:         'academic_qualification',
+  sf_profQual:             'professional_qualification',
+  sf_cellNo:               'cell_no',
+  sf_whatsapp:             'whatsapp_no',
+  sf_email:                'email_id',
+  sf_cnic:                 'cnic',
+  sf_address:              'address_as_per_cnic',
+  sf_bankName:             'bank_name_branch_code',
+  sf_iban:                 'salary_account_iban_no',
 };
+var SF_FIELD_MAP = Object.fromEntries(
+  Object.entries(SF_ID_TO_COL).map(([id, col]) => [id, (typeof STAFF_COL_MAP !== 'undefined' && STAFF_COL_MAP[col]) || col])
+);
 
 // ---------- User payload helper ----------
 function getUserPayload() {
