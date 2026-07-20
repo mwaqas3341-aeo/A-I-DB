@@ -793,6 +793,24 @@ async function apiCall(action, payload) {
       dbRow.changes_made_by = user?.name || '';
       dbRow.changes_made_at = new Date().toISOString();
 
+      // Never trust the client for school_name/district/wing/tehsil/markaz —
+      // always derive them from the EMIS itself. The Add/Edit Staff form's
+      // "School Name" field is meant to auto-fill from EMIS client-side, but
+      // that's a display convenience, not something to rely on for the
+      // record that actually gets saved.
+      if (dbRow.school_emis_code) {
+        const { data: sc } = await _sb.from('schools')
+          .select('district, wing, tehsil, markaz, school_name')
+          .eq('emis', dbRow.school_emis_code).maybeSingle();
+        if (sc) {
+          dbRow.school_name = sc.school_name;
+          dbRow.markaz_name = sc.markaz;
+          dbRow.district     = sc.district;
+          dbRow.wing         = sc.wing;
+          dbRow.tehsil       = sc.tehsil;
+        }
+      }
+
       const cleanRow = _sanitizeEmpty(dbRow);
       const { data: inserted, error } = await _sb
         .from('staff').insert([cleanRow]).select().single();
@@ -821,6 +839,25 @@ async function apiCall(action, payload) {
       dbRow.changes_made_by = user?.name || '';
       dbRow.changes_made_at = new Date().toISOString();
       delete dbRow.personal_no;  // don't overwrite the PK
+
+      // Same as addStaffRow: whenever the EMIS is present in the submitted
+      // row (i.e. the edit form touched it), re-derive school_name/district/
+      // wing/tehsil/markaz from the schools table server-side rather than
+      // trusting whatever the client's readonly display field happened to
+      // hold. This is what was silently wiping school_name to blank on
+      // transfers/edits before.
+      if (dbRow.school_emis_code) {
+        const { data: sc } = await _sb.from('schools')
+          .select('district, wing, tehsil, markaz, school_name')
+          .eq('emis', dbRow.school_emis_code).maybeSingle();
+        if (sc) {
+          dbRow.school_name = sc.school_name;
+          dbRow.markaz_name = sc.markaz;
+          dbRow.district     = sc.district;
+          dbRow.wing         = sc.wing;
+          dbRow.tehsil       = sc.tehsil;
+        }
+      }
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty(dbRow));
       if (!r.ok) return { success: false, error: r.message };

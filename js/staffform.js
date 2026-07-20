@@ -790,6 +790,8 @@ function sfmDoSave(data) {
             invalidateCache('Staff');
             if (currentSheetView === 'Staff') applyFilter();
             else showEmptyState && renderTable && renderTable();
+            if (typeof hrInvalidateCache === 'function') hrInvalidateCache('Staff');
+            if (typeof applyHrFilter === 'function') applyHrFilter();
           } else {
             showToast('Error: ' + (res && (res.errors ? res.errors.join(', ') : res.error) || 'Unknown error'), 'error');
           }
@@ -814,6 +816,8 @@ function sfmDoSave(data) {
             sfmSwitchToView();
             invalidateCache(currentSheetView);
             applyFilter();
+            if (typeof hrInvalidateCache === 'function') hrInvalidateCache('Staff');
+            if (typeof applyHrFilter === 'function') applyHrFilter();
           } else {
             showToast('Error: ' + (res && res.error || 'Unknown error'), 'error');
           }
@@ -996,6 +1000,8 @@ async function tfSubmit() {
           closeTransferModal();
           invalidateCache('Staff');
           applyFilter();
+          if (typeof hrInvalidateCache === 'function') hrInvalidateCache('Staff');
+          if (typeof applyHrFilter === 'function') applyHrFilter();
         } else {
           showToast('Error: ' + (res && res.error || 'Unknown error'), 'error');
         }
@@ -1242,6 +1248,8 @@ async function pmSubmit() {
           closePromotionModal();
           invalidateCache('Staff');
           applyFilter();
+          if (typeof hrInvalidateCache === 'function') hrInvalidateCache('Staff');
+          if (typeof applyHrFilter === 'function') applyHrFilter();
         } else {
           showToast('Error: ' + (res && res.error || 'Unknown error'), 'error');
         }
