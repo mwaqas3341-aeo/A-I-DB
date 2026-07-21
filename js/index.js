@@ -143,6 +143,19 @@ function clearJurisdiction() {
   try { localStorage.removeItem('AEO_JURISDICTION'); } catch (e) {}
 }
 
+// ─── Auth gate — decides which of loginView/appWrapper to show ────
+// Called from every path that resolves the login state: fresh login,
+// a verified restored session, or "no/invalid session → show login".
+// Clears the anti-flash safety timer (index.html) since a real
+// decision has now been made.
+function revealAuthGate(viewId) {
+  clearTimeout(window._authGateSafetyTimer);
+  const loader = document.getElementById('authGateLoader');
+  if (loader) loader.remove();
+  document.getElementById('loginView').style.display  = viewId === 'loginView'  ? 'flex'  : 'none';
+  document.getElementById('appWrapper').style.display = viewId === 'appWrapper' ? 'block' : 'none';
+}
+
 // ─── Login ────────────────────────────────────────
 function doLogin() {
   const btn  = document.getElementById('loginBtn');
@@ -180,8 +193,7 @@ function enterApp(user) {
   document.getElementById('userMarkaz').textContent     = user.markaz || 'N/A';
   document.getElementById('dashMarkazName').textContent = user.markaz || 'All';
   document.getElementById('navAvatar').textContent      = user.name.substring(0, 2).toUpperCase();
-  document.getElementById('loginView').style.display    = 'none';
-  document.getElementById('appWrapper').style.display   = 'block';
+  revealAuthGate('appWrapper');
 
   if (String(user.role).toLowerCase() === 'admin')
     document.getElementById('navAdminBtn').style.display = 'block';
@@ -198,20 +210,74 @@ function enterApp(user) {
 }
 
 // ─── Restore session on page load ──────────────────
-function restoreSession() {
+async function restoreSession() {
   const saved = localStorage.getItem(CONFIG.SESSION_KEY);
-  if (!saved) return;
+  if (!saved) { revealAuthGate('loginView'); return; }
+
+  let user;
   try {
-    const user = JSON.parse(saved);
-    if (user && user.cnic) {
-      enterApp(user); // instant paint from cache — avoids a blank flash
-      _refreshCurrentUserFromDb(user.id); // then quietly sync with Supabase
-    }
+    user = JSON.parse(saved);
   } catch (e) {
     localStorage.removeItem(CONFIG.SESSION_KEY);
+    revealAuthGate('loginView');
+    return;
   }
+  if (!user || !user.cnic) { revealAuthGate('loginView'); return; }
+
+  // Verify the underlying Supabase auth session is actually still
+  // valid before trusting the cached profile. Without this check, a
+  // copy-pasted link/URL opened fresh, or a tab whose token expired in
+  // the background, would keep showing whichever user's data happened
+  // to be cached in this browser instead of asking for a fresh login.
+  try {
+    const { data: { session } } = await _sb.auth.getSession();
+    if (!session) {
+      localStorage.removeItem(CONFIG.SESSION_KEY);
+      revealAuthGate('loginView');
+      return;
+    }
+  } catch (e) {
+    // If the check itself fails (offline, etc.) fall back to trusting
+    // the cache rather than locking someone out over a network blip.
+  }
+
+  enterApp(user); // reveals appWrapper via revealAuthGate() inside enterApp()
+  _refreshCurrentUserFromDb(user.id); // then quietly sync the profile with Supabase
 }
 document.addEventListener('DOMContentLoaded', restoreSession);
+
+// ─── Cross-tab session sync ─────────────────────────
+// localStorage is shared across every tab of the same browser, but
+// without this, the tabs never actually knew about each other: logging
+// out in one tab left every other open tab silently working with a
+// session that no longer existed anywhere else, and switching accounts
+// in one tab didn't update the others at all. The `storage` event only
+// fires in tabs OTHER than the one that made the change, which is
+// exactly what's needed here.
+window.addEventListener('storage', (e) => {
+  if (e.key !== CONFIG.SESSION_KEY) return;
+
+  if (e.newValue === null) {
+    // Another tab logged out.
+    currentUser = null;
+    revealAuthGate('loginView');
+    if (typeof showToast === 'function') showToast('You were logged out in another tab.', false);
+    return;
+  }
+
+  if (e.oldValue && e.newValue !== e.oldValue) {
+    try {
+      const oldUser = JSON.parse(e.oldValue);
+      const newUser = JSON.parse(e.newValue);
+      if (oldUser.id !== newUser.id) {
+        // Another tab logged in as a different account — reload so
+        // this tab picks up the correct session instead of continuing
+        // to show whoever was here before.
+        location.reload();
+      }
+    } catch (e2) { /* ignore parse errors */ }
+  }
+});
 
 // The cached session snapshot can go stale the moment an admin edits this
 // user's profile elsewhere (Markaz, Urdu fields, role, etc.) — without
@@ -252,9 +318,8 @@ function doLogout() {
   window._hrEmisMismatchRows = null;
   // ──────────────────────────────────────────────
 
-  document.getElementById('appWrapper').style.display = 'none';
-  document.getElementById('loginView').style.display  = 'flex';
   document.getElementById('pass').value = '';
+  revealAuthGate('loginView');
   history.replaceState(null, '', location.pathname);
   showToast('Logged out successfully', true);
 }
