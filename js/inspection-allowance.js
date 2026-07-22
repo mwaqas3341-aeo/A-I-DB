@@ -23,7 +23,9 @@ async function openInspectionAllowanceView() {
   if (typeof switchGlobalTab === 'function') switchGlobalTab('inspectionAllowanceView', null);
 
   const isAdmin = String(currentUser?.role).toLowerCase() === 'admin';
+  const isTr = Array.isArray(currentUser?.tr_tehsils) && currentUser.tr_tehsils.length > 0;
   document.getElementById('iaTabBatchBtn').style.display = isAdmin ? 'inline-flex' : 'none';
+  document.getElementById('iaTabBudgetPrepBtn').style.display = (isAdmin || isTr) ? 'inline-flex' : 'none';
   iaSwitchTab('myBill');
 
   iaState.rows = [];
@@ -36,10 +38,14 @@ async function openInspectionAllowanceView() {
 }
 
 function iaSwitchTab(tab) {
-  document.getElementById('iaMyBillTab').style.display = tab === 'myBill' ? 'block' : 'none';
-  document.getElementById('iaBatchTab').style.display   = tab === 'batch'  ? 'block' : 'none';
+  document.getElementById('iaMyBillTab').style.display     = tab === 'myBill'     ? 'block' : 'none';
+  document.getElementById('iaBudgetPrepTab').style.display = tab === 'budgetprep' ? 'block' : 'none';
+  document.getElementById('iaBatchTab').style.display      = tab === 'batch'      ? 'block' : 'none';
   document.getElementById('iaTabMyBillBtn').classList.toggle('active', tab === 'myBill');
+  document.getElementById('iaTabBudgetPrepBtn').classList.toggle('active', tab === 'budgetprep');
   document.getElementById('iaTabBatchBtn').classList.toggle('active', tab === 'batch');
+
+  if (tab === 'budgetprep' && typeof bpInit === 'function') bpInit();
 
   if (tab === 'batch' && !iaState.batchUsers.length) {
     iaLoadBatchUsers();

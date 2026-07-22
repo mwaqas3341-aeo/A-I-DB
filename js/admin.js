@@ -114,14 +114,12 @@ function switchAdminTab(tab, btn) {
   document.getElementById('adminPanelTools').style.display   = tab === 'tools'   ? 'block' : 'none';
   document.getElementById('adminPanelKpi').style.display     = tab === 'kpi'     ? 'block' : 'none';
   document.getElementById('adminPanelGeneral').style.display = tab === 'general' ? 'block' : 'none';
-  document.getElementById('adminPanelBudgetPrep').style.display = tab === 'budgetprep' ? 'block' : 'none';
   document.querySelectorAll('.admin-sub-tab').forEach(b => b.classList.remove('active-admin-tab'));
   if (btn) btn.classList.add('active-admin-tab');
   if (tab === 'links')   loadLinksAppsTable();
   if (tab === 'tools')   loadToolsTableAdmin();
   if (tab === 'kpi')     loadKpiCardsTable();
   if (tab === 'general') loadGeneralList('designation');
-  if (tab === 'budgetprep' && typeof bpInit === 'function') bpInit();
 }
 
 // ═══════════════════════════════════════════════
@@ -269,20 +267,6 @@ function confirmDeleteGeneralRow(kind, ri) {
 
 function openAdminModule() {
   switchGlobalTab('adminDataView', null);
-
-  const isFullAdmin = String(currentUser?.role).toLowerCase() === 'admin';
-  const isTrOnly = !isFullAdmin && Array.isArray(currentUser?.tr_tehsils) && currentUser.tr_tehsils.length > 0;
-
-  if (isTrOnly) {
-    // TR-only users get exactly one thing in the Admin Panel: Budget Preparation.
-    ['tabUsers', 'tabLinks', 'tabTools', 'tabKpi', 'tabGeneral'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'none';
-    });
-    switchAdminTab('budgetprep', document.getElementById('tabBudgetPrep'));
-    return;
-  }
-
   document.getElementById('userTBody').innerHTML =
     '<tr><td colspan="10" style="padding:20px;text-align:center;color:var(--t3)">Loading users…</td></tr>';
   loadUsers();
