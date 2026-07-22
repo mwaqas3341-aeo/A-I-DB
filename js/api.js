@@ -1499,19 +1499,45 @@ async function apiCall(action, payload) {
       return { success: true };
     }
 
-    // Admin-only: lightweight roster for the batch-generate picker
-    case 'listInspectionAllowanceUsers': {
-      if (!user || String(user.role).toLowerCase() !== 'admin') {
-        return { success: false, message: 'Admin access required.' };
-      }
-      const { data, error } = await _sb
-        .from('app_users')
-        .select('id, personal_no, name, wing, tehsil, markaz_name, designation')
-        .order('name');
-      if (error) return { success: false, message: error.message };
-      return { success: true, data: data || [] };
+    // Self-service: what does MY tehsil's budget prep look like for a given year?
+    // Returns all 12 months: whether prepared, and my deduction/due (0/full-rate if
+    // this tehsil+month was prepared but I wasn't individually given a deduction).
+    case 'getMyInspectionAllowanceMonths': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const year = Number(p.year) || new Date().getFullYear();
+
+      const { data: me } = await _sb.from('app_users').select('tehsil').eq('id', user.id).single();
+      const tehsil = me?.tehsil;
+      if (!tehsil) return { success: false, message: 'No tehsil on your profile.' };
+
+      const { data: preps, error: prepErr } = await _sb.from('budget_preparations')
+        .select('month').eq('tehsil', tehsil).eq('year', year);
+      if (prepErr) return { success: false, message: prepErr.message };
+      const preparedSet = new Set((preps || []).map(p => p.month));
+
+      const { data: rate } = await _sb.from('inspection_allowance_settings').select('allowance_rate').eq('id', 1).single();
+      const fullRate = Number(rate?.allowance_rate) || 25000;
+
+      const { data: myDeds } = await _sb.from('inspection_allowance_deductions')
+        .select('month, deduction, due').eq('user_id', user.id).eq('year', year);
+      const dedByMonth = Object.fromEntries((myDeds || []).map(d => [d.month, d]));
+
+      const months = Array.from({ length: 12 }, (_, i) => {
+        const m = i + 1;
+        const prepared = preparedSet.has(m);
+        const ded = dedByMonth[m];
+        return {
+          month: m,
+          prepared,
+          deduction: prepared ? Number(ded?.deduction || 0) : null,
+          due: prepared ? Number(ded?.due ?? fullRate) : null,
+        };
+      });
+      return { success: true, tehsil, rate: fullRate, months };
     }
 
+    // Admin-only: lightweight roster for the batch-generate picker
     case 'saveUser': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const reverseMap = Object.fromEntries(Object.entries(USER_COL_MAP).map(([c,h])=>[h,c]));

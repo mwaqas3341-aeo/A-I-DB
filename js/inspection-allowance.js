@@ -1,22 +1,21 @@
 // ═══════════════════════════════════════════════════════════════════
 //  INSPECTION ALLOWANCE — bill preparation module
-//  Self-service: any logged-in user prepares & downloads their own
-//  3-page bill (Adjustment Form + Bill F + Bill B) as one PDF.
-//  Admins additionally get a Batch Generate tab.
+//  Deductions are set centrally by the Tehsil Representative during
+//  Budget Preparation. An AEO can only download a month once their
+//  tehsil+month has been prepared; their own deduction defaults to 0
+//  (full rate) if the TR didn't specifically adjust it for them.
 // ═══════════════════════════════════════════════════════════════════
 
 const IA_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const IA_MAX_ROWS = 4;
+const IA_MAX_SELECTED = 4;
 
 let iaState = {
   rate: 25000,
   profile: null,
-  rows: [],       // My Bill tab rows: [{id, year, month, deduction}]
-  batchRows: [],  // Batch tab month rows (shared across selected users)
-  batchUsers: [], // full roster from listInspectionAllowanceUsers
-  batchSelected: new Set(),
+  year: new Date().getFullYear(),
+  months: [],       // [{month, prepared, deduction, due}] for the selected year, from getMyInspectionAllowanceMonths
+  selected: new Set(), // month numbers currently checked for the bill
 };
-let iaRowSeq = 1;
 
 // ─── Entry point (dashboard card) ──────────────────────────────────
 async function openInspectionAllowanceView() {
@@ -24,33 +23,27 @@ async function openInspectionAllowanceView() {
 
   const isAdmin = String(currentUser?.role).toLowerCase() === 'admin';
   const isTr = Array.isArray(currentUser?.tr_tehsils) && currentUser.tr_tehsils.length > 0;
-  document.getElementById('iaTabBatchBtn').style.display = isAdmin ? 'inline-flex' : 'none';
   document.getElementById('iaTabBudgetPrepBtn').style.display = (isAdmin || isTr) ? 'inline-flex' : 'none';
   iaSwitchTab('myBill');
 
-  iaState.rows = [];
-  document.getElementById('iaMonthRows').innerHTML = '';
-  iaAddMonthRow();
+  const yearSel = document.getElementById('ia_year');
+  const yNow = new Date().getFullYear();
+  yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1].map(y => `<option value="${y}" ${y === yNow ? 'selected' : ''}>${y}</option>`).join('');
+  iaState.year = yNow;
+  iaState.selected = new Set();
 
   await iaLoadRate();
   await iaLoadProfile();
-  await iaLoadHistory();
+  await iaLoadMonths();
 }
 
 function iaSwitchTab(tab) {
   document.getElementById('iaMyBillTab').style.display     = tab === 'myBill'     ? 'block' : 'none';
   document.getElementById('iaBudgetPrepTab').style.display = tab === 'budgetprep' ? 'block' : 'none';
-  document.getElementById('iaBatchTab').style.display      = tab === 'batch'      ? 'block' : 'none';
   document.getElementById('iaTabMyBillBtn').classList.toggle('active', tab === 'myBill');
   document.getElementById('iaTabBudgetPrepBtn').classList.toggle('active', tab === 'budgetprep');
-  document.getElementById('iaTabBatchBtn').classList.toggle('active', tab === 'batch');
 
   if (tab === 'budgetprep' && typeof bpInit === 'function') bpInit();
-
-  if (tab === 'batch' && !iaState.batchUsers.length) {
-    iaLoadBatchUsers();
-    if (!iaState.batchRows.length) iaAddMonthRow(true);
-  }
 }
 
 // ─── Rate & Profile ─────────────────────────────────────────────────
@@ -85,189 +78,99 @@ async function iaLoadProfile() {
 
   const incomplete = !res.page_no || !res.ddeo_code || !res.bps_scale;
   document.getElementById('iaProfileIncompleteWarn').style.display = incomplete ? 'block' : 'none';
-  document.getElementById('iaSubmitBtn').disabled = incomplete;
+  if (incomplete) document.getElementById('iaSubmitBtn').disabled = true;
 }
 
-// ─── Month rows (My Bill tab) ───────────────────────────────────────
-function iaAddMonthRow(isBatch) {
-  const rows = isBatch ? iaState.batchRows : iaState.rows;
-  if (rows.length >= IA_MAX_ROWS) { showToast(`Maximum ${IA_MAX_ROWS} months per bill.`, false); return; }
+// ─── Months grid (My Bill tab) ───────────────────────────────────────
+async function iaLoadMonths() {
+  iaState.year = Number(document.getElementById('ia_year').value);
+  iaState.selected = new Set();
+  const grid = document.getElementById('iaMonthsGrid');
+  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading months…</div>`;
 
-  const now = new Date();
-  const row = { id: iaRowSeq++, year: now.getFullYear(), month: now.getMonth() + 1, deduction: 0 };
-  rows.push(row);
-  iaRenderMonthRows(isBatch);
+  const res = await apiCall('getMyInspectionAllowanceMonths', { year: iaState.year });
+  if (!res || !res.success) { grid.innerHTML = `<div style="color:var(--bad);padding:12px">${res?.message || 'Could not load months.'}</div>`; return; }
+
+  iaState.months = res.months;
+  iaRenderMonthsGrid();
 }
 
-function iaRemoveMonthRow(isBatch, id) {
-  const rows = isBatch ? iaState.batchRows : iaState.rows;
-  const idx = rows.findIndex(r => r.id === id);
-  if (idx > -1) rows.splice(idx, 1);
-  iaRenderMonthRows(isBatch);
+function iaRenderMonthsGrid() {
+  const grid = document.getElementById('iaMonthsGrid');
+  grid.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+      <thead><tr style="text-align:left;border-bottom:2px solid var(--b0);background:var(--s2)">
+        <th style="padding:8px;width:36px"></th><th style="padding:8px">Month</th>
+        <th style="padding:8px">Status</th><th style="padding:8px">Deduction</th><th style="padding:8px">Due</th>
+      </tr></thead>
+      <tbody>
+        ${iaState.months.map(m => {
+          const disabled = !m.prepared;
+          const checked = iaState.selected.has(m.month);
+          return `<tr style="border-bottom:1px solid var(--s2);${disabled ? 'opacity:.5' : ''}">
+            <td style="padding:8px">
+              <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="iaToggleMonth(${m.month}, this.checked)">
+            </td>
+            <td style="padding:8px;font-weight:600">${IA_MONTH_NAMES[m.month - 1]}</td>
+            <td style="padding:8px">${m.prepared ? '<span style="color:#0d9488">✅ Prepared</span>' : '<span style="color:var(--t3)">Not prepared yet</span>'}</td>
+            <td style="padding:8px">${m.prepared ? 'PKR ' + m.deduction.toLocaleString() : '—'}</td>
+            <td style="padding:8px;font-weight:700;color:#0d9488">${m.prepared ? 'PKR ' + m.due.toLocaleString() : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  iaUpdateNetTotal();
 }
 
-function iaRenderMonthRows(isBatch) {
-  const rows = isBatch ? iaState.batchRows : iaState.rows;
-  const container = document.getElementById(isBatch ? 'iaBatchMonthRows' : 'iaMonthRows');
-  const yearNow = new Date().getFullYear();
-  const years = [yearNow - 1, yearNow, yearNow + 1];
-
-  container.innerHTML = rows.map(r => `
-    <div class="ia-month-row" data-row-id="${r.id}">
-      <div class="ff-mini"><label>Year</label>
-        <select onchange="iaUpdateRow(${isBatch}, ${r.id}, 'year', this.value)">
-          ${years.map(y => `<option value="${y}" ${y === r.year ? 'selected' : ''}>${y}</option>`).join('')}
-        </select>
-      </div>
-      <div class="ff-mini"><label>Month</label>
-        <select onchange="iaUpdateRow(${isBatch}, ${r.id}, 'month', this.value)">
-          ${IA_MONTH_NAMES.map((m, i) => `<option value="${i + 1}" ${i + 1 === r.month ? 'selected' : ''}>${m}</option>`).join('')}
-        </select>
-      </div>
-      <div class="ff-mini"><label>Deduction (PKR)</label>
-        <input type="number" min="0" value="${r.deduction}" oninput="iaUpdateRow(${isBatch}, ${r.id}, 'deduction', this.value)">
-      </div>
-      <div class="ff-mini"><label>Due</label>
-        <div class="ia-due-badge">PKR ${(iaState.rate - (Number(r.deduction) || 0)).toLocaleString()}</div>
-      </div>
-      <button class="btn btn-outline-secondary btn-sm" onclick="iaRemoveMonthRow(${isBatch}, ${r.id})" title="Remove">
-        <i class="bi bi-x-lg"></i>
-      </button>
-    </div>
-  `).join('') || `<div style="color:var(--t3);font-size:.85rem;padding:8px 0">No months added yet.</div>`;
-
-  if (!isBatch) iaUpdateNetTotal();
-}
-
-function iaUpdateRow(isBatch, id, field, value) {
-  const rows = isBatch ? iaState.batchRows : iaState.rows;
-  const row = rows.find(r => r.id === id);
-  if (!row) return;
-  row[field] = (field === 'deduction' || field === 'year' || field === 'month') ? Number(value) : value;
-  iaRenderMonthRows(isBatch); // re-render so the Due badge updates live
+function iaToggleMonth(month, checked) {
+  if (checked) {
+    if (iaState.selected.size >= IA_MAX_SELECTED) {
+      showToast(`Maximum ${IA_MAX_SELECTED} months per bill.`, false);
+      iaRenderMonthsGrid(); // re-render to uncheck the box that triggered this
+      return;
+    }
+    iaState.selected.add(month);
+  } else {
+    iaState.selected.delete(month);
+  }
+  iaUpdateNetTotal();
+  document.getElementById('iaSubmitBtn').disabled = iaState.selected.size === 0;
 }
 
 function iaUpdateNetTotal() {
-  const total = iaState.rows.reduce((sum, r) => sum + (iaState.rate - (Number(r.deduction) || 0)), 0);
+  let total = 0;
+  iaState.selected.forEach(m => {
+    const row = iaState.months.find(x => x.month === m);
+    if (row) total += row.due;
+  });
   document.getElementById('iaNetTotalDisplay').textContent = 'PKR ' + total.toLocaleString();
 }
 
-// ─── Submit (My Bill) ───────────────────────────────────────────────
-async function iaSubmitClaim() {
-  if (!iaState.rows.length) { showToast('Add at least one month.', false); return; }
-  const claims = iaState.rows.map(r => ({ year: r.year, month: r.month, deduction: Number(r.deduction) || 0 }));
+// ─── Download (no submit step — data already set during Budget Prep) ─
+async function iaDownloadBill() {
+  if (!iaState.selected.size) { showToast('Select at least one prepared month.', false); return; }
+  if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
 
   const btn = document.getElementById('iaSubmitBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
   try {
-    const res = await apiCall('submitInspectionAllowanceClaim', { claims });
-    if (!res || !res.success) { showToast(res?.message || 'Failed to submit claim.', false); return; }
+    const claims = [...iaState.selected].sort((a, b) => a - b).map(m => {
+      const row = iaState.months.find(x => x.month === m);
+      return { year: iaState.year, month: m, allowance_rate: iaState.rate, deduction: row.deduction, due: row.due };
+    });
+    const netTotal = claims.reduce((s, c) => s + c.due, 0);
+    const bill = { user: iaState.profile, claims, net_total: netTotal };
 
-    const pdfBytes = await iaBuildBillPdfBytes(res.bill);
-    iaDownloadPdf(pdfBytes, `Inspection_Allowance_${res.bill.user.personal_no}_${Date.now()}.pdf`);
-    showToast('Bill generated and downloaded.', true);
-
-    iaState.rows = [];
-    document.getElementById('iaMonthRows').innerHTML = '';
-    iaAddMonthRow();
-    await iaLoadHistory();
+    const pdfBytes = await iaBuildBillPdfBytes(bill);
+    iaDownloadPdf(pdfBytes, `Inspection_Allowance_${iaState.profile.personal_no}_${iaState.year}_${Date.now()}.pdf`);
+    showToast('Bill downloaded.', true);
   } catch (err) {
     showToast('Error generating bill: ' + err.message, false);
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Submit &amp; Download Bill (PDF)';
+    btn.disabled = iaState.selected.size === 0;
+    btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)';
   }
-}
-
-// ─── History ────────────────────────────────────────────────────────
-async function iaLoadHistory() {
-  const body = document.getElementById('iaHistoryBody');
-  const res = await apiCall('getInspectionAllowanceHistory');
-  if (!res || !res.success) { body.innerHTML = `<div style="color:var(--bad);font-size:.85rem">${res?.message || 'Could not load history.'}</div>`; return; }
-  if (!res.data.length) { body.innerHTML = `<div style="color:var(--t3);font-size:.85rem;padding:8px 0">No claims yet.</div>`; return; }
-
-  body.innerHTML = `
-    <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-      <thead><tr style="text-align:left;border-bottom:2px solid var(--b0)">
-        <th style="padding:8px">Year</th><th style="padding:8px">Month</th>
-        <th style="padding:8px">Rate</th><th style="padding:8px">Deduction</th>
-        <th style="padding:8px">Due</th><th style="padding:8px">Claimed On</th>
-      </tr></thead>
-      <tbody>
-        ${res.data.map(r => `
-          <tr style="border-bottom:1px solid var(--s2)">
-            <td style="padding:8px">${r.year}</td>
-            <td style="padding:8px">${IA_MONTH_NAMES[r.month - 1]}</td>
-            <td style="padding:8px">${Number(r.allowance_rate).toLocaleString()}</td>
-            <td style="padding:8px">${Number(r.deduction).toLocaleString()}</td>
-            <td style="padding:8px;font-weight:600;color:#0d9488">${Number(r.due).toLocaleString()}</td>
-            <td style="padding:8px;color:var(--t3)">${new Date(r.created_at).toLocaleDateString()}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>`;
-}
-
-// ─── Admin: Batch Generate ──────────────────────────────────────────
-async function iaLoadBatchUsers() {
-  const box = document.getElementById('iaBatchUserList');
-  const res = await apiCall('listInspectionAllowanceUsers');
-  if (!res || !res.success) { box.innerHTML = `<div style="padding:16px;color:var(--bad)">${res?.message || 'Failed to load users.'}</div>`; return; }
-
-  iaState.batchUsers = res.data || [];
-  box.innerHTML = iaState.batchUsers.map(u => `
-    <label style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--s2);cursor:pointer">
-      <input type="checkbox" onchange="iaToggleBatchUser('${u.id}', this.checked)">
-      <div>
-        <div style="font-weight:600;font-size:.85rem">${u.name}</div>
-        <div style="font-size:.72rem;color:var(--t3)">${u.personal_no} · ${u.designation || ''} · ${u.tehsil || ''} (${u.wing || ''})</div>
-      </div>
-    </label>
-  `).join('') || `<div style="padding:16px;color:var(--t3)">No users found.</div>`;
-}
-
-function iaToggleBatchUser(id, checked) {
-  if (checked) iaState.batchSelected.add(id); else iaState.batchSelected.delete(id);
-}
-
-async function iaSubmitBatch() {
-  if (!iaState.batchSelected.size) { showToast('Select at least one employee.', false); return; }
-  if (!iaState.batchRows.length) { showToast('Add at least one month.', false); return; }
-
-  const claims = iaState.batchRows.map(r => ({ year: r.year, month: r.month, deduction: Number(r.deduction) || 0 }));
-  const btn = document.getElementById('iaBatchSubmitBtn');
-  btn.disabled = true;
-
-  const { PDFDocument } = PDFLib;
-  const mergedPdf = await PDFDocument.create();
-  let done = 0, failed = [];
-
-  for (const userId of iaState.batchSelected) {
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Generating ${++done}/${iaState.batchSelected.size}…`;
-    try {
-      const res = await apiCall('submitInspectionAllowanceClaim', { userId, claims });
-      if (!res || !res.success) { failed.push(res?.message || userId); continue; }
-      const bytes = await iaBuildBillPdfBytes(res.bill);
-      const singlePdf = await PDFDocument.load(bytes);
-      const copiedPages = await mergedPdf.copyPages(singlePdf, singlePdf.getPageIndices());
-      copiedPages.forEach(p => mergedPdf.addPage(p));
-    } catch (err) {
-      failed.push(err.message);
-    }
-  }
-
-  const mergedBytes = await mergedPdf.save();
-  iaDownloadPdf(mergedBytes, `Inspection_Allowance_Batch_${Date.now()}.pdf`);
-
-  btn.disabled = false;
-  btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Generate Bills for Selected Employees';
-
-  showToast(
-    failed.length ? `Generated with ${failed.length} failure(s). Check console for details.` : 'Batch bill generated and downloaded.',
-    !failed.length
-  );
-  if (failed.length) console.warn('Inspection Allowance batch failures:', failed);
 }
 
 // ─── PDF generation (3 pages: Adjustment Form / Bill F / Bill B) ────
