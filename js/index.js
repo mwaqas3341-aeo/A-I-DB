@@ -195,7 +195,7 @@ function enterApp(user) {
   document.getElementById('navAvatar').textContent      = user.name.substring(0, 2).toUpperCase();
   revealAuthGate('appWrapper');
 
-  if (String(user.role).toLowerCase() === 'admin')
+  if (String(user.role).toLowerCase() === 'admin' || (Array.isArray(user.tr_tehsils) && user.tr_tehsils.length))
     document.getElementById('navAdminBtn').style.display = 'block';
 
   loadKPIs();

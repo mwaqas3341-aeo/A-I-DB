@@ -34,7 +34,8 @@ const UH = {
   PAGE_NO:     'Page No',
   DDEO_CODE:   'DDEO Code',
   BPS_SCALE:   'BPS Scale',
-  DY_OFFICE:   'Dy Office Detail'   // read-only, DB-generated — never sent on save
+  DY_OFFICE:   'Dy Office Detail',  // read-only, DB-generated — never sent on save
+  RECEIVES_BUDGET_COPY: 'Receives Budget Copy',
 };
 const LA_COL = { LINK_NAME:0, LINK_URL:1, APP_NAME:2, APP_URL:3, APP_CATEGORY:4, LINK_CATEGORY:5 };
 
@@ -113,12 +114,14 @@ function switchAdminTab(tab, btn) {
   document.getElementById('adminPanelTools').style.display   = tab === 'tools'   ? 'block' : 'none';
   document.getElementById('adminPanelKpi').style.display     = tab === 'kpi'     ? 'block' : 'none';
   document.getElementById('adminPanelGeneral').style.display = tab === 'general' ? 'block' : 'none';
+  document.getElementById('adminPanelBudgetPrep').style.display = tab === 'budgetprep' ? 'block' : 'none';
   document.querySelectorAll('.admin-sub-tab').forEach(b => b.classList.remove('active-admin-tab'));
-  btn.classList.add('active-admin-tab');
+  if (btn) btn.classList.add('active-admin-tab');
   if (tab === 'links')   loadLinksAppsTable();
   if (tab === 'tools')   loadToolsTableAdmin();
   if (tab === 'kpi')     loadKpiCardsTable();
   if (tab === 'general') loadGeneralList('designation');
+  if (tab === 'budgetprep' && typeof bpInit === 'function') bpInit();
 }
 
 // ═══════════════════════════════════════════════
@@ -266,6 +269,20 @@ function confirmDeleteGeneralRow(kind, ri) {
 
 function openAdminModule() {
   switchGlobalTab('adminDataView', null);
+
+  const isFullAdmin = String(currentUser?.role).toLowerCase() === 'admin';
+  const isTrOnly = !isFullAdmin && Array.isArray(currentUser?.tr_tehsils) && currentUser.tr_tehsils.length > 0;
+
+  if (isTrOnly) {
+    // TR-only users get exactly one thing in the Admin Panel: Budget Preparation.
+    ['tabUsers', 'tabLinks', 'tabTools', 'tabKpi', 'tabGeneral'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    switchAdminTab('budgetprep', document.getElementById('tabBudgetPrep'));
+    return;
+  }
+
   document.getElementById('userTBody').innerHTML =
     '<tr><td colspan="10" style="padding:20px;text-align:center;color:var(--t3)">Loading users…</td></tr>';
   loadUsers();
@@ -691,7 +708,7 @@ function renderUserTable() {
   const show = [UH.PERSONAL_NO, UH.NAME, UH.CNIC, UH.CELL, UH.ROLE,
                 UH.DISTRICT, UH.TEHSIL, UH.WING, UH.MARKAZ,
                 UH.SCOPE_TYPE, UH.SCOPE_VALUE, UH.ACCESS_TYPE,
-                UH.PAGE_NO, UH.DDEO_CODE, UH.BPS_SCALE, UH.DY_OFFICE];
+                UH.PAGE_NO, UH.DDEO_CODE, UH.BPS_SCALE, UH.DY_OFFICE, UH.RECEIVES_BUDGET_COPY];
   const cols = show.filter(h => userHeaders.includes(h));
   document.getElementById('userTHead').innerHTML =
     `<tr><th style="min-width:90px">Actions</th>${cols.map(h => `<th>${h}</th>`).join('')}</tr>`;
@@ -789,6 +806,7 @@ function editUser(cnic) {
     setVal('u_page_no',     row[UH.PAGE_NO]      || '');
     setVal('u_ddeo_code',   row[UH.DDEO_CODE]    || '');
     setVal('u_bps_scale',   row[UH.BPS_SCALE]    || '');
+    document.getElementById('u_receives_budget_copy').checked = !!row[UH.RECEIVES_BUDGET_COPY];
     refreshDyOfficePreview();
     userModalInst.show();
   };
@@ -823,6 +841,7 @@ function clearUserForm() {
   });
   document.getElementById('scopeValueArea').innerHTML = '';
   document.getElementById('scopePreviewWrap').style.display = 'none';
+  document.getElementById('u_receives_budget_copy').checked = false;
   refreshDyOfficePreview();
 }
 
@@ -869,7 +888,8 @@ function submitUser() {
     [UH.ACCESS_TYPE]: document.getElementById('u_access_type').value.trim(),
     [UH.PAGE_NO]:     document.getElementById('u_page_no').value.trim(),
     [UH.DDEO_CODE]:   document.getElementById('u_ddeo_code').value.trim(),
-    [UH.BPS_SCALE]:   document.getElementById('u_bps_scale').value.trim() || null
+    [UH.BPS_SCALE]:   document.getElementById('u_bps_scale').value.trim() || null,
+    [UH.RECEIVES_BUDGET_COPY]: document.getElementById('u_receives_budget_copy').checked,
     // Dy Office Detail intentionally NOT sent — it's a Postgres GENERATED
     // column (wing + tehsil), writing to it would error the update.
   };

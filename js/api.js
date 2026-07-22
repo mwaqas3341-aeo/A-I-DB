@@ -78,6 +78,7 @@ const USER_COL_MAP = {
   ddeo_code:      'DDEO Code',
   bps_scale:      'BPS Scale',
   dy_office_detail: 'Dy Office Detail', // DB-generated (wing+tehsil) — display only, never written from saveUser
+  receives_budget_copy: 'Receives Budget Copy',
 };
 
 // Public school: Supabase column → display header.
@@ -444,6 +445,17 @@ async function apiCall(action, payload) {
         .eq('id', authData.user.id)
         .single();
 
+      // Tehsil Representative assignments — admins implicitly have TR
+      // authority everywhere, so they don't need explicit rows.
+      let trTehsils = [];
+      if (String(fullProfile.role).toLowerCase() === 'admin') {
+        const { data: allTehsils } = await _sb.from('app_users').select('tehsil').not('tehsil', 'is', null);
+        trTehsils = [...new Set((allTehsils || []).map(r => r.tehsil).filter(Boolean))];
+      } else {
+        const { data: trRows } = await _sb.from('tehsil_representatives').select('tehsil').eq('user_id', authData.user.id);
+        trTehsils = (trRows || []).map(r => r.tehsil);
+      }
+
       const userObj = {
         success:     true,
         id:          fullProfile.id,
@@ -469,6 +481,7 @@ async function apiCall(action, payload) {
         ddeo_code:      fullProfile.ddeo_code,
         bps_scale:      fullProfile.bps_scale,
         dy_office_detail: fullProfile.dy_office_detail,
+        tr_tehsils: trTehsils, // tehsils this user can prepare Inspection Allowance budgets for
       };
 
       localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(userObj));
@@ -1400,20 +1413,90 @@ async function apiCall(action, payload) {
       return { success: true, data: data || [] };
     }
 
-    case 'submitInspectionAllowanceClaim': {
-      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+    // ── BUDGET PREPARATION (Tehsil Representatives + Admins only) ──────
+    // Roster of AEOs in a tehsil, for the TR's prep grid.
+    case 'getTehsilRosterForBudget': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      const isAdmin = String(user.role).toLowerCase() === 'admin';
-      const targetUserId = (isAdmin && p.userId) ? p.userId : user.id;
-      const claims = Array.isArray(p.claims) ? p.claims : [];
-      if (!claims.length) return { success: false, message: 'Add at least one month before submitting.' };
+      const tehsil = (p.tehsil || '').trim();
+      if (!user || !tehsil) return { success: false, message: 'Missing tehsil.' };
+      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: tehsil });
+      if (!authOk) return { success: false, message: 'Not authorized for this tehsil.' };
 
-      const { data, error } = await _sb.rpc('submit_inspection_allowance_claim', {
-        p_user_id: targetUserId,
-        p_claims: claims,
+      const { data, error } = await _sb.from('app_users')
+        .select('id, personal_no, name, wing, tehsil, markaz_name, designation, ddeo_code')
+        .eq('tehsil', tehsil).order('name');
+      if (error) return { success: false, message: error.message };
+      return { success: true, data: data || [] };
+    }
+
+    // Existing deductions already on file for a tehsil+year (to pre-fill the grid)
+    // and which months are already marked prepared (for the status strip).
+    case 'getBudgetPrepStatus': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const tehsil = (p.tehsil || '').trim();
+      const year = Number(p.year);
+      if (!user || !tehsil || !year) return { success: false, message: 'Missing tehsil/year.' };
+
+      const { data: preps, error: prepErr } = await _sb.from('budget_preparations')
+        .select('month, prepared_by_name, prepared_at, updated_at, pdf_sent_at, send_error')
+        .eq('tehsil', tehsil).eq('year', year);
+      if (prepErr) return { success: false, message: prepErr.message };
+
+      const { data: users } = await _sb.from('app_users').select('id').eq('tehsil', tehsil);
+      const userIds = (users || []).map(u => u.id);
+      let deductions = [];
+      if (userIds.length) {
+        const { data: dedRows, error: dedErr } = await _sb.from('inspection_allowance_deductions')
+          .select('user_id, month, deduction, due').eq('year', year).in('user_id', userIds);
+        if (dedErr) return { success: false, message: dedErr.message };
+        deductions = dedRows || [];
+      }
+      return { success: true, preparedMonths: preps || [], deductions };
+    }
+
+    case 'prepareTehsilBudget': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const { tehsil, year, month, entries } = p;
+      if (!user || !tehsil || !year || !month || !Array.isArray(entries) || !entries.length) {
+        return { success: false, message: 'Missing tehsil, year, month, or entries.' };
+      }
+      const { data, error } = await _sb.rpc('prepare_tehsil_budget', {
+        p_tehsil: tehsil, p_year: year, p_month: month, p_entries: entries,
       });
       if (error) return { success: false, message: error.message };
-      return { success: true, bill: data };
+
+      // Fetch the id of the (now upserted) budget_preparations row so the
+      // frontend can hand it to the send-budget-pdf edge function.
+      const { data: prepRow } = await _sb.from('budget_preparations')
+        .select('id').eq('tehsil', tehsil).eq('year', year).eq('month', month).single();
+
+      return { success: true, bill: data, prepId: prepRow?.id || null };
+    }
+
+    // Admin-only: manage which users hold Tehsil Representative authority.
+    case 'listTehsilReps': {
+      if (!user || String(user.role).toLowerCase() !== 'admin') return { success: false, message: 'Admin access required.' };
+      const { data, error } = await _sb.from('tehsil_representatives')
+        .select('id, user_id, tehsil, assigned_at, app_users(name, personal_no)').order('tehsil');
+      if (error) return { success: false, message: error.message };
+      return { success: true, data: data || [] };
+    }
+
+    case 'addTehsilRep': {
+      if (!user || String(user.role).toLowerCase() !== 'admin') return { success: false, message: 'Admin access required.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const { error } = await _sb.from('tehsil_representatives')
+        .insert([{ user_id: p.userId, tehsil: p.tehsil, assigned_by: user.id }]);
+      if (error) return { success: false, message: error.message };
+      return { success: true };
+    }
+
+    case 'removeTehsilRep': {
+      if (!user || String(user.role).toLowerCase() !== 'admin') return { success: false, message: 'Admin access required.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const { error } = await _sb.from('tehsil_representatives').delete().eq('id', p.id);
+      if (error) return { success: false, message: error.message };
+      return { success: true };
     }
 
     // Admin-only: lightweight roster for the batch-generate picker
