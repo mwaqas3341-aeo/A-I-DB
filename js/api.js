@@ -74,6 +74,10 @@ const USER_COL_MAP = {
   scope_value:  'Scope Value',
   access_type:  'Access Type',
   email:        'Email',
+  page_no:        'Page No',
+  ddeo_code:      'DDEO Code',
+  bps_scale:      'BPS Scale',
+  dy_office_detail: 'Dy Office Detail', // DB-generated (wing+tehsil) — display only, never written from saveUser
 };
 
 // Public school: Supabase column → display header.
@@ -1374,6 +1378,7 @@ async function apiCall(action, payload) {
         if (h === 'Password') continue;  // never write plaintext passwords to app_users
         if (h === '_id') continue;       // internal field, not a real column
         const col = reverseMap[h] || h;
+        if (col === 'dy_office_detail') continue; // Postgres GENERATED column (wing+tehsil) — read-only
         dbRow[col] = v;
       }
       const newPassword = p['Password'] || '';

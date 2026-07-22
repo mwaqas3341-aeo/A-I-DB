@@ -30,7 +30,11 @@ const UH = {
   SCOPE_TYPE:  'Scope Type',
   SCOPE_VALUE: 'Scope Value',
   ACCESS_TYPE: 'Access Type',
-  EMAIL:       'Email'
+  EMAIL:       'Email',
+  PAGE_NO:     'Page No',
+  DDEO_CODE:   'DDEO Code',
+  BPS_SCALE:   'BPS Scale',
+  DY_OFFICE:   'Dy Office Detail'   // read-only, DB-generated — never sent on save
 };
 const LA_COL = { LINK_NAME:0, LINK_URL:1, APP_NAME:2, APP_URL:3, APP_CATEGORY:4, LINK_CATEGORY:5 };
 
@@ -686,7 +690,8 @@ function renderUserTable() {
   }
   const show = [UH.PERSONAL_NO, UH.NAME, UH.CNIC, UH.CELL, UH.ROLE,
                 UH.DISTRICT, UH.TEHSIL, UH.WING, UH.MARKAZ,
-                UH.SCOPE_TYPE, UH.SCOPE_VALUE, UH.ACCESS_TYPE];
+                UH.SCOPE_TYPE, UH.SCOPE_VALUE, UH.ACCESS_TYPE,
+                UH.PAGE_NO, UH.DDEO_CODE, UH.BPS_SCALE, UH.DY_OFFICE];
   const cols = show.filter(h => userHeaders.includes(h));
   document.getElementById('userTHead').innerHTML =
     `<tr><th style="min-width:90px">Actions</th>${cols.map(h => `<th>${h}</th>`).join('')}</tr>`;
@@ -781,6 +786,10 @@ function editUser(cnic) {
     setVal('u_designation_ur', row[UH.DESIGNATION_UR] || '');
     setVal('u_scope_type',  row[UH.SCOPE_TYPE]   || 'Markaz');
     renderScopeValueUI(row[UH.SCOPE_VALUE] || '');
+    setVal('u_page_no',     row[UH.PAGE_NO]      || '');
+    setVal('u_ddeo_code',   row[UH.DDEO_CODE]    || '');
+    setVal('u_bps_scale',   row[UH.BPS_SCALE]    || '');
+    refreshDyOfficePreview();
     userModalInst.show();
   };
   if (!jLoaded) showToast('Loading jurisdiction data…', true);
@@ -789,14 +798,32 @@ function editUser(cnic) {
 
 function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
 
+// Mirrors the Postgres GENERATED column on app_users.dy_office_detail
+// ('DDEO (' || wing || ') ' || tehsil) so the admin sees the exact value
+// that will be saved, before it's saved. Purely visual — never submitted.
+function refreshDyOfficePreview() {
+  const el = document.getElementById('u_dy_office_preview');
+  if (!el) return;
+  const wing = document.getElementById('u_wing').value.trim();
+  const tehsil = document.getElementById('u_tehsil').value.trim();
+  if (!wing || !tehsil) {
+    el.textContent = 'Select Wing & Tehsil above';
+    el.style.color = 'var(--t2)';
+    return;
+  }
+  el.textContent = `DDEO (${wing}) ${tehsil}`;
+  el.style.color = 'var(--brand)';
+}
+
 function clearUserForm() {
-  ['u_row_index','u_personal_no','u_name','u_cell','u_cnic','u_email','u_password','u_markaz_ur','u_designation_ur'].forEach(id => setVal(id, ''));
+  ['u_row_index','u_personal_no','u_name','u_cell','u_cnic','u_email','u_password','u_markaz_ur','u_designation_ur','u_page_no','u_ddeo_code','u_bps_scale'].forEach(id => setVal(id, ''));
   ['u_role','u_district','u_wing','u_tehsil','u_markaz','u_access_type','u_scope_type'].forEach(id => {
     const el = document.getElementById(id);
     if (el && el.options && el.options.length) el.value = el.options[0].value;
   });
   document.getElementById('scopeValueArea').innerHTML = '';
   document.getElementById('scopePreviewWrap').style.display = 'none';
+  refreshDyOfficePreview();
 }
 
 function submitUser() {
@@ -839,7 +866,12 @@ function submitUser() {
     [UH.TEHSIL]:      document.getElementById('u_tehsil').value.trim(),
     [UH.SCOPE_TYPE]:  document.getElementById('u_scope_type').value.trim(),
     [UH.SCOPE_VALUE]: scopeH ? scopeH.value.trim() : '',
-    [UH.ACCESS_TYPE]: document.getElementById('u_access_type').value.trim()
+    [UH.ACCESS_TYPE]: document.getElementById('u_access_type').value.trim(),
+    [UH.PAGE_NO]:     document.getElementById('u_page_no').value.trim(),
+    [UH.DDEO_CODE]:   document.getElementById('u_ddeo_code').value.trim(),
+    [UH.BPS_SCALE]:   document.getElementById('u_bps_scale').value.trim() || null
+    // Dy Office Detail intentionally NOT sent — it's a Postgres GENERATED
+    // column (wing + tehsil), writing to it would error the update.
   };
 
   const editedUserId = document.getElementById('u_row_index').value.trim();
