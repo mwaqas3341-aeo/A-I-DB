@@ -465,6 +465,10 @@ async function apiCall(action, payload) {
         scope_value: fullProfile.scope_value,
         access_type: fullProfile.access_type,
         email_was_generated: fullProfile.email_was_generated,
+        page_no:        fullProfile.page_no,
+        ddeo_code:      fullProfile.ddeo_code,
+        bps_scale:      fullProfile.bps_scale,
+        dy_office_detail: fullProfile.dy_office_detail,
       };
 
       localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(userObj));
@@ -1317,6 +1321,10 @@ async function apiCall(action, payload) {
         markaz_name: data.markaz_name,
         markaz_name_ur: data.markaz_name_ur,
         designation_ur: data.designation_ur,
+        page_no:        data.page_no,
+        ddeo_code:      data.ddeo_code,
+        bps_scale:      data.bps_scale,
+        dy_office_detail: data.dy_office_detail,
       };
     }
 
@@ -1368,6 +1376,57 @@ async function apiCall(action, payload) {
           ? 'Profile updated. Your CNIC changed — use the new CNIC next time you log in.'
           : 'Profile updated successfully.',
       };
+    }
+
+    // ── INSPECTION ALLOWANCE BILL PREP ──────────────────────────────────
+    case 'getInspectionAllowanceRate': {
+      const { data, error } = await _sb.from('inspection_allowance_settings').select('allowance_rate').eq('id', 1).single();
+      if (error) return { success: false, message: error.message };
+      return { success: true, rate: Number(data.allowance_rate) };
+    }
+
+    case 'getInspectionAllowanceHistory': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const isAdmin = String(user.role).toLowerCase() === 'admin';
+      const targetUserId = (isAdmin && p.userId) ? p.userId : user.id;
+      const { data, error } = await _sb
+        .from('inspection_allowance_deductions')
+        .select('year, month, allowance_rate, deduction, due, created_at')
+        .eq('user_id', targetUserId)
+        .order('year', { ascending: false })
+        .order('month', { ascending: false });
+      if (error) return { success: false, message: error.message };
+      return { success: true, data: data || [] };
+    }
+
+    case 'submitInspectionAllowanceClaim': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const isAdmin = String(user.role).toLowerCase() === 'admin';
+      const targetUserId = (isAdmin && p.userId) ? p.userId : user.id;
+      const claims = Array.isArray(p.claims) ? p.claims : [];
+      if (!claims.length) return { success: false, message: 'Add at least one month before submitting.' };
+
+      const { data, error } = await _sb.rpc('submit_inspection_allowance_claim', {
+        p_user_id: targetUserId,
+        p_claims: claims,
+      });
+      if (error) return { success: false, message: error.message };
+      return { success: true, bill: data };
+    }
+
+    // Admin-only: lightweight roster for the batch-generate picker
+    case 'listInspectionAllowanceUsers': {
+      if (!user || String(user.role).toLowerCase() !== 'admin') {
+        return { success: false, message: 'Admin access required.' };
+      }
+      const { data, error } = await _sb
+        .from('app_users')
+        .select('id, personal_no, name, wing, tehsil, markaz_name, designation')
+        .order('name');
+      if (error) return { success: false, message: error.message };
+      return { success: true, data: data || [] };
     }
 
     case 'saveUser': {
