@@ -245,15 +245,15 @@ async function bpGenerateCumulative(monthBills) {
     });
   });
 
-  const period = bpState.selectedMonths.map(m => BP_MONTH_NAMES[m - 1]).join(', ') + ' ' + bpState.year;
-  const pdfBase64 = await bpBuildBudgetPdfBase64({
-    period,
+  const periodMonths = bpState.selectedMonths.map(m => BP_MONTH_NAMES[m - 1]);
+  const pdfBase64 = await bpBuildBudgetLetterBase64({
+    periodMonths,
     entries: Object.entries(totals).map(([userId, t]) => ({ user_id: userId, personal_no: t.personal_no, name: t.name, due: t.due })),
   });
   bpDownloadPdf(pdfBase64, `Budget_${bpState.tehsil}_${bpState.year}_Cumulative.pdf`);
 
   const lastRes = Object.values(monthBills)[Object.values(monthBills).length - 1];
-  await bpSendPdf(lastRes, pdfBase64, period);
+  await bpSendPdf(lastRes, pdfBase64, periodMonths.join(', ') + ' ' + bpState.year);
 }
 
 async function bpGenerateSeparate(monthBills) {
@@ -261,13 +261,13 @@ async function bpGenerateSeparate(monthBills) {
   for (const month of bpState.selectedMonths) {
     const res = monthBills[month];
     btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Building ${BP_MONTH_NAMES[month - 1]} PDF…`;
-    const period = `${BP_MONTH_NAMES[month - 1]} ${bpState.year}`;
-    const pdfBase64 = await bpBuildBudgetPdfBase64({
-      period,
+    const periodLabel = `${BP_MONTH_NAMES[month - 1]} ${bpState.year}`;
+    const pdfBase64 = await bpBuildBudgetLetterBase64({
+      periodMonths: [BP_MONTH_NAMES[month - 1]],
       entries: (res.bill.entries || []).map(e => ({ user_id: e.user_id, personal_no: e.personal_no, name: e.name, due: e.due })),
     });
-    bpDownloadPdf(pdfBase64, `Budget_${bpState.tehsil}_${period.replace(' ', '_')}.pdf`);
-    await bpSendPdf(res, pdfBase64, period);
+    bpDownloadPdf(pdfBase64, `Budget_${bpState.tehsil}_${periodLabel.replace(' ', '_')}.pdf`);
+    await bpSendPdf(res, pdfBase64, periodLabel);
     await new Promise(r => setTimeout(r, 400)); // stagger downloads so the browser doesn't block them
   }
 }
@@ -304,13 +304,42 @@ function bpDownloadPdf(base64, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-// Budget summary PDF — mirrors the old Google Doc template:
-// Sr.No | Personal No. | Name | Markaz | Tehsil | DDO | Amount, + total row.
-// `opts.entries` items need: personal_no, name, due (already summed if cumulative).
-async function bpBuildBudgetPdfBase64(opts) {
+// ─── Wing-derived wording (drives recipient title, table's "Tehsil" cell,
+// and the signature block) ────────────────────────────────────────────
+function bpWingInfo(wing) {
+  const isFemale = wing === 'W-EE';
+  return {
+    code: wing || 'M-EE',                          // "M-EE" / "W-EE" — used verbatim in DEO recipient line
+    letter: isFemale ? 'W' : 'M',                   // used in table's "Dy. DEO (M) Karor" style cell
+    word: isFemale ? 'Female' : 'Male',             // Title Case — used in body paragraph
+    wordUpper: isFemale ? 'FEMALE' : 'MALE',        // ALL CAPS — used in signature block
+  };
+}
+
+function bpFormatDdo(code) {
+  if (!code) return '';
+  return code.replace(/^([A-Za-z]+)-?(\d+)$/, '$1-$2'); // "LL6013" -> "LL-6013"; leaves "LL-6013" unchanged
+}
+
+// ─── The actual government letter (matches the real sample PDFs) ────
+async function bpBuildBudgetLetterBase64(opts) {
   const target = document.getElementById('bpPdfRenderTarget');
   const total = opts.entries.reduce((s, e) => s + Number(e.due), 0);
   const rosterById = Object.fromEntries(bpState.roster.map(u => [u.id, u]));
+  const wing = bpState.roster[0]?.wing || 'M-EE';
+  const w = bpWingInfo(wing);
+  const recipient = document.getElementById('bp_recipient').value; // 'DEO' | 'CEO'
+
+  const monthPhraseUpper = opts.periodMonths.length === 1
+    ? `MONTH OF ${opts.periodMonths[0].toUpperCase()} ${bpState.year}`
+    : `MONTHS OF ${opts.periodMonths.map(m => m.toUpperCase()).join(', ')} ${bpState.year}`;
+  const monthPhraseTitle = opts.periodMonths.length === 1
+    ? `Month of ${opts.periodMonths[0]} ${bpState.year}`
+    : `Months of ${opts.periodMonths.join(', ')} ${bpState.year}`;
+
+  const recipientLine = recipient === 'CEO'
+    ? 'The Chief Executive Officer (DEA)'
+    : `The District Education Officer (${w.code})`;
 
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
@@ -319,47 +348,106 @@ async function bpBuildBudgetPdfBase64(opts) {
       <td style="padding:5px 8px;border:1px solid #999">${e.personal_no}</td>
       <td style="padding:5px 8px;border:1px solid #999">${e.name}</td>
       <td style="padding:5px 8px;border:1px solid #999">${u.markaz_name || ''}</td>
-      <td style="padding:5px 8px;border:1px solid #999">${bpState.tehsil}</td>
-      <td style="padding:5px 8px;border:1px solid #999">${u.ddeo_code || ''}</td>
+      <td style="padding:5px 8px;border:1px solid #999">Dy. DEO (${w.letter}) ${bpState.tehsil}</td>
+      <td style="padding:5px 8px;border:1px solid #999">${bpFormatDdo(u.ddeo_code)}</td>
       <td style="padding:5px 8px;border:1px solid #999;text-align:right">${Number(e.due).toLocaleString()}</td>
     </tr>`;
   }).join('');
 
+  // Signature block — Deputy DEO always; District DEO also, only when CEO is the recipient.
+  const signatureHtml = recipient === 'CEO'
+    ? `<table style="width:100%;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
+         <tr>
+           <td style="width:50%;text-align:center">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</td>
+           <td style="width:50%;text-align:center">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</td>
+         </tr>
+       </table>`
+    : `<div style="text-align:center;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
+         DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
+       </div>`;
+
   target.innerHTML = `
-    <div style="width:794px;min-height:1123px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box">
-      <div style="text-align:center;font-size:12px;letter-spacing:.04em">GOVERNMENT OF THE PUNJAB</div>
-      <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:4px">Inspection Allowance Budget</div>
-      <div style="text-align:center;font-size:12px;margin-bottom:18px">${bpState.tehsil} — ${opts.period}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+    <div style="width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box">
+      <table style="width:100%;margin-bottom:18px"><tr>
+        <td style="width:90px;vertical-align:top"><img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px"></td>
+        <td style="vertical-align:top;text-align:right;font-size:12px;line-height:2">
+          No.:____________________<br>Dated: _______________
+        </td>
+      </tr></table>
+
+      <div style="font-size:13px;line-height:1.6">
+        <b>To</b><br>
+        <b>${recipientLine}</b><br>
+        <b>Layyah</b>
+      </div>
+
+      <p style="font-size:12.5px;font-weight:700;text-decoration:underline;margin:16px 0;line-height:1.6">
+        SUBJECT: GRANT OF INSPECTION ALLOWANCE @ RS. ${bpState.rate.toLocaleString()} PER MONTH FOR THE
+        ${monthPhraseUpper} OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
+      </p>
+
+      <p style="font-size:12.5px;line-height:1.7;text-align:justify;margin:14px 0">
+        Kindly refer to the subject cited above It is certified that performance of following Assistant Education
+        Officers, Tehsil ${bpState.tehsil} (${w.word}) have achieved verifiable key performance indicators developed
+        by DFID as issued vide Notification No. SO (SE-III) 5-226/2017 dated 03-08-2020.
+      </p>
+
+      <p style="font-size:12.5px;line-height:1.7;text-align:justify;margin:14px 0 18px">
+        The performance of following AEOs has been verified for the ${monthPhraseTitle}. They are entitled to draw
+        the following amount mentioned against their names.
+      </p>
+
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
         <thead><tr style="background:#f2f2f2">
-          <th style="padding:6px 8px;border:1px solid #999">Sr.No</th>
-          <th style="padding:6px 8px;border:1px solid #999">Personal No.</th>
+          <th style="padding:6px 8px;border:1px solid #999">Sr.<br>No.</th>
+          <th style="padding:6px 8px;border:1px solid #999">Personal<br>Number</th>
           <th style="padding:6px 8px;border:1px solid #999">Name</th>
-          <th style="padding:6px 8px;border:1px solid #999">Markaz</th>
+          <th style="padding:6px 8px;border:1px solid #999">Markaz name</th>
           <th style="padding:6px 8px;border:1px solid #999">Tehsil</th>
-          <th style="padding:6px 8px;border:1px solid #999">DDO</th>
+          <th style="padding:6px 8px;border:1px solid #999">DDO<br>Code</th>
           <th style="padding:6px 8px;border:1px solid #999">Amount</th>
         </tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr>
-          <td colspan="6" style="padding:6px 8px;border:1px solid #999;font-weight:700;text-align:right">Total</td>
-          <td style="padding:6px 8px;border:1px solid #999;font-weight:700;text-align:right">${total.toLocaleString()}</td>
-        </tr></tfoot>
       </table>
-      <p style="font-size:11px;margin-top:24px">Prepared by: ${currentUser.name} — ${new Date().toLocaleString()}</p>
+
+      ${signatureHtml}
     </div>`;
 
-  await new Promise(r => setTimeout(r, 120));
-  const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+  await new Promise(r => setTimeout(r, 150));
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'pt', 'a4');
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imgData = canvas.toDataURL('image/jpeg', 0.92);
-  const ratio = pageWidth / canvas.width;
-  pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(canvas.height * ratio, pageHeight));
+  await bpRenderTargetIntoPdf(pdf, target);
   target.innerHTML = '';
 
   const dataUri = pdf.output('datauristring');
   return dataUri.split(',')[1];
 }
+
+// Renders the (potentially tall) off-screen target into one or more A4
+// pages, slicing the captured canvas by page height rather than
+// clipping — needed because rosters can run to 18+ rows.
+async function bpRenderTargetIntoPdf(pdf, target) {
+  const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const ratio = pageWidth / canvas.width;
+  const pageHeightPx = Math.floor(pageHeight / ratio);
+
+  let renderedPx = 0;
+  let firstPage = true;
+  while (renderedPx < canvas.height) {
+    const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceHeightPx;
+    sliceCanvas.getContext('2d').drawImage(
+      canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx
+    );
+    const imgData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+    if (!firstPage) pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, sliceHeightPx * ratio);
+    renderedPx += sliceHeightPx;
+    firstPage = false;
+  }
+}
+
