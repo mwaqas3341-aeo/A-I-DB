@@ -17,7 +17,8 @@ let bpState = {
   rate: 25000,
   tehsil: '',
   year: new Date().getFullYear(),
-  roster: [],            // [{id, personal_no, name, wing, markaz_name, designation, ddeo_code}]
+  roster: [],            // [{id, personal_no, name, wing, markaz_name, designation, ddeo_code}] — filtered to selected wing
+  tehsilRoster: [],      // full tehsil fetch (both wings), before wing filtering
   selectedMonths: [],    // month numbers, up to 4
   deductionsByUser: {},  // { userId: { [month]: {deduction, due} } } — existing, from DB
   preparedMonths: {},    // { month: {prepared_by_name, prepared_at, pdf_sent_at, send_error} }
@@ -101,7 +102,16 @@ async function bpLoadRoster() {
   ]);
 
   if (!rosterRes || !rosterRes.success) { wrap.innerHTML = `<div style="padding:20px;color:var(--bad)">${rosterRes?.message || 'Failed to load roster.'}</div>`; return; }
-  bpState.roster = rosterRes.data || [];
+  bpState.tehsilRoster = rosterRes.data || [];
+
+  // A tehsil can have both M-EE and W-EE AEOs (e.g. Karor) — they're
+  // administratively separate (different DDO/DEO), so budgets must be
+  // prepared per wing, never mixed.
+  const wings = [...new Set(bpState.tehsilRoster.map(u => u.wing).filter(Boolean))].sort();
+  const wingSel = document.getElementById('bp_wing');
+  const prevWing = wingSel.value;
+  wingSel.innerHTML = wings.map(w => `<option value="${w}">${w}</option>`).join('') || `<option value="">—</option>`;
+  wingSel.value = wings.includes(prevWing) ? prevWing : (wings[0] || '');
 
   bpState.deductionsByUser = {};
   bpState.preparedMonths = {};
@@ -114,6 +124,15 @@ async function bpLoadRoster() {
   }
 
   bpRenderMonthStatusStrip();
+  bpApplyWingFilter();
+}
+
+// Filters the fetched tehsil roster down to the selected wing only —
+// Male and Female AEOs in the same tehsil must never appear on the same
+// budget grid or letter.
+function bpApplyWingFilter() {
+  const wing = document.getElementById('bp_wing').value;
+  bpState.roster = (bpState.tehsilRoster || []).filter(u => u.wing === wing);
   bpRenderRoster();
 }
 
@@ -414,7 +433,7 @@ function bpBuildLetterHtml(opts) {
 
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
-    return `<tr>
+    return `<tr data-bp-row="1">
       <td style="${TDC};text-align:center">${i + 1}</td>
       <td style="${TDC}">${e.personal_no}</td>
       <td style="${TDC}">${e.name}</td>
@@ -429,32 +448,30 @@ function bpBuildLetterHtml(opts) {
   // right; when CEO is the recipient, Deputy goes left and District DEO
   // goes right (two stamps).
   const signatureHtml = recipient === 'CEO'
-    ? `<table style="width:100%;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
-         <tr>
-           <td style="width:50%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</td>
-           <td style="width:50%;text-align:right">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</td>
-         </tr>
-       </table>`
-    : `<div style="text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
+    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
+         <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
+         <div style="width:48%;text-align:right">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</div>
+       </div>`
+    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
          DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
        </div>`;
 
   return `
-    <div style="width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff">
-      <table style="width:100%;margin-bottom:18px"><tr>
-        <td style="width:90px;vertical-align:top;text-align:left"><img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px"></td>
-        <td style="vertical-align:top;text-align:right;font-size:12px;line-height:2">
+    <div dir="ltr" style="direction:ltr !important;width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff;text-align:left">
+      <div style="direction:ltr !important;display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+        <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px;order:1">
+        <div style="text-align:right;font-size:12px;line-height:2;order:2">
           No.:____________________<br>Dated: _______________
-        </td>
-      </tr></table>
+        </div>
+      </div>
 
-      <div style="font-size:13px;line-height:1.6">
+      <div style="font-size:13px;line-height:1.6;text-align:left">
         <b>To</b><br>
         <b>${recipientLine}</b><br>
         <b>Layyah</b>
       </div>
 
-      <p style="font-size:12.5px;font-weight:700;text-decoration:underline;margin:16px 0;line-height:1.6">
+      <p style="font-size:12.5px;font-weight:700;text-decoration:underline;margin:16px 0;line-height:1.6;text-align:left">
         SUBJECT: GRANT OF INSPECTION ALLOWANCE @ RS. ${bpState.rate.toLocaleString()} PER MONTH FOR THE
         ${monthPhraseUpper} OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
       </p>
@@ -470,7 +487,7 @@ function bpBuildLetterHtml(opts) {
         the following amount mentioned against their names.
       </p>
 
-      <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
+      <table dir="ltr" style="direction:ltr !important;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
         <colgroup>${COLW.map(w => `<col style="width:${w}%">`).join('')}</colgroup>
         <thead><tr>
           <th style="${THC}">Sr.<br>No.</th>
@@ -508,21 +525,40 @@ async function bpRenderHtmlToPdfBase64(html) {
 // pages, slicing the captured canvas by page height rather than
 // clipping — needed because rosters can run to 18+ rows.
 async function bpRenderTargetIntoPdf(pdf, target) {
-  const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+  const scale = 2;
+
+  // Capture row boundaries (in un-scaled CSS px, relative to target's top)
+  // BEFORE rasterizing — these are our only safe places to cut a page,
+  // so a row is never split in half across a page break.
+  const targetTop = target.getBoundingClientRect().top;
+  const rowBoundaries = [...target.querySelectorAll('[data-bp-row]')]
+    .map(r => r.getBoundingClientRect().bottom - targetTop);
+  const totalCssHeight = target.scrollHeight;
+
+  const canvas = await html2canvas(target, { scale, useCORS: true, backgroundColor: '#ffffff' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const ratio = pageWidth / canvas.width;
-  const pageHeightPx = Math.floor(pageHeight / ratio);
+  const ratio = pageWidth / canvas.width;          // pt per canvas-px
+  const pageHeightCanvasPx = pageHeight / ratio;    // how many canvas-px fit one page
 
-  let renderedPx = 0;
+  let renderedPx = 0; // in canvas px
   let firstPage = true;
-  while (renderedPx < canvas.height) {
-    const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+  while (renderedPx < canvas.height - 1) {
+    let cutPx = Math.min(renderedPx + pageHeightCanvasPx, canvas.height);
+
+    if (rowBoundaries.length && cutPx < canvas.height) {
+      // Prefer the largest row-boundary that still fits within this page.
+      const cutCssPx = cutPx / scale;
+      const safeCuts = rowBoundaries.filter(b => b > (renderedPx / scale) + 2 && b <= cutCssPx);
+      if (safeCuts.length) cutPx = safeCuts[safeCuts.length - 1] * scale;
+    }
+
+    const sliceHeightPx = Math.round(cutPx - renderedPx);
     const sliceCanvas = document.createElement('canvas');
     sliceCanvas.width = canvas.width;
     sliceCanvas.height = sliceHeightPx;
     sliceCanvas.getContext('2d').drawImage(
-      canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx
+      canvas, 0, Math.round(renderedPx), canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx
     );
     const imgData = sliceCanvas.toDataURL('image/jpeg', 0.92);
     if (!firstPage) pdf.addPage();
@@ -531,3 +567,4 @@ async function bpRenderTargetIntoPdf(pdf, target) {
     firstPage = false;
   }
 }
+
