@@ -402,35 +402,47 @@ function bpBuildLetterHtml(opts) {
     ? 'The Chief Executive Officer (DEA)'
     : `The District Education Officer (${w.code})`;
 
+  // Explicit cell style strings — !important overrides this app's own global
+  // `thead th{background:var(--ink)...white-space:nowrap}` / `tbody td{white-space:nowrap}`
+  // rules, which otherwise leak into this off-screen render (same document).
+  const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle;position:static !important;text-align:center';
+  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle';
+  // Column widths sum to 100% — table-layout:fixed means the table can never
+  // grow past its container no matter how long a tehsil/markaz name is; text
+  // wraps within the cell instead.
+  const COLW = [5, 11, 16, 15, 24, 11, 18]; // Sr/Personal/Name/Markaz/Tehsil/DDO/Amount
+
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
     return `<tr>
-      <td style="padding:5px 8px;border:1px solid #999;text-align:center">${i + 1}</td>
-      <td style="padding:5px 8px;border:1px solid #999">${e.personal_no}</td>
-      <td style="padding:5px 8px;border:1px solid #999">${e.name}</td>
-      <td style="padding:5px 8px;border:1px solid #999">${u.markaz_name || ''}</td>
-      <td style="padding:5px 8px;border:1px solid #999">Dy. DEO (${w.letter}) ${bpState.tehsil}</td>
-      <td style="padding:5px 8px;border:1px solid #999">${bpFormatDdo(u.ddeo_code)}</td>
-      <td style="padding:5px 8px;border:1px solid #999;text-align:right">${Number(e.due).toLocaleString()}</td>
+      <td style="${TDC};text-align:center">${i + 1}</td>
+      <td style="${TDC}">${e.personal_no}</td>
+      <td style="${TDC}">${e.name}</td>
+      <td style="${TDC}">${u.markaz_name || ''}</td>
+      <td style="${TDC}">Dy. DEO (${w.letter}) ${bpState.tehsil}</td>
+      <td style="${TDC}">${bpFormatDdo(u.ddeo_code)}</td>
+      <td style="${TDC};text-align:right">${Number(e.due).toLocaleString()}</td>
     </tr>`;
   }).join('');
 
-  // Signature block — Deputy DEO always; District DEO also, only when CEO is the recipient.
+  // Signature/stamp block — Deputy DEO always. Single stamp sits on the
+  // right; when CEO is the recipient, Deputy goes left and District DEO
+  // goes right (two stamps).
   const signatureHtml = recipient === 'CEO'
     ? `<table style="width:100%;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
          <tr>
-           <td style="width:50%;text-align:center">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</td>
-           <td style="width:50%;text-align:center">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</td>
+           <td style="width:50%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</td>
+           <td style="width:50%;text-align:right">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</td>
          </tr>
        </table>`
-    : `<div style="text-align:center;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
+    : `<div style="text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
          DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
        </div>`;
 
   return `
     <div style="width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff">
       <table style="width:100%;margin-bottom:18px"><tr>
-        <td style="width:90px;vertical-align:top"><img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px"></td>
+        <td style="width:90px;vertical-align:top;text-align:left"><img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px"></td>
         <td style="vertical-align:top;text-align:right;font-size:12px;line-height:2">
           No.:____________________<br>Dated: _______________
         </td>
@@ -458,15 +470,16 @@ function bpBuildLetterHtml(opts) {
         the following amount mentioned against their names.
       </p>
 
-      <table style="width:100%;border-collapse:collapse;font-size:11px">
-        <thead><tr style="background:#f2f2f2">
-          <th style="padding:6px 8px;border:1px solid #999">Sr.<br>No.</th>
-          <th style="padding:6px 8px;border:1px solid #999">Personal<br>Number</th>
-          <th style="padding:6px 8px;border:1px solid #999">Name</th>
-          <th style="padding:6px 8px;border:1px solid #999">Markaz name</th>
-          <th style="padding:6px 8px;border:1px solid #999">Tehsil</th>
-          <th style="padding:6px 8px;border:1px solid #999">DDO<br>Code</th>
-          <th style="padding:6px 8px;border:1px solid #999">Amount</th>
+      <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
+        <colgroup>${COLW.map(w => `<col style="width:${w}%">`).join('')}</colgroup>
+        <thead><tr>
+          <th style="${THC}">Sr.<br>No.</th>
+          <th style="${THC}">Personal<br>Number</th>
+          <th style="${THC}">Name</th>
+          <th style="${THC}">Markaz name</th>
+          <th style="${THC}">Tehsil</th>
+          <th style="${THC}">DDO<br>Code</th>
+          <th style="${THC}">Amount</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -518,4 +531,3 @@ async function bpRenderTargetIntoPdf(pdf, target) {
     firstPage = false;
   }
 }
-
