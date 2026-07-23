@@ -11,6 +11,8 @@
 const BP_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const BP_MAX_MONTHS = 4;
 
+let bpPreviewModalInst = null;
+
 let bpState = {
   rate: 25000,
   tehsil: '',
@@ -197,12 +199,72 @@ function bpDeductionFor(userId, month) {
   return editVal !== undefined ? editVal : (existing ? existing.deduction : 0);
 }
 
-// ─── Prepare & Send ──────────────────────────────────────────────────
-async function bpPrepareBudget() {
+// ─── Preview (no DB writes yet — purely local from the grid's current values) ──
+function bpPreviewBudget() {
   if (!bpState.roster.length) { showToast('No AEOs loaded.', false); return; }
   if (!bpState.selectedMonths.length) { showToast('Select at least one month.', false); return; }
 
-  const btn = document.getElementById('bp_prepareBtn');
+  // Build entries per month locally from the grid (no server round-trip).
+  bpState.previewMonthEntries = {}; // { month: [{user_id, personal_no, name, due}] }
+  bpState.selectedMonths.forEach(month => {
+    bpState.previewMonthEntries[month] = bpState.roster.map(u => ({
+      user_id: u.id, personal_no: u.personal_no, name: u.name,
+      due: bpState.rate - bpDeductionFor(u.id, month),
+    }));
+  });
+
+  if (!bpPreviewModalInst) bpPreviewModalInst = new bootstrap.Modal(document.getElementById('bpPreviewModal'));
+
+  const tabs = document.getElementById('bp_previewMonthTabs');
+  if (bpState.pdfMode === 'cumulative') {
+    tabs.innerHTML = '';
+    bpRenderPreviewPane({ periodMonths: bpState.selectedMonths.map(m => BP_MONTH_NAMES[m - 1]), entries: bpCumulativeEntries() });
+  } else {
+    tabs.innerHTML = bpState.selectedMonths.map((m, i) => `
+      <button type="button" onclick="bpShowPreviewTab(${m})" data-preview-tab="${m}"
+        style="padding:6px 14px;border-radius:6px;font-size:.8rem;cursor:pointer;
+               border:1px solid ${i === 0 ? '#0d9488' : 'var(--b0)'};
+               background:${i === 0 ? '#0d9488' : '#fff'};color:${i === 0 ? '#fff' : 'var(--t1)'}">
+        ${BP_MONTH_NAMES[m - 1]}
+      </button>`).join('');
+    bpShowPreviewTab(bpState.selectedMonths[0]);
+  }
+
+  bpPreviewModalInst.show();
+}
+
+function bpCumulativeEntries() {
+  const totals = {};
+  Object.values(bpState.previewMonthEntries).forEach(entries => {
+    entries.forEach(e => {
+      if (!totals[e.user_id]) totals[e.user_id] = { user_id: e.user_id, personal_no: e.personal_no, name: e.name, due: 0 };
+      totals[e.user_id].due += e.due;
+    });
+  });
+  return Object.values(totals);
+}
+
+function bpShowPreviewTab(month) {
+  document.querySelectorAll('[data-preview-tab]').forEach(b => {
+    const on = Number(b.dataset.previewTab) === month;
+    b.style.background = on ? '#0d9488' : '#fff';
+    b.style.color = on ? '#fff' : 'var(--t1)';
+    b.style.borderColor = on ? '#0d9488' : 'var(--b0)';
+  });
+  bpRenderPreviewPane({ periodMonths: [BP_MONTH_NAMES[month - 1]], entries: bpState.previewMonthEntries[month] });
+}
+
+async function bpRenderPreviewPane(opts) {
+  const pane = document.getElementById('bp_previewBody');
+  pane.innerHTML = `<div style="padding:40px;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>`;
+  const html = bpBuildLetterHtml(opts);
+  // Render at real size directly in the modal (no PDF conversion needed for preview).
+  pane.innerHTML = `<div style="transform:scale(.92);transform-origin:top center">${html}</div>`;
+}
+
+// ─── Confirm: NOW we actually save to DB, generate real PDFs, download, and email ──
+async function bpConfirmPrepare() {
+  const btn = document.getElementById('bp_confirmBtn');
   btn.disabled = true;
 
   try {
@@ -222,18 +284,19 @@ async function bpPrepareBudget() {
       await bpGenerateSeparate(monthBills);
     }
 
+    bpPreviewModalInst.hide();
     bpState.editGrid = {};
     await bpLoadRoster();
   } catch (err) {
     showToast('Error preparing budget: ' + err.message, false);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-check2-circle"></i> Prepare &amp; Send Budget';
+    btn.innerHTML = '<i class="bi bi-check2-circle"></i> Confirm &amp; Prepare Budget';
   }
 }
 
 async function bpGenerateCumulative(monthBills) {
-  const btn = document.getElementById('bp_prepareBtn');
+  const btn = document.getElementById('bp_confirmBtn');
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Building combined PDF…';
 
   // Sum each AEO's due across all selected months.
@@ -246,10 +309,10 @@ async function bpGenerateCumulative(monthBills) {
   });
 
   const periodMonths = bpState.selectedMonths.map(m => BP_MONTH_NAMES[m - 1]);
-  const pdfBase64 = await bpBuildBudgetLetterBase64({
+  const pdfBase64 = await bpRenderHtmlToPdfBase64(bpBuildLetterHtml({
     periodMonths,
     entries: Object.entries(totals).map(([userId, t]) => ({ user_id: userId, personal_no: t.personal_no, name: t.name, due: t.due })),
-  });
+  }));
   bpDownloadPdf(pdfBase64, `Budget_${bpState.tehsil}_${bpState.year}_Cumulative.pdf`);
 
   const lastRes = Object.values(monthBills)[Object.values(monthBills).length - 1];
@@ -257,15 +320,15 @@ async function bpGenerateCumulative(monthBills) {
 }
 
 async function bpGenerateSeparate(monthBills) {
-  const btn = document.getElementById('bp_prepareBtn');
+  const btn = document.getElementById('bp_confirmBtn');
   for (const month of bpState.selectedMonths) {
     const res = monthBills[month];
     btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Building ${BP_MONTH_NAMES[month - 1]} PDF…`;
     const periodLabel = `${BP_MONTH_NAMES[month - 1]} ${bpState.year}`;
-    const pdfBase64 = await bpBuildBudgetLetterBase64({
+    const pdfBase64 = await bpRenderHtmlToPdfBase64(bpBuildLetterHtml({
       periodMonths: [BP_MONTH_NAMES[month - 1]],
       entries: (res.bill.entries || []).map(e => ({ user_id: e.user_id, personal_no: e.personal_no, name: e.name, due: e.due })),
-    });
+    }));
     bpDownloadPdf(pdfBase64, `Budget_${bpState.tehsil}_${periodLabel.replace(' ', '_')}.pdf`);
     await bpSendPdf(res, pdfBase64, periodLabel);
     await new Promise(r => setTimeout(r, 400)); // stagger downloads so the browser doesn't block them
@@ -322,9 +385,7 @@ function bpFormatDdo(code) {
 }
 
 // ─── The actual government letter (matches the real sample PDFs) ────
-async function bpBuildBudgetLetterBase64(opts) {
-  const target = document.getElementById('bpPdfRenderTarget');
-  const total = opts.entries.reduce((s, e) => s + Number(e.due), 0);
+function bpBuildLetterHtml(opts) {
   const rosterById = Object.fromEntries(bpState.roster.map(u => [u.id, u]));
   const wing = bpState.roster[0]?.wing || 'M-EE';
   const w = bpWingInfo(wing);
@@ -366,8 +427,8 @@ async function bpBuildBudgetLetterBase64(opts) {
          DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
        </div>`;
 
-  target.innerHTML = `
-    <div style="width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box">
+  return `
+    <div style="width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff">
       <table style="width:100%;margin-bottom:18px"><tr>
         <td style="width:90px;vertical-align:top"><img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px"></td>
         <td style="vertical-align:top;text-align:right;font-size:12px;line-height:2">
@@ -412,8 +473,15 @@ async function bpBuildBudgetLetterBase64(opts) {
 
       ${signatureHtml}
     </div>`;
+}
 
+// Rasterizes the given letter HTML (off-screen, real A4 width) into a
+// multi-page-safe PDF — needed because rosters can run to 18+ rows.
+async function bpRenderHtmlToPdfBase64(html) {
+  const target = document.getElementById('bpPdfRenderTarget');
+  target.innerHTML = html;
   await new Promise(r => setTimeout(r, 150));
+
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'pt', 'a4');
   await bpRenderTargetIntoPdf(pdf, target);
