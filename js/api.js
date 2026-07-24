@@ -216,83 +216,6 @@ function _buildUserSchoolFilter(user, opts) {
   };
 }
 
-/**
- * Reads staff_events (written by executeTransfer / executeMutualTransfer /
- * executePromotion) and shapes it into the { headers, rows } format the
- * Transfer_History / Promotions_History HR tabs expect. There was
- * previously no read path for staff_events at all — every case in this
- * file only ever inserted into it.
- *
- * Scoping: staff_events rows themselves don't carry a jurisdiction (the
- * event's `details` only has from/to EMIS + markaz, no district/wing/
- * tehsil), so this scopes by each employee's CURRENT staff record —
- * same idea as the Staff sheet itself: an HR rep sees the transfer/
- * promotion history of people currently in their jurisdiction.
- */
-async function _staffEventHistoryRows(eventTypes, reqUser) {
-  const events = await _fetchAllRows('staff_events', '*', q => q.in('event_type', eventTypes));
-  events.sort((a, b) => new Date(b.created_at || b.effective_date || 0) - new Date(a.created_at || a.effective_date || 0));
-
-  const pnos = [...new Set(events.map(e => e.personal_no).filter(Boolean).map(String))];
-  let staffByPno = {};
-  if (pnos.length) {
-    const staffRows = await _fetchAllRows(
-      'staff',
-      'personal_no, cnic, designation, bps, school_emis_code, school_name, markaz_name, district, wing, tehsil',
-      q => q.in('personal_no', pnos)
-    );
-    staffByPno = Object.fromEntries((staffRows || []).map(r => [String(r.personal_no), r]));
-  }
-
-  const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
-
-  const rows = [];
-  for (const e of events) {
-    const s = staffByPno[String(e.personal_no)] || {};
-    // If we can't find the employee's current staff record at all, show
-    // the event anyway rather than silently dropping it (e.g. the
-    // employee was later deleted/archived) — only scope-filter rows
-    // where we actually know the employee's current jurisdiction.
-    if (filterFn && staffByPno[String(e.personal_no)] && !filterFn(s)) continue;
-
-    const d = e.details || {};
-    rows.push({
-      'Employee Personal No': e.personal_no || '',
-      'Employee Name':        e.employee_name || '',
-      'Employee CNIC':        s.cnic || '',
-      'Event Type':           e.event_type === 'mutual_transfer' ? 'Mutual Transfer'
-                             : e.event_type === 'transfer'        ? 'Transfer'
-                             : e.event_type === 'promotion'       ? 'Promotion'
-                             : (e.event_type || ''),
-      'Notification No':      e.notification_no || '',
-      'Effective Date':       e.effective_date || '',
-      'From EMIS':            d.from_emis || '',
-      'To EMIS':              d.to_emis || '',
-      'From Markaz':          d.from_markaz || '',
-      'To Markaz':            d.to_markaz || '',
-      'To School':            d.to_school || '',
-      'Swapped With':         d.swapped_with_name || '',
-      'Old Designation':      d.old_designation || '',
-      'New Designation':      d.new_designation || '',
-      'Old BPS':               d.old_bps || '',
-      'New BPS':               d.new_bps || '',
-      'Changes Made by':      e.created_by || '',
-      'Time':                 e.created_at || '',
-      _row:                   e.id,
-      'PERSONAL NO.':          e.personal_no || '',   // aliases some HR-side code looks for
-      'NAME OF TEACHER':       e.employee_name || '',
-    });
-  }
-
-  const headers = eventTypes.includes('promotion')
-    ? ['Employee Personal No', 'Employee Name', 'Employee CNIC', 'Notification No', 'Effective Date',
-       'Old Designation', 'New Designation', 'Old BPS', 'New BPS', 'Changes Made by', 'Time']
-    : ['Employee Personal No', 'Employee Name', 'Employee CNIC', 'Event Type', 'Notification No', 'Effective Date',
-       'From EMIS', 'To EMIS', 'From Markaz', 'To Markaz', 'To School', 'Swapped With', 'Changes Made by', 'Time'];
-
-  return { headers, rows };
-}
-
 /** Current logged-in user from localStorage. */
 function _getUser() {
   try {
@@ -814,23 +737,6 @@ async function apiCall(action, payload) {
       // payload: 'Staff' | ['Staff', user] | ['Staff', user, filters]
       const sheetName = Array.isArray(payload) ? payload[0] : (payload || 'Staff');
       const reqUser   = Array.isArray(payload) ? payload[1] : null;
-
-      // Transfer_History / Promotions_History aren't statuses on the
-      // `staff` table at all — they're event logs written to
-      // `staff_events` by executeTransfer/executeMutualTransfer/
-      // executePromotion. Previously these two sheet names fell through
-      // to the `statusMap[sheetName] || 'active'` default below, which
-      // silently queried `staff` for status='active' — i.e. it rendered
-      // the Active Staff list again instead of any history, so these
-      // two tabs always looked empty/wrong to users. Route them to the
-      // event log instead.
-      if (sheetName === 'Transfer_History' || sheetName === 'Promotions_History') {
-        const eventTypes = sheetName === 'Transfer_History'
-          ? ['transfer', 'mutual_transfer']
-          : ['promotion'];
-        return await _staffEventHistoryRows(eventTypes, reqUser);
-      }
-
       const statusMap = {
         'Staff':             'active',
         'Termination':       'terminated',
