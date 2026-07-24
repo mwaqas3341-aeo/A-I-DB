@@ -444,13 +444,13 @@ function bpBuildLetterHtml(opts) {
     </tr>`;
   }).join('');
 
-  // Signature Block - Font size bumped to 15px and top margin added for stamp
+  // Signature Block - Font size changed to 14px and top margin added for stamp
   const signatureHtml = recipient === 'CEO'
-    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:15px;margin-top:80px">
+    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
          <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
          <div style="width:48%;text-align:right">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</div>
        </div>`
-    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:15px;margin-top:80px">
+    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
          DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
        </div>`;
 
@@ -481,7 +481,7 @@ function bpBuildLetterHtml(opts) {
         </tr>
       </table>
 
-      <div style="font-size:10.5px;line-height:1.6;text-align:left">
+      <div style="font-size:12px;line-height:1.6;text-align:left">
         <b>To</b><br>
         <b>${recipientLine}</b><br>
         <b>Layyah</b>
@@ -492,13 +492,13 @@ function bpBuildLetterHtml(opts) {
         ${monthPhraseUpper} OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
       </p>
 
-      <p style="font-size:10.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
+      <p style="font-size:11px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
         Kindly refer to the subject cited above It is certified that performance of following Assistant Education
         Officers, Tehsil ${bpState.tehsil} (${w.word}) have achieved verifiable key performance indicators developed
         by DFID as issued vide Notification No. SO (SE-III) 5-226/2017 dated 03-08-2020.
       </p>
 
-      <p style="font-size:10.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
+      <p style="font-size:11px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
         The performance of following AEOs has been verified for the ${monthPhraseTitle}. They are entitled to draw
         the following amount mentioned against their names.
       </p>
