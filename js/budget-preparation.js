@@ -429,18 +429,20 @@ function bpBuildLetterHtml(opts) {
   // Column widths sum to 100% — table-layout:fixed means the table can never
   // grow past its container no matter how long a tehsil/markaz name is; text
   // wraps within the cell instead.
-  const COLW = [5, 11, 16, 15, 24, 11, 18]; // Sr/Personal/Name/Markaz/Tehsil/DDO/Amount
+  const COLW = [5, 12, 17, 17, 25, 11, 13]; // Sr/Personal/Name/Markaz/Tehsil/DDO/Amount — Amount narrowed
 
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
+    const srNo = i + 1;
+    const amount = Number(e.due) || 0;
     return `<tr data-bp-row="1">
-      <td style="${TDC};text-align:center">${i + 1}</td>
-      <td style="${TDC}">${e.personal_no}</td>
-      <td style="${TDC}">${e.name}</td>
+      <td style="${TDC};text-align:center">${srNo}</td>
+      <td style="${TDC}">${e.personal_no || ''}</td>
+      <td style="${TDC}">${e.name || ''}</td>
       <td style="${TDC}">${u.markaz_name || ''}</td>
       <td style="${TDC}">Dy. DEO (${w.letter}) ${bpState.tehsil}</td>
       <td style="${TDC}">${bpFormatDdo(u.ddeo_code)}</td>
-      <td style="${TDC};text-align:right">${Number(e.due).toLocaleString()}</td>
+      <td style="${TDC};text-align:right">${amount.toLocaleString()}</td>
     </tr>`;
   }).join('');
 
@@ -460,9 +462,10 @@ function bpBuildLetterHtml(opts) {
     <div dir="ltr" style="direction:ltr !important;width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff;text-align:left">
       <div style="direction:ltr !important;display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
         <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px;order:1">
-        <div style="text-align:right;font-size:12px;line-height:2;order:2">
-          No.:____________________<br>Dated: _______________
-        </div>
+        <table style="order:2;font-size:12px;border-collapse:collapse"><tbody>
+          <tr><td style="padding:2px 6px 2px 0;text-align:left;white-space:nowrap">No.:</td><td style="padding:2px 0;width:150px;border-bottom:1px solid #111">&nbsp;</td></tr>
+          <tr><td style="padding:2px 6px 2px 0;text-align:left;white-space:nowrap">Dated:</td><td style="padding:2px 0;width:150px;border-bottom:1px solid #111">&nbsp;</td></tr>
+        </tbody></table>
       </div>
 
       <div style="font-size:13px;line-height:1.6;text-align:left">
@@ -476,19 +479,19 @@ function bpBuildLetterHtml(opts) {
         ${monthPhraseUpper} OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
       </p>
 
-      <p style="font-size:12.5px;line-height:1.7;text-align:justify;margin:14px 0">
+      <p style="font-size:12.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
         Kindly refer to the subject cited above It is certified that performance of following Assistant Education
         Officers, Tehsil ${bpState.tehsil} (${w.word}) have achieved verifiable key performance indicators developed
         by DFID as issued vide Notification No. SO (SE-III) 5-226/2017 dated 03-08-2020.
       </p>
 
-      <p style="font-size:12.5px;line-height:1.7;text-align:justify;margin:14px 0 18px">
+      <p style="font-size:12.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
         The performance of following AEOs has been verified for the ${monthPhraseTitle}. They are entitled to draw
         the following amount mentioned against their names.
       </p>
 
       <table dir="ltr" style="direction:ltr !important;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
-        <colgroup>${COLW.map(w => `<col style="width:${w}%">`).join('')}</colgroup>
+        <colgroup>${COLW.map(cw => `<col style="width:${cw}%">`).join('')}</colgroup>
         <thead><tr>
           <th style="${THC}">Sr.<br>No.</th>
           <th style="${THC}">Personal<br>Number</th>
