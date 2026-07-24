@@ -460,19 +460,19 @@ function bpBuildLetterHtml(opts) {
       
       <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
         <tr>
-          <td style="vertical-align:top; text-align:left; width:40%;">
+          <td style="vertical-align:top; text-align:left; width:20%;">
             <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px; display:block;">
           </td>
-          <td style="vertical-align:top; text-align:right; width:60%; padding-top:5px;">
-            <table style="font-size:11px; border-collapse:collapse; margin-left:auto; text-align:left;">
+          <td style="vertical-align:top; text-align:right; width:80%;">
+            <table style="float:right; font-size:11px; border-collapse:collapse; text-align:left;">
               <tbody>
                 <tr>
                   <td style="padding:3px 8px 3px 0; font-weight:bold; white-space:nowrap">No.:</td>
-                  <td style="padding:3px 0; width:180px; border-bottom:1px solid #111">&nbsp;</td>
+                  <td style="padding:3px 0; width:220px; border-bottom:1px solid #111">&nbsp;</td>
                 </tr>
                 <tr>
                   <td style="padding:3px 8px 3px 0; font-weight:bold; white-space:nowrap">Dated:</td>
-                  <td style="padding:3px 0; width:180px; border-bottom:1px solid #111">&nbsp;</td>
+                  <td style="padding:3px 0; width:220px; border-bottom:1px solid #111">&nbsp;</td>
                 </tr>
               </tbody>
             </table>
@@ -480,7 +480,7 @@ function bpBuildLetterHtml(opts) {
         </tr>
       </table>
 
-      <div style="font-size:16px;line-height:1.6;text-align:left">
+      <div style="font-size:16px;line-height:1.6;text-align:left; clear:both;">
         <b>To</b><br>
         <b>${recipientLine}</b><br>
         <b>Layyah</b>
