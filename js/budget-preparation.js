@@ -380,7 +380,7 @@ function bpDownloadPdf(base64, filename) {
   const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
-  const a = document.length ? document.createElement('a') : document.createElement('a');
+  const a = document.createElement('a');
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
@@ -392,9 +392,9 @@ function bpWingInfo(wing) {
   const isFemale = wing === 'W-EE';
   return {
     code: wing || 'M-EE',                          // "M-EE" / "W-EE" — used verbatim in DEO recipient line
-    letter: isFemale ? 'W' : 'M',                   // used in table's "Dy. DEO (M) Karor" style cell
-    word: isFemale ? 'Female' : 'Male',             // Title Case — used in body paragraph
-    wordUpper: isFemale ? 'FEMALE' : 'MALE',        // ALL CAPS — used in signature block
+    letter: isFemale ? 'W' : 'M',                    // used in table's "Dy. DEO (M) Karor" style cell
+    word: isFemale ? 'Female' : 'Male',              // Title Case — used in body paragraph
+    wordUpper: isFemale ? 'FEMALE' : 'MALE',         // ALL CAPS — used in signature block
   };
 }
 
@@ -421,13 +421,13 @@ function bpBuildLetterHtml(opts) {
     ? 'The Chief Executive Officer (DEA)'
     : `The District Education Officer (${w.code})`;
 
-  // Table Cell Styling — font-size bumped to 13px with clean multi-line wrapping
-  const THC = 'padding:6px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;word-break:break-word !important;vertical-align:middle !important;text-align:center !important;font-size:13px !important;';
-  const TDC = 'padding:6px 5px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;overflow-wrap:break-word !important;vertical-align:middle !important;white-space:normal !important;font-size:13px !important;';
-  const TDCNOWRAP = 'padding:6px 5px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:nowrap !important;vertical-align:middle !important;font-size:13px !important;';
+  // Explicit Strict CSS - blocks forced RTL wrapping and allows wrapping for names/markaz/tehsil
+  const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;word-break:break-word !important;vertical-align:middle !important;text-align:center !important;';
+  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;overflow-wrap:break-word !important;vertical-align:middle !important;white-space:normal !important;';
+  const TDCNOWRAP = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:nowrap !important;vertical-align:middle !important;';
   
-  // Adjusted exact pixel widths summing to 702px — expanded Name, Markaz, Tehsil for readability
-  const COLW = [32, 75, 140, 130, 195, 70, 60];
+  // Adjusted exact pixel widths summing to 702px — giving more room to Name (140), Markaz (130), and Tehsil (200)
+  const COLW = [30, 75, 140, 130, 200, 70, 57];
 
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
@@ -444,13 +444,13 @@ function bpBuildLetterHtml(opts) {
     </tr>`;
   }).join('');
 
-  // Signature Block — Font size 16px with ample stamp room
+  // Signature Block - Size 14px as requested
   const signatureHtml = recipient === 'CEO'
-    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:16px;margin-top:70px">
+    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
          <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
          <div style="width:48%;text-align:right">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</div>
        </div>`
-    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:16px;margin-top:70px">
+    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
          DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
        </div>`;
 
@@ -464,7 +464,7 @@ function bpBuildLetterHtml(opts) {
           </td>
           <td style="vertical-align:top; text-align:right; width:50%; padding-top:10px;">
             <div style="display:inline-block; text-align:left;">
-              <table style="font-size:13.5px; border-collapse:collapse;">
+              <table style="font-size:11px; border-collapse:collapse;">
                 <tbody>
                   <tr>
                     <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">No.:</td>
@@ -481,29 +481,29 @@ function bpBuildLetterHtml(opts) {
         </tr>
       </table>
 
-      <div style="font-size:15px;line-height:1.6;text-align:left">
+      <div style="font-size:16px;line-height:1.6;text-align:left">
         <b>To</b><br>
         <b>${recipientLine}</b><br>
         <b>Layyah</b>
       </div>
 
-      <p style="font-size:16px;font-weight:700;text-decoration:underline;margin:18px 0;line-height:1.5;text-align:left">
+      <p style="font-size:14px;font-weight:700;text-decoration:underline;margin:16px 0;line-height:1.6;text-align:left">
         SUBJECT: GRANT OF INSPECTION ALLOWANCE @ RS. ${bpState.rate.toLocaleString()} PER MONTH FOR THE
         ${monthPhraseUpper} OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
       </p>
 
-      <p style="font-size:15px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
+      <p style="font-size:14px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
         Kindly refer to the subject cited above It is certified that performance of following Assistant Education
         Officers, Tehsil ${bpState.tehsil} (${w.word}) have achieved verifiable key performance indicators developed
         by DFID as issued vide Notification No. SO (SE-III) 5-226/2017 dated 03-08-2020.
       </p>
 
-      <p style="font-size:15px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 20px">
+      <p style="font-size:14px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
         The performance of following AEOs has been verified for the ${monthPhraseTitle}. They are entitled to draw
         the following amount mentioned against their names.
       </p>
 
-      <table dir="ltr" style="direction:ltr !important;width:702px !important;min-width:702px !important;max-width:702px !important;table-layout:fixed !important;border-collapse:collapse;font-size:13px">
+      <table dir="ltr" style="direction:ltr !important;width:702px !important;min-width:702px !important;max-width:702px !important;table-layout:fixed !important;border-collapse:collapse;font-size:11px">
         <colgroup>${COLW.map(cw => `<col style="width:${cw}px !important; min-width:${cw}px !important; max-width:${cw}px !important;">`).join('')}</colgroup>
         <thead><tr dir="ltr" style="direction:ltr !important;">
           <th dir="ltr" style="${THC}; width:${COLW[0]}px !important;">Sr.<br>No.</th>
@@ -569,6 +569,7 @@ async function bpRenderTargetIntoPdf(pdf, target) {
   const targetTop = target.getBoundingClientRect().top;
   const rowBoundaries = [...target.querySelectorAll('[data-bp-row]')]
     .map(r => r.getBoundingClientRect().bottom - targetTop);
+  const totalCssHeight = target.scrollHeight;
 
   // The 'onclone' function tells html2canvas to temporarily make the element 
   // 'visible' ONLY inside the hidden engine rendering the PDF.
