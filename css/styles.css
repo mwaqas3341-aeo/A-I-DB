@@ -612,12 +612,14 @@
 }
 #staffFormModal:not(.hidden),
 #transferModal:not(.hidden),
-#promotionModal:not(.hidden) {
+#promotionModal:not(.hidden),
+#mutualTransferModal:not(.hidden) {
   display: flex !important;
 }
 #staffFormModal .modal-content,
 #transferModal .modal-content,
-#promotionModal .modal-content {
+#promotionModal .modal-content,
+#mutualTransferModal .modal-content {
   background: white;
   border-radius: 16px;
   width: 100%;
@@ -647,6 +649,19 @@
 .transfer-divider { border:none; border-top:1px solid #e2e8f0; margin:12px 0; }
 .secondary-btn { height:40px; padding:0 18px; border-radius:8px; border:1.5px solid #e2e8f0; background:white; font-size:.85rem; font-weight:700; cursor:pointer; }
 .secondary-btn:hover { background:#f1f5f9; }
+
+/* ══ Mutual Transfer — candidate list ══ */
+.mt-candidate-list { display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; margin-top:6px; }
+.mt-candidate-card { display:flex; justify-content:space-between; align-items:center; gap:10px; border:1.5px solid #e2e8f0; border-radius:10px; padding:10px 14px; cursor:pointer; transition:border-color .15s, background .15s; background:#fff; }
+.mt-candidate-card:hover { border-color:#93c5fd; background:#f8fafc; }
+.mt-candidate-card.selected { border-color:#1a56db; background:#eff6ff; }
+.mt-candidate-name { font-weight:700; font-size:.87rem; color:#0f172a; }
+.mt-candidate-meta { font-size:.74rem; color:#64748b; margin-top:2px; }
+.mt-candidate-pick { flex-shrink:0; height:32px; padding:0 14px; border-radius:7px; border:1.5px solid #1a56db; background:white; color:#1a56db; font-size:.78rem; font-weight:700; cursor:pointer; }
+.mt-candidate-card.selected .mt-candidate-pick { background:#1a56db; color:white; }
+.mt-empty-state { font-size:.83rem; color:#64748b; text-align:center; padding:18px 10px; }
+.mt-swap-summary { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; font-size:.83rem; margin-bottom:14px; }
+.mt-swap-arrow { color:#16a34a; font-weight:700; }
 
 /* ══ Staff form inner layout ══ */
 .sfm-body   { padding:16px 20px; overflow-y:auto; flex:1; background:#f8fafc; }
@@ -819,6 +834,7 @@
 #staffFormModal .sfm-header,
 #transferModal .modal-content > :first-child:not(.close-btn),
 #promotionModal .modal-content > :first-child:not(.close-btn),
+#mutualTransferModal .modal-content > :first-child:not(.close-btn),
 #hrTransferModal .modal-content > :first-child:not(.close-btn),
 #hrPromotionModal .modal-content > :first-child:not(.close-btn),
 #hrActionModal .modal-content > :first-child:not(.close-btn) {
@@ -836,6 +852,7 @@
 #staffFormModal .sfm-header *,
 #transferModal .modal-content > :first-child:not(.close-btn) *,
 #promotionModal .modal-content > :first-child:not(.close-btn) *,
+#mutualTransferModal .modal-content > :first-child:not(.close-btn) *,
 #hrTransferModal .modal-content > :first-child:not(.close-btn) *,
 #hrPromotionModal .modal-content > :first-child:not(.close-btn) *,
 #hrActionModal .modal-content > :first-child:not(.close-btn) * {
@@ -846,6 +863,7 @@
 #staffFormModal .close-btn,
 #transferModal .close-btn,
 #promotionModal .close-btn,
+#mutualTransferModal .close-btn,
 #hrTransferModal .close-btn,
 #hrPromotionModal .close-btn,
 #hrActionModal .close-btn {
@@ -866,6 +884,7 @@
 #staffFormModal .close-btn:hover,
 #transferModal .close-btn:hover,
 #promotionModal .close-btn:hover,
+#mutualTransferModal .close-btn:hover,
 #hrTransferModal .close-btn:hover,
 #hrPromotionModal .close-btn:hover,
 #hrActionModal .close-btn:hover {
