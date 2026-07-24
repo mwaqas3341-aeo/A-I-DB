@@ -1089,12 +1089,14 @@ var mtRowA       = null;   // the employee the modal was opened for ("Employee A
 var mtCandidates = [];     // last search results ("Employee B" candidates)
 var mtSelectedB  = null;   // the chosen candidate
 var mtSubmitting = false;
+var mtUsedPrivilegedSearch = true;   // false = fell back to a jurisdiction-scoped search (see sql/mutual_transfer_setup.sql)
 
 window.openMutualTransferModal = function(row) {
   mtRowA       = row;
   mtCandidates = [];
   mtSelectedB  = null;
   mtSubmitting = false;
+  mtUsedPrivilegedSearch = true;
 
   sfmEnsureTargetSchoolCache(function() {
     _mtRenderStep1(row);
@@ -1191,6 +1193,7 @@ function mtFindCandidates() {
         return;
       }
       mtCandidates = res.candidates || [];
+      mtUsedPrivilegedSearch = res.usedPrivilegedSearch !== false;
       _mtRenderCandidates();
     })
     .getMutualTransferCandidates({
@@ -1202,12 +1205,21 @@ function mtFindCandidates() {
 
 function _mtRenderCandidates() {
   var wrap = document.getElementById('mt_candidatesWrap');
+  var warning = !mtUsedPrivilegedSearch
+    ? '<div class="mt-empty-state" style="color:#B45309;background:#FEF3C7;border-color:#FDE68A;">' +
+        '⚠ Showing employees only within your own jurisdiction — the cross-jurisdiction search (staff_by_emis_bps_privileged) ' +
+        'isn\'t installed yet, so employees at this school outside your own district/wing/tehsil/markaz won\'t appear here. ' +
+        'Ask an admin to run sql/mutual_transfer_setup.sql.' +
+      '</div>'
+    : '';
+
   if (!mtCandidates.length) {
-    wrap.innerHTML = '<div class="mt-empty-state">No active BPS-' + escHtml(safeVal(mtRowA['BPS'])) + ' employees found at this EMIS.</div>';
+    wrap.innerHTML = warning + '<div class="mt-empty-state">No active BPS-' + escHtml(safeVal(mtRowA['BPS'])) + ' employees found at this EMIS.</div>';
     return;
   }
 
-  var html = '<label style="display:block;font-size:.75rem;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">Choose an employee to swap with</label>';
+  var html = warning;
+  html += '<label style="display:block;font-size:.75rem;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">Choose an employee to swap with</label>';
   html += '<div class="mt-candidate-list">';
   mtCandidates.forEach(function(c, i) {
     html +=
