@@ -616,10 +616,10 @@
 #mutualTransferModal:not(.hidden) {
   display: flex !important;
 }
+
 #staffFormModal .modal-content,
 #transferModal .modal-content,
-#promotionModal .modal-content,
-#mutualTransferModal .modal-content {
+#promotionModal .modal-content {
   background: white;
   border-radius: 16px;
   width: 100%;
@@ -632,6 +632,21 @@
   animation: modalIn .22s cubic-bezier(.16,1,.3,1) both;
 }
 #staffFormModal .modal-content { max-width: 780px; }
+
+/* Make Mutual Transfer modal wider for side-by-side */
+#mutualTransferModal .modal-content {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 960px !important; 
+  max-height: 92vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0,0,0,.3);
+  animation: modalIn .22s cubic-bezier(.16,1,.3,1) both;
+}
+
 @keyframes modalIn {
   from { opacity:0; transform:translateY(18px) scale(.97); }
   to   { opacity:1; transform:none; }
@@ -650,8 +665,56 @@
 .secondary-btn { height:40px; padding:0 18px; border-radius:8px; border:1.5px solid #e2e8f0; background:white; font-size:.85rem; font-weight:700; cursor:pointer; }
 .secondary-btn:hover { background:#f1f5f9; }
 
-/* ══ Mutual Transfer — candidate list ══ */
-.mt-candidate-list { display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; margin-top:6px; }
+/* ══ Mutual Transfer — Layout & Candidate List ══ */
+/* Convert the inner body to a 2-column flexbox on desktop */
+#mutualTransferModal .modal-bdy,
+#mutualTransferModal .sfm-body {
+  display: flex;
+  flex-direction: row;
+  gap: 28px;
+  align-items: flex-start;
+}
+
+/* Form side takes up available space and gets a divider line */
+#mutualTransferModal .mt-form-side,
+#mutualTransferModal form {
+  flex: 1;
+  min-width: 280px;
+  border-right: 1px solid #e2e8f0;
+  padding-right: 28px;
+}
+
+/* List side takes up available space */
+#mutualTransferModal .mt-list-side,
+.mt-candidate-list-wrapper {
+  flex: 1;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Stack to a single column on smaller screens */
+@media (max-width: 768px) {
+  #mutualTransferModal .modal-bdy,
+  #mutualTransferModal .sfm-body {
+    flex-direction: column;
+  }
+  #mutualTransferModal .mt-form-side,
+  #mutualTransferModal form {
+    border-right: none;
+    padding-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 20px;
+    width: 100%;
+  }
+  #mutualTransferModal .mt-list-side,
+  .mt-candidate-list-wrapper {
+    width: 100%;
+  }
+}
+
+/* Updated candidate list to fill height and scroll beautifully */
+.mt-candidate-list { display:flex; flex-direction:column; gap:8px; max-height:calc(85vh - 200px); overflow-y:auto; margin-top:6px; padding-right:8px; }
 .mt-candidate-card { display:flex; justify-content:space-between; align-items:center; gap:10px; border:1.5px solid #e2e8f0; border-radius:10px; padding:10px 14px; cursor:pointer; transition:border-color .15s, background .15s; background:#fff; }
 .mt-candidate-card:hover { border-color:#93c5fd; background:#f8fafc; }
 .mt-candidate-card.selected { border-color:#1a56db; background:#eff6ff; }
