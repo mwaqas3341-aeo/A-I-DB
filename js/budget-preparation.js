@@ -560,6 +560,9 @@ async function bpRenderHtmlToPdfBase64(html) {
 // Renders the (potentially tall) off-screen target into one or more A4
 // pages, slicing the captured canvas by page height rather than
 // clipping — needed because rosters can run to 18+ rows.
+// Renders the (potentially tall) off-screen target into one or more A4
+// pages, slicing the captured canvas by page height rather than
+// clipping — needed because rosters can run to 18+ rows.
 async function bpRenderTargetIntoPdf(pdf, target) {
   const scale = 2;
 
@@ -588,12 +591,30 @@ async function bpRenderTargetIntoPdf(pdf, target) {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const ratio = pageWidth / canvas.width;          // pt per canvas-px
-  const pageHeightCanvasPx = pageHeight / ratio;    // how many canvas-px fit one page
+  
+  // ─── ADDED MARGIN CONTROLS ──────────────────────────────────────
+  const PAGE_MARGIN_TOP_PT = 45;    // Top margin for page 2+ (in points)
+  const PAGE_MARGIN_BOTTOM_PT = 45; // Bottom margin for all pages (in points)
+  // ────────────────────────────────────────────────────────────────
 
   let renderedPx = 0; // in canvas px
   let firstPage = true;
+  
   while (renderedPx < canvas.height - 1) {
-    let cutPx = Math.min(renderedPx + pageHeightCanvasPx, canvas.height);
+    // Calculate how much vertical space we have on the current PDF page
+    let availableHeightPt = pageHeight - PAGE_MARGIN_BOTTOM_PT;
+    let yOffsetPt = 0;
+
+    // On the second page onward, we reserve space for a top margin and push the image down
+    if (!firstPage) {
+      yOffsetPt = PAGE_MARGIN_TOP_PT;
+      availableHeightPt -= PAGE_MARGIN_TOP_PT;
+    }
+
+    // Convert the available PDF points to canvas pixels to know how much to slice
+    const availableHeightCanvasPx = availableHeightPt / ratio;
+    
+    let cutPx = Math.min(renderedPx + availableHeightCanvasPx, canvas.height);
 
     if (rowBoundaries.length && cutPx < canvas.height) {
       // Prefer the largest row-boundary that still fits within this page.
@@ -610,8 +631,12 @@ async function bpRenderTargetIntoPdf(pdf, target) {
       canvas, 0, Math.round(renderedPx), canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx
     );
     const imgData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+    
     if (!firstPage) pdf.addPage();
-    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, sliceHeightPx * ratio);
+    
+    // Draw the image slice, pushed down by yOffsetPt (0 for first page, 45 for subsequent)
+    pdf.addImage(imgData, 'JPEG', 0, yOffsetPt, pageWidth, sliceHeightPx * ratio);
+    
     renderedPx += sliceHeightPx;
     firstPage = false;
   }
