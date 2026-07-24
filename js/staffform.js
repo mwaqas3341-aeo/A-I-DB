@@ -1072,6 +1072,294 @@ function closeTransferModal() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  MUTUAL TRANSFER MODAL
+// ──────────────────────────────────────────────────────────────────
+//  Step 1: pick a target EMIS (the OTHER school in the swap) and look
+//          up its active employees with the same BPS as the employee
+//          who triggered the modal.
+//  Step 2: pick one of those employees, then confirm — both employees
+//          swap postings (and each other's "date of joining new
+//          school") in one call to executeMutualTransfer.
+//  Like Transfer/Promotion, the target-school search deliberately uses
+//  the unrestricted sfmTargetSchoolMap/getAllSchoolsGlobal pool — a
+//  mutual transfer's whole point is that it can cross jurisdictions in
+//  either direction.
+// ══════════════════════════════════════════════════════════════════
+var mtRowA       = null;   // the employee the modal was opened for ("Employee A")
+var mtCandidates = [];     // last search results ("Employee B" candidates)
+var mtSelectedB  = null;   // the chosen candidate
+var mtSubmitting = false;
+
+window.openMutualTransferModal = function(row) {
+  mtRowA       = row;
+  mtCandidates = [];
+  mtSelectedB  = null;
+  mtSubmitting = false;
+
+  sfmEnsureTargetSchoolCache(function() {
+    _mtRenderStep1(row);
+  });
+};
+
+function _mtRenderStep1(row) {
+  var teacherName   = safeVal(row['NAME OF TEACHER']);
+  var personalNo    = safeVal(row['PERSONAL NO.']);
+  var currentEmis   = safeVal(row['SCHOOL EMIS CODE']);
+  var currentSchool = safeVal(row['SCHOOL NAME']);
+  var currentMark   = safeVal(row['MARKAZ NAME']);
+  var bps           = safeVal(row['BPS']);
+
+  document.getElementById('mutualTransferModalBody').innerHTML =
+    '<div class="transfer-info-box">' +
+      '<strong>📋 Employee</strong>' +
+      '<div><b>Teacher:</b> ' + escHtml(teacherName) + ' &nbsp;|&nbsp; <b>P.No:</b> ' + escHtml(personalNo) + '</div>' +
+      '<div><b>EMIS:</b> ' + escHtml(currentEmis) + ' &nbsp;|&nbsp; <b>School:</b> ' + escHtml(currentSchool) + '</div>' +
+      '<div><b>Markaz:</b> ' + escHtml(currentMark) + ' &nbsp;|&nbsp; <b>BPS:</b> ' + escHtml(bps) + '</div>' +
+    '</div>' +
+    '<hr class="transfer-divider">' +
+
+    '<div class="transfer-step">' +
+      '<label>Target EMIS Code (School To Swap With) <span style="color:var(--danger)">*</span></label>' +
+      '<input type="text" id="mt_targetEmis" placeholder="8-digit EMIS code" maxlength="8" inputmode="numeric" oninput="mtOnTargetEmis()">' +
+      '<div class="transfer-err" id="mte_emis"></div>' +
+      '<div id="mt_schoolInfo" class="transfer-info-box hidden" style="margin-top:8px"></div>' +
+      '<div class="transfer-hint">Mutual transfer can be within or outside your own jurisdiction.</div>' +
+    '</div>' +
+
+    '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px;">' +
+      '<button type="button" class="primary-btn" id="mtFindBtn" onclick="mtFindCandidates()" disabled>🔍 Find BPS-' + escHtml(bps) + ' Employees</button>' +
+      '<button type="button" class="secondary-btn" onclick="closeMutualTransferModal()">Cancel</button>' +
+    '</div>' +
+
+    '<div id="mt_candidatesWrap" style="margin-top:16px;"></div>';
+
+  document.getElementById('mutualTransferModal').classList.remove('hidden');
+}
+
+function mtOnTargetEmis() {
+  var emis    = (document.getElementById('mt_targetEmis').value || '').trim();
+  var infoBox = document.getElementById('mt_schoolInfo');
+  var errEl   = document.getElementById('mte_emis');
+  var el      = document.getElementById('mt_targetEmis');
+  var findBtn = document.getElementById('mtFindBtn');
+
+  infoBox.classList.add('hidden'); infoBox.innerHTML = '';
+  errEl.textContent = '';
+  el.classList.remove('invalid', 'valid');
+  if (findBtn) findBtn.disabled = true;
+  document.getElementById('mt_candidatesWrap').innerHTML = '';
+  mtCandidates = []; mtSelectedB = null;
+
+  if (!/^\d{8}$/.test(emis)) return;
+
+  var found = sfmTargetSchoolMap[emis.toLowerCase()];
+  if (!found) {
+    errEl.textContent = '⚠ EMIS not found in Schools data.';
+    el.classList.add('invalid');
+    return;
+  }
+  if (emis === safeVal(mtRowA['SCHOOL EMIS CODE'])) {
+    errEl.textContent = "⚠ That's this employee's current school — enter a different EMIS.";
+    el.classList.add('invalid');
+    return;
+  }
+  el.classList.add('valid');
+  infoBox.classList.remove('hidden');
+  infoBox.innerHTML =
+    '<strong>✓ School Found</strong>' +
+    '<div><b>School:</b> ' + escHtml(found.s) + '</div>' +
+    '<div><b>District:</b> ' + escHtml(found.d) + ' &nbsp;|&nbsp; <b>Wing:</b> ' + escHtml(found.w) + '</div>' +
+    '<div><b>Tehsil:</b> ' + escHtml(found.t) + ' &nbsp;|&nbsp; <b>Markaz:</b> ' + escHtml(found.m) + '</div>';
+  if (findBtn) findBtn.disabled = false;
+}
+
+function mtFindCandidates() {
+  var emis = (document.getElementById('mt_targetEmis').value || '').trim();
+  if (!/^\d{8}$/.test(emis)) return;
+  var bps  = safeVal(mtRowA['BPS']);
+  var wrap = document.getElementById('mt_candidatesWrap');
+  wrap.innerHTML = '<div class="mt-empty-state">Searching…</div>';
+  mtSelectedB = null;
+
+  google.script.run
+    .withFailureHandler(function(err) {
+      wrap.innerHTML = '<div class="mt-empty-state">Search failed: ' + escHtml(err && err.message ? err.message : 'Unknown error') + '</div>';
+    })
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        wrap.innerHTML = '<div class="mt-empty-state">' + escHtml((res && res.error) || 'Search failed.') + '</div>';
+        return;
+      }
+      mtCandidates = res.candidates || [];
+      _mtRenderCandidates();
+    })
+    .getMutualTransferCandidates({
+      emis: emis,
+      bps: bps,
+      excludePersonalNo: safeVal(mtRowA['PERSONAL NO.']),
+    });
+}
+
+function _mtRenderCandidates() {
+  var wrap = document.getElementById('mt_candidatesWrap');
+  if (!mtCandidates.length) {
+    wrap.innerHTML = '<div class="mt-empty-state">No active BPS-' + escHtml(safeVal(mtRowA['BPS'])) + ' employees found at this EMIS.</div>';
+    return;
+  }
+
+  var html = '<label style="display:block;font-size:.75rem;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">Choose an employee to swap with</label>';
+  html += '<div class="mt-candidate-list">';
+  mtCandidates.forEach(function(c, i) {
+    html +=
+      '<div class="mt-candidate-card" id="mt_cand_' + i + '" onclick="mtSelectCandidate(' + i + ')">' +
+        '<div>' +
+          '<div class="mt-candidate-name">' + escHtml(c.name) + '</div>' +
+          '<div class="mt-candidate-meta">P.No: ' + escHtml(c.personalNo) + ' &nbsp;|&nbsp; ' + escHtml(c.designation) + ' &nbsp;|&nbsp; BPS-' + escHtml(c.bps) + '</div>' +
+          '<div class="mt-candidate-meta">' + escHtml(c.schoolName) + ' — ' + escHtml(c.markaz) + '</div>' +
+        '</div>' +
+        '<button type="button" class="mt-candidate-pick" onclick="event.stopPropagation(); mtSelectCandidate(' + i + ')">Select</button>' +
+      '</div>';
+  });
+  html += '</div><div id="mt_confirmWrap" style="margin-top:16px;"></div>';
+  wrap.innerHTML = html;
+}
+
+function mtSelectCandidate(i) {
+  mtSelectedB = mtCandidates[i];
+  document.querySelectorAll('.mt-candidate-card').forEach(function(el, idx) {
+    el.classList.toggle('selected', idx === i);
+  });
+  _mtRenderConfirmStep();
+}
+
+function _mtRenderConfirmStep() {
+  var a = mtRowA, b = mtSelectedB;
+  var confirmWrap = document.getElementById('mt_confirmWrap');
+  if (!confirmWrap || !b) return;
+
+  confirmWrap.innerHTML =
+    '<div class="mt-swap-summary">' +
+      '<div>' + escHtml(safeVal(a['NAME OF TEACHER'])) + ' (' + escHtml(safeVal(a['SCHOOL EMIS CODE'])) + ') ' +
+        '<span class="mt-swap-arrow">⇄</span> ' + escHtml(b.schoolName) + ' (' + escHtml(b.emis) + ')</div>' +
+      '<div>' + escHtml(b.name) + ' (' + escHtml(b.emis) + ') ' +
+        '<span class="mt-swap-arrow">⇄</span> ' + escHtml(safeVal(a['SCHOOL NAME'])) + ' (' + escHtml(safeVal(a['SCHOOL EMIS CODE'])) + ')</div>' +
+    '</div>' +
+
+    '<div class="transfer-step">' +
+      '<label>Notification No. <span style="color:var(--danger)">*</span></label>' +
+      '<input type="text" id="mt_notifNo" placeholder="Mutual transfer order / notification number">' +
+      '<div class="transfer-err" id="mte_notif"></div>' +
+    '</div>' +
+
+    '<div class="transfer-step">' +
+      '<label>Date of Joining New School — ' + escHtml(safeVal(a['NAME OF TEACHER'])) + ' <span style="color:var(--danger)">*</span></label>' +
+      '<input type="date" id="mt_dateA" onclick="try{this.showPicker()}catch(e){}" onchange="mtSyncDateB()">' +
+      '<div class="transfer-err" id="mte_dateA"></div>' +
+    '</div>' +
+
+    '<div class="transfer-step">' +
+      '<label>Date of Joining New School — ' + escHtml(b.name) + ' <span style="color:var(--danger)">*</span></label>' +
+      '<input type="date" id="mt_dateB" onclick="try{this.showPicker()}catch(e){}">' +
+      '<div class="transfer-err" id="mte_dateB"></div>' +
+      '<div class="transfer-hint">Defaults to the same date as above — edit if they join on different days.</div>' +
+    '</div>' +
+
+    '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">' +
+      '<button type="button" class="primary-btn" id="mtSubmitBtn" onclick="mtSubmit()">✅ Confirm Mutual Transfer</button>' +
+      '<button type="button" class="secondary-btn" onclick="closeMutualTransferModal()">Cancel</button>' +
+    '</div>';
+
+  confirmWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function mtSyncDateB() {
+  var dA = document.getElementById('mt_dateA');
+  var dB = document.getElementById('mt_dateB');
+  if (dA && dB && !dB.value) dB.value = dA.value;
+}
+
+async function mtSubmit() {
+  if (mtSubmitting) return;
+  if (!mtSelectedB) { showToast('Please select an employee to swap with.', 'warning'); return; }
+
+  var notif = (document.getElementById('mt_notifNo').value || '').trim();
+  var dateA = (document.getElementById('mt_dateA').value || '').trim();
+  var dateB = (document.getElementById('mt_dateB').value || '').trim();
+  var ok = true;
+
+  document.querySelectorAll('#mt_confirmWrap .transfer-err').forEach(function(e) { e.textContent = ''; });
+
+  if (!notif) { document.getElementById('mte_notif').textContent = 'Notification No. is required.'; ok = false; }
+  if (!dateA) { document.getElementById('mte_dateA').textContent = 'Date is required.'; ok = false; }
+  if (!dateB) { document.getElementById('mte_dateB').textContent = 'Date is required.'; ok = false; }
+  if (!ok) {
+    showToast('Please fix the highlighted errors before confirming.', 'warning');
+    return;
+  }
+
+  var a = mtRowA, b = mtSelectedB;
+  if (!confirm(
+    'Confirm mutual transfer?\n\n' +
+    safeVal(a['NAME OF TEACHER']) + ' → ' + b.schoolName + ' (EMIS ' + b.emis + ')\n' +
+    b.name + ' → ' + safeVal(a['SCHOOL NAME']) + ' (EMIS ' + safeVal(a['SCHOOL EMIS CODE']) + ')\n\n' +
+    'Notification: ' + notif
+  )) return;
+
+  mtSubmitting = true;
+  var btn = document.getElementById('mtSubmitBtn');
+  if (btn) btn.disabled = true;
+  showLoading();
+
+  function finishUI() {
+    mtSubmitting = false;
+    if (btn) btn.disabled = false;
+    hideLoading();
+  }
+
+  var userPayload = getUserPayload();
+
+  google.script.run
+    .withFailureHandler(function(err) {
+      finishUI();
+      showToast('Mutual transfer failed: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
+    })
+    .withSuccessHandler(function(res) {
+      finishUI();
+      try {
+        if (res && res.success) {
+          showToast(res.message || 'Mutual transfer completed.', 'success');
+          closeMutualTransferModal();
+          invalidateCache('Staff');
+          applyFilter();
+          if (typeof hrInvalidateCache === 'function') hrInvalidateCache('Staff');
+          if (typeof applyHrFilter === 'function') applyHrFilter();
+        } else {
+          showToast('Error: ' + ((res && res.error) || 'Unknown error'), 'error');
+        }
+      } catch (uiErr) {
+        closeMutualTransferModal();
+        try { applyFilter(); } catch (_e) {}
+        showToast('Saved, but the view could not refresh automatically. Please click Apply Filter.', 'warning');
+      }
+    })
+    .executeMutualTransfer({
+      personalNoA:    safeVal(a['PERSONAL NO.']),
+      personalNoB:    b.personalNo,
+      notificationNo: notif,
+      dateA:          dateA,
+      dateB:          dateB,
+    }, userPayload);
+}
+
+function closeMutualTransferModal() {
+  document.getElementById('mutualTransferModal').classList.add('hidden');
+  mtRowA       = null;
+  mtCandidates = [];
+  mtSelectedB  = null;
+  mtSubmitting = false;
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  PROMOTION MODAL
 // ══════════════════════════════════════════════════════════════════
 var promotionRowData = null;

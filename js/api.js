@@ -1008,6 +1008,153 @@ async function apiCall(action, payload) {
       return { success: true, message: 'Transfer completed successfully.' };
     }
 
+    // Mutual Transfer — step 1: find candidates to swap with.
+    // A mutual/exchange transfer moves two employees of the SAME BPS
+    // grade to each other's schools, so no SNE vacancy check is needed
+    // (headcount at each grade is unchanged at both ends). The search
+    // must reach across jurisdictions on purpose — that's the entire
+    // point of a mutual transfer, mirroring 'getAllSchoolsGlobal'
+    // above — so this goes through a SECURITY DEFINER RPC
+    // (staff_by_emis_bps_privileged, see sql/mutual_transfer_setup.sql)
+    // instead of a plain table select, which would otherwise be
+    // silently narrowed to the acting officer's own jurisdiction by
+    // the `staff` table's SELECT RLS policy (see the big comment on
+    // _checkedUpdate above for why that policy exists).
+    case 'getMutualTransferCandidates': {
+      const p = Array.isArray(payload) ? payload[0] : payload;
+      const emis = (p?.emis || p?.targetEmis || '').toString().trim();
+      const bps  = (p?.bps  || '').toString().trim();
+      const excludePno = p?.excludePersonalNo || p?.personalNo || '';
+      if (!emis) return { success: false, error: 'Missing target EMIS code.' };
+      if (!bps)  return { success: false, error: 'Missing BPS to match against.' };
+
+      let rows = null;
+      const { data: rpcData, error: rpcErr } = await _sb.rpc('staff_by_emis_bps_privileged', {
+        p_emis: emis, p_bps: bps, p_exclude_personal_no: excludePno || null,
+      });
+      if (!rpcErr) {
+        rows = rpcData;
+      } else {
+        // Fallback for installs that haven't run the SQL setup yet —
+        // works, but is silently limited to the acting officer's own
+        // jurisdiction by RLS until the RPC above is installed.
+        const { data: fallback } = await _sb.from('staff')
+          .select('personal_no, name_of_teacher, designation, working_as_head, bps, pps, school_emis_code, school_name, markaz_name, tehsil, district, wing, date_of_posting_present_school')
+          .eq('school_emis_code', emis).eq('status', 'active');
+        rows = (fallback || []).filter(r => String(r.bps || '').trim() === bps);
+      }
+
+      const candidates = (rows || [])
+        .filter(r => !excludePno || String(r.personal_no) !== String(excludePno))
+        .map(r => ({
+          personalNo:   r.personal_no,
+          name:         r.name_of_teacher,
+          designation:  r.designation,
+          workingAsHead:r.working_as_head,
+          bps:          r.bps,
+          pps:          r.pps,
+          emis:         r.school_emis_code,
+          schoolName:   r.school_name,
+          markaz:       r.markaz_name,
+          tehsil:       r.tehsil,
+          district:     r.district,
+          wing:         r.wing,
+          postedSince:  r.date_of_posting_present_school,
+        }));
+      return { success: true, candidates, usedPrivilegedSearch: !rpcErr };
+    }
+
+    // Mutual Transfer — step 2: swap two same-BPS employees' postings.
+    // Employee A moves to Employee B's (pre-swap) school and vice versa.
+    // Both writes go through _staffPrivilegedUpdate for the same reason
+    // executeTransfer does — a mutual transfer routinely moves at least
+    // one side outside the acting officer's own jurisdiction. If the
+    // second write fails, the first is rolled back so a mutual transfer
+    // never lands as a one-sided move.
+    case 'executeMutualTransfer': {
+      const p = Array.isArray(payload) ? payload[0] : payload;
+      const pnoA = p?.personalNoA || p?.personalNo;
+      const pnoB = p?.personalNoB;
+      if (!pnoA || !pnoB) return { success: false, error: 'Both employees are required for a mutual transfer.' };
+      if (String(pnoA) === String(pnoB)) return { success: false, error: 'Cannot mutually transfer an employee with themself.' };
+
+      const { data: staffRows } = await _sb.from('staff')
+        .select('personal_no, name_of_teacher, school_emis_code, school_name, markaz_name, tehsil, district, wing, bps, status')
+        .in('personal_no', [pnoA, pnoB]);
+      const a = (staffRows || []).find(r => String(r.personal_no) === String(pnoA));
+      const b = (staffRows || []).find(r => String(r.personal_no) === String(pnoB));
+      if (!a) return { success: false, error: `No staff record found for personal number "${pnoA}".` };
+      if (!b) return { success: false, error: `No staff record found for personal number "${pnoB}".` };
+      if (a.status !== 'active' || b.status !== 'active') {
+        return { success: false, error: 'Both employees must be active to process a mutual transfer.' };
+      }
+      if (String(a.bps || '').trim() !== String(b.bps || '').trim()) {
+        return { success: false, error: `BPS mismatch: ${a.name_of_teacher || pnoA} is BPS-${a.bps}, ${b.name_of_teacher || pnoB} is BPS-${b.bps}. Mutual transfer requires the same BPS.` };
+      }
+      if (String(a.school_emis_code || '') === String(b.school_emis_code || '')) {
+        return { success: false, error: 'Both employees are already posted at the same school.' };
+      }
+
+      const dateA = p.dateA || p.newJoiningDateA || p.effective_date || '';
+      const dateB = p.dateB || p.newJoiningDateB || dateA;
+      const notif = p.notificationNo || p.notification_no || '';
+
+      const updA = {
+        school_emis_code: b.school_emis_code, school_name: b.school_name,
+        markaz_name: b.markaz_name, tehsil: b.tehsil, district: b.district, wing: b.wing,
+        date_of_posting_present_school: dateA, status: 'active',
+        changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
+      };
+      const updB = {
+        school_emis_code: a.school_emis_code, school_name: a.school_name,
+        markaz_name: a.markaz_name, tehsil: a.tehsil, district: a.district, wing: a.wing,
+        date_of_posting_present_school: dateB, status: 'active',
+        changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
+      };
+
+      const rA = await _staffPrivilegedUpdate(pnoA, _sanitizeEmpty(updA));
+      if (!rA.ok) return { success: false, error: `Could not move ${a.name_of_teacher || pnoA}: ${rA.message}` };
+
+      const rB = await _staffPrivilegedUpdate(pnoB, _sanitizeEmpty(updB));
+      if (!rB.ok) {
+        // Roll the first move back so we never leave a one-sided transfer.
+        await _staffPrivilegedUpdate(pnoA, _sanitizeEmpty({
+          school_emis_code: a.school_emis_code, school_name: a.school_name,
+          markaz_name: a.markaz_name, tehsil: a.tehsil, district: a.district, wing: a.wing,
+          date_of_posting_present_school: a.date_of_posting_present_school || '',
+        }));
+        return { success: false, error: `${a.name_of_teacher || pnoA} was not moved (rolled back) because the swap could not be completed for ${b.name_of_teacher || pnoB}: ${rB.message}` };
+      }
+
+      await _sb.from('staff_events').insert([
+        {
+          personal_no: pnoA, employee_name: a.name_of_teacher || '', event_type: 'mutual_transfer',
+          notification_no: notif, effective_date: dateA,
+          details: {
+            from_emis: a.school_emis_code || '', to_emis: b.school_emis_code || '',
+            from_markaz: a.markaz_name || '', to_markaz: b.markaz_name || '', to_school: b.school_name || '',
+            swapped_with_personal_no: pnoB, swapped_with_name: b.name_of_teacher || '',
+          },
+          created_by: user?.name || '',
+        },
+        {
+          personal_no: pnoB, employee_name: b.name_of_teacher || '', event_type: 'mutual_transfer',
+          notification_no: notif, effective_date: dateB,
+          details: {
+            from_emis: b.school_emis_code || '', to_emis: a.school_emis_code || '',
+            from_markaz: b.markaz_name || '', to_markaz: a.markaz_name || '', to_school: a.school_name || '',
+            swapped_with_personal_no: pnoA, swapped_with_name: a.name_of_teacher || '',
+          },
+          created_by: user?.name || '',
+        },
+      ]);
+
+      return {
+        success: true,
+        message: `Mutual transfer completed: ${a.name_of_teacher || pnoA} ↔ ${b.name_of_teacher || pnoB}.`,
+      };
+    }
+
     case 'executePromotion': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;

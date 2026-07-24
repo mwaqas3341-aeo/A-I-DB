@@ -375,6 +375,7 @@ function openFixedMenu(button, idx) {
     items += `
       <button class="action-item" onclick="handleAction('edit',${idx})">✏️ Edit Record</button>
       <button class="action-item" onclick="handleAction('transfer',${idx})">🔄 Transfer</button>
+      <button class="action-item" onclick="handleAction('mutualTransfer',${idx})">🔁 Mutual Transfer</button>
       <button class="action-item" onclick="handleAction('promotion',${idx})">⬆️ Promotion</button>
       <button class="action-item" onclick="handleAction('retirement',${idx})">🎓 Retirement</button>
       <button class="action-item" onclick="handleAction('resignation',${idx})">📝 Resignation</button>
@@ -413,6 +414,7 @@ function handleAction(action, idx) {
   if (action === 'view')       showDetailModal(row);
   if (action === 'edit')       openEditModal(row);
   if (action === 'transfer')   openTransferModal(row);
+  if (action === 'mutualTransfer') openMutualTransferModal(row);
   // Promotion now has its own dedicated modal (defined in StaffForm.html)
   if (action === 'promotion')  openPromotionModal(row);
   // Retirement / Resignation / Death / Termination share the generic action form
@@ -494,6 +496,7 @@ function openAddStaffModal() {
 // Stubs overridden by StaffForm.html
 function openTransferModal(row) { showToast('Transfer module not loaded.', 'error'); }
 function openPromotionModal(row) { showToast('Promotion module not loaded.', 'error'); }
+function openMutualTransferModal(row) { showToast('Mutual Transfer module not loaded.', 'error'); }
 
 // =====================================================================
 //  GENERIC ACTION FORM: Retirement / Resignation / Death / Termination
