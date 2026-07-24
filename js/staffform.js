@@ -4,7 +4,9 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ---------- State ----------
-var sfmEmisMap    = {};   // emis_lowercase → {d,w,t,m,e}
+var sfmEmisMap    = {};   // emis_lowercase → {d,w,t,m,e}  (jurisdiction-scoped — Add/Edit "current school")
+var sfmTargetSchoolPool = [];  // ALL schools, no jurisdiction filter — Transfer/Promotion target EMIS only
+var sfmTargetSchoolMap  = {};  // emis_lowercase → {d,w,t,m,e}, built from sfmTargetSchoolPool
 var sfmSubmitting = false;
 var sfmPnoStatus  = 'unchecked';
 var sfmCnicStatus = 'unchecked';
@@ -101,6 +103,39 @@ function sfmEnsureSchoolCache(callback) {
       if (callback) callback();
     })
     .getSchoolHierarchyForUser(userPayload);
+}
+
+// ---------- Global (unrestricted) school pool — Transfer/Promotion target EMIS ----------
+// Deliberately NOT jurisdiction-scoped: a transfer/promotion target school can be
+// anywhere in the system, so this pulls the full national list via getAllSchoolsGlobal
+// instead of reusing hrSchoolCache/schoolCache (which openTransferModal/openPromotionModal
+// callers must NOT be pointed at, since those stay jurisdiction-filtered everywhere else).
+function buildSfmTargetSchoolMap() {
+  sfmTargetSchoolMap = {};
+  sfmTargetSchoolPool.forEach(function(s) {
+    if (s.e) sfmTargetSchoolMap[s.e.toString().trim().toLowerCase()] = s;
+  });
+}
+
+function sfmEnsureTargetSchoolCache(callback) {
+  if (sfmTargetSchoolPool.length > 0) {
+    buildSfmTargetSchoolMap();
+    if (callback) callback();
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(function(data) {
+      sfmTargetSchoolPool = data || [];
+      buildSfmTargetSchoolMap();
+      if (callback) callback();
+    })
+    .withFailureHandler(function(err) {
+      if (typeof showToast === 'function') {
+        showToast('Error loading full school list: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
+      }
+      if (callback) callback();
+    })
+    .getAllSchoolsGlobal();
 }
 
 // ---------- EMIS live-lookup ----------
@@ -848,7 +883,10 @@ window.openTransferModal = function(row) {
   transferRowData = row;
   tfSubmitting     = false;
 
-  sfmEnsureSchoolCache(function() {
+  // Target EMIS must be searchable against the FULL school list, not just
+  // this officer's jurisdiction — sfmEnsureTargetSchoolCache loads that
+  // separately from sfmEnsureSchoolCache (which stays jurisdiction-scoped).
+  sfmEnsureTargetSchoolCache(function() {
     _sfmRenderTransferModal(row);
   });
 };
@@ -910,7 +948,7 @@ function tfOnTargetEmis() {
 
   if (!/^\d{8}$/.test(emis)) return;
 
-  var found = sfmEmisMap[emis.toLowerCase()];
+  var found = sfmTargetSchoolMap[emis.toLowerCase()];
   if (!found) {
     errEl.textContent = '⚠ EMIS not found in Schools data.';
     el.classList.add('invalid');
@@ -941,7 +979,7 @@ async function tfSubmit() {
   if (!targetEmis || !/^\d{8}$/.test(targetEmis)) {
     document.getElementById('tfe_emis').textContent = 'Valid 8-digit EMIS code is required.';
     document.getElementById('tf_targetEmis').classList.add('invalid'); ok = false;
-  } else if (!sfmEmisMap[targetEmis.toLowerCase()]) {
+  } else if (!sfmTargetSchoolMap[targetEmis.toLowerCase()]) {
     document.getElementById('tfe_emis').textContent = '⚠ EMIS not found in Schools data.';
     document.getElementById('tf_targetEmis').classList.add('invalid'); ok = false;
   }
@@ -971,7 +1009,7 @@ async function tfSubmit() {
     } catch (e) { /* fail open — server-side check in executeTransfer still applies */ }
   }
 
-  var newSchool     = sfmEmisMap[targetEmis.toLowerCase()];
+  var newSchool     = sfmTargetSchoolMap[targetEmis.toLowerCase()];
   var formattedDate = joiningDate;  // already YYYY-MM-DD from the date input
   var teacherName   = safeVal(transferRowData['NAME OF TEACHER']);
 
@@ -1043,7 +1081,10 @@ window.openPromotionModal = function(row) {
   promotionRowData = row;
   pmSubmitting     = false;
 
-  sfmEnsureSchoolCache(function() {
+  // Same rationale as Transfer: promotion can move staff to a school
+  // outside the acting officer's jurisdiction, so target EMIS lookup
+  // uses the unrestricted pool, not the jurisdiction-scoped one.
+  sfmEnsureTargetSchoolCache(function() {
     _sfmRenderPromotionModal(row);
   });
 };
@@ -1139,7 +1180,7 @@ function pmOnTargetEmis() {
 
   if (!/^\d{8}$/.test(emis)) return;
 
-  var found = sfmEmisMap[emis.toLowerCase()];
+  var found = sfmTargetSchoolMap[emis.toLowerCase()];
   if (!found) {
     errEl.textContent = '⚠ EMIS not found in Schools data.';
     el.classList.add('invalid');
@@ -1190,7 +1231,7 @@ async function pmSubmit() {
   if (!targetEmis || !/^\d{8}$/.test(targetEmis)) {
     document.getElementById('pme_emis').textContent = 'Valid 8-digit EMIS code is required.';
     document.getElementById('pm_targetEmis').classList.add('invalid'); ok = false;
-  } else if (!sfmEmisMap[targetEmis.toLowerCase()]) {
+  } else if (!sfmTargetSchoolMap[targetEmis.toLowerCase()]) {
     document.getElementById('pme_emis').textContent = '⚠ EMIS not found in Schools data.';
     document.getElementById('pm_targetEmis').classList.add('invalid'); ok = false;
   }

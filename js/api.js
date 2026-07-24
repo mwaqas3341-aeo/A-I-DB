@@ -664,6 +664,40 @@ async function apiCall(action, payload) {
     // loadSheetForClient already uses for row data, keeping dropdown
     // options and row visibility in sync for every scope type
     // (Markaz/Tehsil/Wing/District).
+    // ── SCHOOL HIERARCHY — GLOBAL / UNRESTRICTED (Transfer & Promotion) ─
+    // Deliberately bypasses _buildUserSchoolFilter. Transfer/Promotion
+    // need to target ANY school in the system, not just the acting
+    // officer's own jurisdiction — a transfer's whole point is moving
+    // staff to a *different* jurisdiction. Every other caller of
+    // getSchoolHierarchy/getSchoolHierarchyForUser (dropdown cascades,
+    // Add/Edit Staff "current school", Public/Private school filters)
+    // must stay jurisdiction-scoped, so this is a separate action
+    // rather than a flag on the existing one — nobody should be able to
+    // widen those by accident.
+    //
+    // NOTE: this still runs through the anon/session Supabase client,
+    // so it is only truly unrestricted once the `schools` table's RLS
+    // policy also allows any authenticated user to SELECT all rows
+    // (see accompanying SQL note). If RLS still scopes by primary
+    // posting, this action will silently return a jurisdiction-limited
+    // set despite the app-level filter being removed here.
+    case 'getAllSchoolsGlobal': {
+      try {
+        const data = await _fetchAllRows('schools', 'district, wing, tehsil, markaz, school_name, emis',
+          null, null, 'emis');
+        return (data || []).map(r => ({
+          d: r.district,
+          w: r.wing,
+          t: r.tehsil,
+          m: r.markaz,
+          s: r.school_name,
+          e: r.emis,
+        }));
+      } catch (e) {
+        throw new Error('Could not load the full school list: ' + (e && e.message ? e.message : 'Unknown error'));
+      }
+    }
+
     case 'getSchoolHierarchy':
     case 'getSchoolHierarchyForUser': {
       try {
