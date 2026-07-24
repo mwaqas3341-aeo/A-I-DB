@@ -421,33 +421,36 @@ function bpBuildLetterHtml(opts) {
     ? 'The Chief Executive Officer (DEA)'
     : `The District Education Officer (${w.code})`;
 
-  const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;vertical-align:middle;position:static !important;text-align:center';
-  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;vertical-align:middle';
+  // Explicit Strict CSS - blocks forced RTL wrapping
+  const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;word-break:break-word !important;vertical-align:middle !important;text-align:center !important;';
+  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;vertical-align:middle !important;';
+  const TDCNOWRAP = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:nowrap !important;vertical-align:middle !important;';
   
-  // Exact pixel widths summing to 702px (794px total width minus 46px padding on left/right)
-  const COLW = [35, 84, 119, 119, 176, 77, 92];
+  // Exact pixel widths summing to 702px
+  const COLW = [35, 75, 125, 120, 180, 77, 90];
 
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
     const srNo = i + 1;
     const amount = Number(e.due) || 0;
-    return `<tr data-bp-row="1">
-      <td style="${TDC};text-align:center">${srNo}</td>
-      <td style="${TDC}">${e.personal_no || ''}</td>
-      <td style="${TDC}">${e.name || ''}</td>
-      <td style="${TDC}">${u.markaz_name || ''}</td>
-      <td style="${TDC}">Dy. DEO (${w.letter}) ${bpState.tehsil}</td>
-      <td style="${TDC}">${bpFormatDdo(u.ddeo_code)}</td>
-      <td style="${TDC};text-align:right">${amount.toLocaleString()}</td>
+    return `<tr data-bp-row="1" dir="ltr" style="direction:ltr !important;">
+      <td dir="ltr" style="${TDCNOWRAP};text-align:center !important;">${srNo}</td>
+      <td dir="ltr" style="${TDCNOWRAP};text-align:center !important;">${e.personal_no || ''}</td>
+      <td dir="ltr" style="${TDC};text-align:left !important;">${e.name || ''}</td>
+      <td dir="ltr" style="${TDC};text-align:left !important;">${u.markaz_name || ''}</td>
+      <td dir="ltr" style="${TDC};text-align:left !important;">Dy. DEO (${w.letter}) ${bpState.tehsil}</td>
+      <td dir="ltr" style="${TDCNOWRAP};text-align:center !important;">${bpFormatDdo(u.ddeo_code)}</td>
+      <td dir="ltr" style="${TDCNOWRAP};text-align:right !important;font-weight:bold;">${amount.toLocaleString()}</td>
     </tr>`;
   }).join('');
 
+  // Signature Block - Font size bumped to 15px and top margin added for stamp
   const signatureHtml = recipient === 'CEO'
-    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
+    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:15px;margin-top:80px">
          <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
          <div style="width:48%;text-align:right">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</div>
        </div>`
-    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
+    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:15px;margin-top:80px">
          DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
        </div>`;
 
@@ -456,27 +459,29 @@ function bpBuildLetterHtml(opts) {
       
       <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
         <tr>
-          <td style="vertical-align:top; text-align:left;">
-            <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px;">
+          <td style="vertical-align:top; text-align:left; width:50%;">
+            <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px; display:block;">
           </td>
-          <td style="vertical-align:top; text-align:right;">
-            <table style="font-size:12px; border-collapse:collapse; margin-left:auto;">
-              <tbody>
-                <tr>
-                  <td style="padding:2px 6px 2px 0; text-align:right; white-space:nowrap">No.:</td>
-                  <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
-                </tr>
-                <tr>
-                  <td style="padding:2px 6px 2px 0; text-align:right; white-space:nowrap">Dated:</td>
-                  <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
-                </tr>
-              </tbody>
-            </table>
+          <td style="vertical-align:top; text-align:right; width:50%; padding-top:10px;">
+            <div style="display:inline-block; text-align:left;">
+              <table style="font-size:10.5px; border-collapse:collapse;">
+                <tbody>
+                  <tr>
+                    <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">No.:</td>
+                    <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">Dated:</td>
+                    <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </td>
         </tr>
       </table>
 
-      <div style="font-size:13px;line-height:1.6;text-align:left">
+      <div style="font-size:10.5px;line-height:1.6;text-align:left">
         <b>To</b><br>
         <b>${recipientLine}</b><br>
         <b>Layyah</b>
@@ -487,28 +492,29 @@ function bpBuildLetterHtml(opts) {
         ${monthPhraseUpper} OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
       </p>
 
-      <p style="font-size:12.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
+      <p style="font-size:10.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
         Kindly refer to the subject cited above It is certified that performance of following Assistant Education
         Officers, Tehsil ${bpState.tehsil} (${w.word}) have achieved verifiable key performance indicators developed
         by DFID as issued vide Notification No. SO (SE-III) 5-226/2017 dated 03-08-2020.
       </p>
 
-      <p style="font-size:12.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
+      <p style="font-size:10.5px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
         The performance of following AEOs has been verified for the ${monthPhraseTitle}. They are entitled to draw
         the following amount mentioned against their names.
       </p>
 
-      <table dir="ltr" style="direction:ltr !important;width:702px !important;min-width:702px !important;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
-        <thead><tr>
-          <th style="${THC}; width:${COLW[0]}px !important; min-width:${COLW[0]}px !important;">Sr.<br>No.</th>
-          <th style="${THC}; width:${COLW[1]}px !important; min-width:${COLW[1]}px !important;">Personal<br>Number</th>
-          <th style="${THC}; width:${COLW[2]}px !important; min-width:${COLW[2]}px !important;">Name</th>
-          <th style="${THC}; width:${COLW[3]}px !important; min-width:${COLW[3]}px !important;">Markaz name</th>
-          <th style="${THC}; width:${COLW[4]}px !important; min-width:${COLW[4]}px !important;">Tehsil</th>
-          <th style="${THC}; width:${COLW[5]}px !important; min-width:${COLW[5]}px !important;">DDO<br>Code</th>
-          <th style="${THC}; width:${COLW[6]}px !important; min-width:${COLW[6]}px !important;">Amount</th>
+      <table dir="ltr" style="direction:ltr !important;width:702px !important;min-width:702px !important;max-width:702px !important;table-layout:fixed !important;border-collapse:collapse;font-size:10.5px">
+        <colgroup>${COLW.map(cw => `<col style="width:${cw}px !important; min-width:${cw}px !important; max-width:${cw}px !important;">`).join('')}</colgroup>
+        <thead><tr dir="ltr" style="direction:ltr !important;">
+          <th dir="ltr" style="${THC}; width:${COLW[0]}px !important;">Sr.<br>No.</th>
+          <th dir="ltr" style="${THC}; width:${COLW[1]}px !important;">Personal<br>Number</th>
+          <th dir="ltr" style="${THC}; width:${COLW[2]}px !important;">Name</th>
+          <th dir="ltr" style="${THC}; width:${COLW[3]}px !important;">Markaz name</th>
+          <th dir="ltr" style="${THC}; width:${COLW[4]}px !important;">Tehsil</th>
+          <th dir="ltr" style="${THC}; width:${COLW[5]}px !important;">DDO<br>Code</th>
+          <th dir="ltr" style="${THC}; width:${COLW[6]}px !important;">Amount</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody dir="ltr" style="direction:ltr !important;">${rows}</tbody>
       </table>
 
       ${signatureHtml}
@@ -520,14 +526,20 @@ function bpBuildLetterHtml(opts) {
 async function bpRenderHtmlToPdfBase64(html) {
   const target = document.getElementById('bpPdfRenderTarget');
   
-  // Temporarily force target out of viewport flow to bypass mobile screen width limits
+  // Keep target technically inside the viewport so the browser doesn't 
+  // garbage-collect or ignore the logo/CSS, but make it totally invisible
   target.style.position = 'absolute';
-  target.style.left = '-9999px';
+  target.style.left = '0';
   target.style.top = '0';
   target.style.width = '794px';
+  target.style.opacity = '0';
+  target.style.pointerEvents = 'none';
+  target.style.zIndex = '-1';
   
   target.innerHTML = html;
-  await new Promise(r => setTimeout(r, 150));
+  
+  // Wait slightly longer to guarantee the logo image mounts correctly before snapshot
+  await new Promise(r => setTimeout(r, 250));
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'pt', 'a4');
@@ -539,6 +551,9 @@ async function bpRenderHtmlToPdfBase64(html) {
   target.style.left = '';
   target.style.top = '';
   target.style.width = '';
+  target.style.opacity = '';
+  target.style.pointerEvents = '';
+  target.style.zIndex = '';
 
   const dataUri = pdf.output('datauristring');
   return dataUri.split(',')[1];
