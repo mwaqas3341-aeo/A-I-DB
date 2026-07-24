@@ -444,7 +444,7 @@ function bpBuildLetterHtml(opts) {
     </tr>`;
   }).join('');
 
-  // Signature Block - Font size changed to 14px and top margin added for stamp
+  // Signature Block - Size 14px as requested
   const signatureHtml = recipient === 'CEO'
     ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
          <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
@@ -526,14 +526,13 @@ function bpBuildLetterHtml(opts) {
 async function bpRenderHtmlToPdfBase64(html) {
   const target = document.getElementById('bpPdfRenderTarget');
   
-  // Keep target technically inside the viewport so the browser doesn't 
-  // garbage-collect or ignore the logo/CSS, but make it totally invisible
+  // Use visibility hidden to completely hide from user screen, 
+  // without erasing the transparent layout for html2canvas
   target.style.position = 'absolute';
   target.style.left = '0';
   target.style.top = '0';
   target.style.width = '794px';
-  target.style.opacity = '0';
-  target.style.pointerEvents = 'none';
+  target.style.visibility = 'hidden'; 
   target.style.zIndex = '-1';
   
   target.innerHTML = html;
@@ -551,8 +550,7 @@ async function bpRenderHtmlToPdfBase64(html) {
   target.style.left = '';
   target.style.top = '';
   target.style.width = '';
-  target.style.opacity = '';
-  target.style.pointerEvents = '';
+  target.style.visibility = '';
   target.style.zIndex = '';
 
   const dataUri = pdf.output('datauristring');
@@ -573,7 +571,20 @@ async function bpRenderTargetIntoPdf(pdf, target) {
     .map(r => r.getBoundingClientRect().bottom - targetTop);
   const totalCssHeight = target.scrollHeight;
 
-  const canvas = await html2canvas(target, { scale, useCORS: true, backgroundColor: '#ffffff' });
+  // The 'onclone' function tells html2canvas to temporarily make the element 
+  // 'visible' ONLY inside the hidden engine rendering the PDF.
+  const canvas = await html2canvas(target, { 
+    scale, 
+    useCORS: true, 
+    backgroundColor: '#ffffff',
+    onclone: function(clonedDoc) {
+      const clonedTarget = clonedDoc.getElementById('bpPdfRenderTarget');
+      if (clonedTarget) {
+        clonedTarget.style.visibility = 'visible';
+      }
+    }
+  });
+
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const ratio = pageWidth / canvas.width;          // pt per canvas-px
