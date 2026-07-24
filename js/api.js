@@ -1160,11 +1160,14 @@ async function apiCall(action, payload) {
 
     // Mutual Transfer — step 2: swap two same-BPS employees' postings.
     // Employee A moves to Employee B's (pre-swap) school and vice versa.
-    // Both writes go through _staffPrivilegedUpdate for the same reason
-    // executeTransfer does — a mutual transfer routinely moves at least
-    // one side outside the acting officer's own jurisdiction. If the
-    // second write fails, the first is rolled back so a mutual transfer
-    // never lands as a one-sided move.
+    // Both writes happen atomically in a single RPC
+    // (staff_mutual_transfer_privileged, see Supabase migration
+    // add_atomic_mutual_transfer_rpc) authorized once against both
+    // records together, since a mutual transfer routinely moves at
+    // least one side outside the acting officer's own jurisdiction —
+    // see that migration's comments for why the old "two separate
+    // jurisdiction-checked writes + manual app-level rollback"
+    // approach could silently strand an employee one-sided.
     case 'executeMutualTransfer': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const pnoA = p?.personalNoA || p?.personalNo;
@@ -1245,18 +1248,29 @@ async function apiCall(action, payload) {
         changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
       };
 
-      const rA = await _staffPrivilegedUpdate(pnoA, _sanitizeEmpty(updA));
-      if (!rA.ok) return { success: false, error: `Could not move ${a.name_of_teacher || pnoA}: ${rA.message}` };
-
-      const rB = await _staffPrivilegedUpdate(pnoB, _sanitizeEmpty(updB));
-      if (!rB.ok) {
-        // Roll the first move back so we never leave a one-sided transfer.
-        await _staffPrivilegedUpdate(pnoA, _sanitizeEmpty({
-          school_emis_code: a.school_emis_code, school_name: a.school_name,
-          markaz_name: a.markaz_name, tehsil: a.tehsil, district: a.district, wing: a.wing,
-          date_of_posting_present_school: a.date_of_posting_present_school || '',
-        }));
-        return { success: false, error: `${a.name_of_teacher || pnoA} was not moved (rolled back) because the swap could not be completed for ${b.name_of_teacher || pnoB}: ${rB.message}` };
+      // BUGFIX (2026-07-24): this used to be two sequential
+      // _staffPrivilegedUpdate calls, each authorized independently
+      // against whatever that record's jurisdiction was AT THE MOMENT
+      // of that write, with a manual app-level "roll the first one
+      // back" on failure. That let the first write (inside the acting
+      // officer's own jurisdiction) succeed, the second (outside it)
+      // correctly fail -- but by then the first record had ALSO moved
+      // outside the officer's jurisdiction, so even the rollback call
+      // was silently blocked by the same check, and its result was
+      // never checked. That stranded the employee one-sided with a
+      // false "rolled back" message and no audit trail (incident:
+      // personal_no 31715221 / Nasir Hussain Shah). Now both writes go
+      // through a single atomic RPC (staff_mutual_transfer_privileged,
+      // see Supabase migration) that authorizes once up front against
+      // BOTH original records together and performs both updates in
+      // one transaction -- they always succeed or fail together, with
+      // no possibility of a one-sided move.
+      const { error: mtErr } = await _sb.rpc('staff_mutual_transfer_privileged', {
+        p_personal_no_a: pnoA, p_personal_no_b: pnoB,
+        p_updates_a: _sanitizeEmpty(updA), p_updates_b: _sanitizeEmpty(updB),
+      });
+      if (mtErr) {
+        return { success: false, error: `Mutual transfer could not be completed: ${mtErr.message}` };
       }
 
       await _sb.from('staff_events').insert([
