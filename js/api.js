@@ -1218,7 +1218,13 @@ async function apiCall(action, payload) {
       if (String(a.bps || '').trim() !== String(b.bps || '').trim()) {
         return { success: false, error: `BPS mismatch: ${a.name_of_teacher || pnoA} is BPS-${a.bps}, ${b.name_of_teacher || pnoB} is BPS-${b.bps}. Mutual transfer requires the same BPS.` };
       }
-      if (String(a.school_emis_code || '') === String(b.school_emis_code || '')) {
+      const aEmis = String(a.school_emis_code || '').trim();
+      const bEmis = String(b.school_emis_code || '').trim();
+      if (!aEmis || !bEmis) {
+        const who = !aEmis ? (a.name_of_teacher || pnoA) : (b.name_of_teacher || pnoB);
+        return { success: false, error: `Cannot process: ${who}'s staff record has no School EMIS Code on file. Fix that record first, then retry the mutual transfer.` };
+      }
+      if (aEmis === bEmis) {
         return { success: false, error: 'Both employees are already posted at the same school.' };
       }
 
