@@ -421,13 +421,13 @@ function bpBuildLetterHtml(opts) {
     ? 'The Chief Executive Officer (DEA)'
     : `The District Education Officer (${w.code})`;
 
-  // Explicit Strict CSS - blocks forced RTL wrapping
+  // Explicit Strict CSS - blocks forced RTL wrapping and allows wrapping for names/markaz/tehsil
   const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;word-break:break-word !important;vertical-align:middle !important;text-align:center !important;';
-  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;vertical-align:middle !important;';
+  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;overflow-wrap:break-word !important;vertical-align:middle !important;white-space:normal !important;';
   const TDCNOWRAP = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:nowrap !important;vertical-align:middle !important;';
   
-  // Exact pixel widths summing to 702px
-  const COLW = [35, 75, 125, 120, 180, 77, 90];
+  // Adjusted exact pixel widths summing to 702px — giving more room to Name (140), Markaz (130), and Tehsil (200)
+  const COLW = [30, 75, 140, 130, 200, 70, 57];
 
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
