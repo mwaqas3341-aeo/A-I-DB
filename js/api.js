@@ -1172,13 +1172,46 @@ async function apiCall(action, payload) {
       if (!pnoA || !pnoB) return { success: false, error: 'Both employees are required for a mutual transfer.' };
       if (String(pnoA) === String(pnoB)) return { success: false, error: 'Cannot mutually transfer an employee with themself.' };
 
-      const { data: staffRows } = await _sb.from('staff')
-        .select('personal_no, name_of_teacher, school_emis_code, school_name, markaz_name, tehsil, district, wing, bps, status')
-        .in('personal_no', [pnoA, pnoB]);
+      // IMPORTANT: this read must bypass the `staff` table's SELECT RLS
+      // policy, same reason getMutualTransferCandidates above uses the
+      // privileged RPC instead of a plain select. A mutual transfer's
+      // whole point is that Employee B usually lives OUTSIDE the acting
+      // officer's own jurisdiction (that's how they got found via
+      // staff_by_emis_bps_privileged in step 1). A plain
+      // `.from('staff').select(...)` here is silently narrowed to the
+      // officer's own jurisdiction by RLS, so B's row (and sometimes
+      // even A's, if the officer is receiving someone into their
+      // jurisdiction) comes back empty — surfacing as the confusing
+      // "No staff record found for personal number ..." error even
+      // though the record clearly exists. Route through
+      // staff_by_personal_no_privileged (see
+      // sql/mutual_transfer_personal_no_lookup.sql) instead, with the
+      // old plain-select behaviour kept only as a fallback for installs
+      // that haven't run that SQL yet.
+      let staffRows = null;
+      const { data: rpcRows, error: rpcRowsErr } = await _sb.rpc('staff_by_personal_no_privileged', {
+        p_personal_nos: [String(pnoA), String(pnoB)],
+      });
+      if (!rpcRowsErr) {
+        staffRows = rpcRows;
+      } else {
+        const { data: fallbackRows } = await _sb.from('staff')
+          .select('personal_no, name_of_teacher, school_emis_code, school_name, markaz_name, tehsil, district, wing, bps, status')
+          .in('personal_no', [pnoA, pnoB]);
+        staffRows = fallbackRows;
+      }
       const a = (staffRows || []).find(r => String(r.personal_no) === String(pnoA));
       const b = (staffRows || []).find(r => String(r.personal_no) === String(pnoB));
-      if (!a) return { success: false, error: `No staff record found for personal number "${pnoA}".` };
-      if (!b) return { success: false, error: `No staff record found for personal number "${pnoB}".` };
+      if (!a) {
+        return { success: false, error: rpcRowsErr
+          ? `No staff record found for personal number "${pnoA}". (Cross-jurisdiction lookup RPC isn't installed yet — ask an admin to run sql/mutual_transfer_personal_no_lookup.sql, otherwise employees outside your own jurisdiction won't be found here.)`
+          : `No staff record found for personal number "${pnoA}".` };
+      }
+      if (!b) {
+        return { success: false, error: rpcRowsErr
+          ? `No staff record found for personal number "${pnoB}". (Cross-jurisdiction lookup RPC isn't installed yet — ask an admin to run sql/mutual_transfer_personal_no_lookup.sql, otherwise employees outside your own jurisdiction won't be found here.)`
+          : `No staff record found for personal number "${pnoB}".` };
+      }
       if (a.status !== 'active' || b.status !== 'active') {
         return { success: false, error: 'Both employees must be active to process a mutual transfer.' };
       }
