@@ -424,8 +424,9 @@ function bpBuildLetterHtml(opts) {
   // Explicit cell style strings — !important overrides this app's own global
   // `thead th{background:var(--ink)...white-space:nowrap}` / `tbody td{white-space:nowrap}`
   // rules, which otherwise leak into this off-screen render (same document).
-  const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle;position:static !important;text-align:center';
-  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle';
+  const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;vertical-align:middle;position:static !important;text-align:center';
+  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;vertical-align:middle';
+  
   // Column widths sum to 100% — table-layout:fixed means the table can never
   // grow past its container no matter how long a tehsil/markaz name is; text
   // wraps within the cell instead.
@@ -460,13 +461,28 @@ function bpBuildLetterHtml(opts) {
 
   return `
     <div dir="ltr" style="direction:ltr !important;width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff;text-align:left">
-      <div style="direction:ltr !important;display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
-        <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px;order:1">
-        <table style="order:2;font-size:12px;border-collapse:collapse"><tbody>
-          <tr><td style="padding:2px 6px 2px 0;text-align:left;white-space:nowrap">No.:</td><td style="padding:2px 0;width:150px;border-bottom:1px solid #111">&nbsp;</td></tr>
-          <tr><td style="padding:2px 6px 2px 0;text-align:left;white-space:nowrap">Dated:</td><td style="padding:2px 0;width:150px;border-bottom:1px solid #111">&nbsp;</td></tr>
-        </tbody></table>
-      </div>
+      
+      <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
+        <tr>
+          <td style="vertical-align:top; text-align:left;">
+            <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px;">
+          </td>
+          <td style="vertical-align:top; text-align:right;">
+            <table style="font-size:12px; border-collapse:collapse; margin-left:auto;">
+              <tbody>
+                <tr>
+                  <td style="padding:2px 6px 2px 0; text-align:right; white-space:nowrap">No.:</td>
+                  <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td style="padding:2px 6px 2px 0; text-align:right; white-space:nowrap">Dated:</td>
+                  <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </table>
 
       <div style="font-size:13px;line-height:1.6;text-align:left">
         <b>To</b><br>
@@ -491,15 +507,14 @@ function bpBuildLetterHtml(opts) {
       </p>
 
       <table dir="ltr" style="direction:ltr !important;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
-        <colgroup>${COLW.map(cw => `<col style="width:${cw}%">`).join('')}</colgroup>
         <thead><tr>
-          <th style="${THC}">Sr.<br>No.</th>
-          <th style="${THC}">Personal<br>Number</th>
-          <th style="${THC}">Name</th>
-          <th style="${THC}">Markaz name</th>
-          <th style="${THC}">Tehsil</th>
-          <th style="${THC}">DDO<br>Code</th>
-          <th style="${THC}">Amount</th>
+          <th style="${THC}; width:${COLW[0]}%">Sr.<br>No.</th>
+          <th style="${THC}; width:${COLW[1]}%">Personal<br>Number</th>
+          <th style="${THC}; width:${COLW[2]}%">Name</th>
+          <th style="${THC}; width:${COLW[3]}%">Markaz name</th>
+          <th style="${THC}; width:${COLW[4]}%">Tehsil</th>
+          <th style="${THC}; width:${COLW[5]}%">DDO<br>Code</th>
+          <th style="${THC}; width:${COLW[6]}%">Amount</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -570,4 +585,3 @@ async function bpRenderTargetIntoPdf(pdf, target) {
     firstPage = false;
   }
 }
-
