@@ -457,19 +457,19 @@ function bpBuildLetterHtml(opts) {
   return `
     <div dir="ltr" style="direction:ltr !important;width:794px !important;min-width:794px !important;max-width:794px !important;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff;text-align:left">
       
-      <!-- FIXED: Logo on the absolute left, No. and Dated on the absolute right (no table coupling) -->
+      <!-- FIXED: Logo on the absolute left, No. and Dated on the absolute right (start aligned / left-aligned) -->
       <div style="position: relative; height: 100px; margin-bottom: 18px; width: 100%;">
         <!-- Logo -->
         <div style="position: absolute; left: 0; top: 0;">
           <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px; display:block;">
         </div>
-        <!-- No. and Dated block -->
-        <div style="position: absolute; right: 0; top: 0; text-align: right; font-size: 11px;">
-          <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 4px;">
+        <!-- No. and Dated block - size 11px, left-aligned -->
+        <div style="position: absolute; right: 0; top: 0; text-align: left; font-size: 11px;">
+          <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 4px;">
             <span style="font-weight: bold; margin-right: 8px; white-space: nowrap;">No.:</span>
             <span style="display: inline-block; width: 220px; border-bottom: 1px solid #111;">&nbsp;</span>
           </div>
-          <div style="display: flex; justify-content: flex-end; align-items: center;">
+          <div style="display: flex; justify-content: flex-start; align-items: center;">
             <span style="font-weight: bold; margin-right: 8px; white-space: nowrap;">Dated:</span>
             <span style="display: inline-block; width: 220px; border-bottom: 1px solid #111;">&nbsp;</span>
           </div>
