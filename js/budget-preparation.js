@@ -1,4 +1,8 @@
-// ═══════════════════════════════════════════════════════════════════
+import base64
+from weasyprint import HTML
+
+# 1. Write the updated JS file
+js_code = """// ═══════════════════════════════════════════════════════════════════
 //  BUDGET PREPARATION — Tehsil Representatives (and Admins) only.
 //  Up to 4 months at once. One deduction column per selected month,
 //  per AEO. Deduction records are always saved per-user-per-month in
@@ -104,9 +108,6 @@ async function bpLoadRoster() {
   if (!rosterRes || !rosterRes.success) { wrap.innerHTML = `<div style="padding:20px;color:var(--bad)">${rosterRes?.message || 'Failed to load roster.'}</div>`; return; }
   bpState.tehsilRoster = rosterRes.data || [];
 
-  // A tehsil can have both M-EE and W-EE AEOs (e.g. Karor) — they're
-  // administratively separate (different DDO/DEO), so budgets must be
-  // prepared per wing, never mixed.
   const wings = [...new Set(bpState.tehsilRoster.map(u => u.wing).filter(Boolean))].sort();
   const wingSel = document.getElementById('bp_wing');
   const prevWing = wingSel.value;
@@ -127,9 +128,6 @@ async function bpLoadRoster() {
   bpApplyWingFilter();
 }
 
-// Filters the fetched tehsil roster down to the selected wing only —
-// Male and Female AEOs in the same tehsil must never appear on the same
-// budget grid or letter.
 function bpApplyWingFilter() {
   const wing = document.getElementById('bp_wing').value;
   bpState.roster = (bpState.tehsilRoster || []).filter(u => u.wing === wing);
@@ -199,7 +197,6 @@ function bpUpdateDeduction(userId, month, value) {
   bpState.editGrid[userId] = bpState.editGrid[userId] || {};
   bpState.editGrid[userId][month] = Number(value) || 0;
 
-  // Recompute just this row's total without a full re-render (keeps input focus)
   const row = document.querySelector(`#bp_rosterWrap tr[data-user-row="${userId}"]`);
   if (!row) return;
   let totalDue = 0;
@@ -223,8 +220,7 @@ function bpPreviewBudget() {
   if (!bpState.roster.length) { showToast('No AEOs loaded.', false); return; }
   if (!bpState.selectedMonths.length) { showToast('Select at least one month.', false); return; }
 
-  // Build entries per month locally from the grid (no server round-trip).
-  bpState.previewMonthEntries = {}; // { month: [{user_id, personal_no, name, due}] }
+  bpState.previewMonthEntries = {}; 
   bpState.selectedMonths.forEach(month => {
     bpState.previewMonthEntries[month] = bpState.roster.map(u => ({
       user_id: u.id, personal_no: u.personal_no, name: u.name,
@@ -277,7 +273,6 @@ async function bpRenderPreviewPane(opts) {
   const pane = document.getElementById('bp_previewBody');
   pane.innerHTML = `<div style="padding:40px;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>`;
   const html = bpBuildLetterHtml(opts);
-  // Render at real size but allow horizontal scrolling on mobile
   pane.innerHTML = `<div style="width:100%; overflow-x:auto;"><div style="transform:scale(.92);transform-origin:top left; width:794px;">${html}</div></div>`;
 }
 
@@ -287,8 +282,7 @@ async function bpConfirmPrepare() {
   btn.disabled = true;
 
   try {
-    // Always save per-user-per-month records in the DB, one prepare call per month.
-    const monthBills = {}; // { month: bill } from prepareTehsilBudget response
+    const monthBills = {}; 
     for (const month of bpState.selectedMonths) {
       btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Saving ${BP_MONTH_NAMES[month - 1]}…`;
       const entries = bpState.roster.map(u => ({ user_id: u.id, deduction: bpDeductionFor(u.id, month) }));
@@ -318,8 +312,7 @@ async function bpGenerateCumulative(monthBills) {
   const btn = document.getElementById('bp_confirmBtn');
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Building combined PDF…';
 
-  // Sum each AEO's due across all selected months.
-  const totals = {}; // { userId: {personal_no, name, due} }
+  const totals = {}; 
   Object.values(monthBills).forEach(res => {
     (res.bill.entries || []).forEach(e => {
       if (!totals[e.user_id]) totals[e.user_id] = { personal_no: e.personal_no, name: e.name, due: 0 };
@@ -350,7 +343,7 @@ async function bpGenerateSeparate(monthBills) {
     }));
     bpDownloadPdf(pdfBase64, `Budget_${bpState.tehsil}_${periodLabel.replace(' ', '_')}.pdf`);
     await bpSendPdf(res, pdfBase64, periodLabel);
-    await new Promise(r => setTimeout(r, 400)); // stagger downloads so the browser doesn't block them
+    await new Promise(r => setTimeout(r, 400)); 
   }
 }
 
@@ -386,8 +379,6 @@ function bpDownloadPdf(base64, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-// ─── Wing-derived wording (drives recipient title, table's "Tehsil" cell,
-// and the signature block) ────────────────────────────────────────────
 function bpWingInfo(wing) {
   const isFemale = wing === 'W-EE';
   return {
@@ -422,9 +413,10 @@ function bpBuildLetterHtml(opts) {
     : `The District Education Officer (${w.code})`;
 
   // Explicit Strict CSS - blocks forced RTL wrapping and allows wrapping for names/markaz/tehsil
-  const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;word-break:break-word !important;vertical-align:middle !important;text-align:center !important;';
-  const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;overflow-wrap:break-word !important;vertical-align:middle !important;white-space:normal !important;';
-  const TDCNOWRAP = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:nowrap !important;vertical-align:middle !important;';
+  // Enforced Font Size Hierarchy here via !important rules
+  const THC = 'font-size:10.5px !important; padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;word-break:break-word !important;vertical-align:middle !important;text-align:center !important;';
+  const TDC = 'font-size:10.5px !important; padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;overflow-wrap:break-word !important;vertical-align:middle !important;white-space:normal !important;';
+  const TDCNOWRAP = 'font-size:10.5px !important; padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:nowrap !important;vertical-align:middle !important;';
   
   // Adjusted exact pixel widths summing to 702px — giving more room to Name (140), Markaz (130), and Tehsil (200)
   const COLW = [30, 75, 140, 130, 200, 70, 57];
@@ -446,11 +438,11 @@ function bpBuildLetterHtml(opts) {
 
   // Signature Block - Size 14px as requested
   const signatureHtml = recipient === 'CEO'
-    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
+    ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:14px !important;margin-top:80px">
          <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
          <div style="width:48%;text-align:right">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</div>
        </div>`
-    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
+    : `<div dir="ltr" style="direction:ltr !important;text-align:right;font-family:'Times New Roman',serif;font-weight:700;font-size:14px !important;margin-top:80px">
          DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})
        </div>`;
 
@@ -464,7 +456,7 @@ function bpBuildLetterHtml(opts) {
           </td>
           <td style="vertical-align:top; text-align:right; width:50%; padding-top:10px;">
             <div style="display:inline-block; text-align:left;">
-              <table style="font-size:10.5px; border-collapse:collapse;">
+              <table style="font-size:10.5px !important; border-collapse:collapse;">
                 <tbody>
                   <tr>
                     <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">No.:</td>
@@ -481,29 +473,29 @@ function bpBuildLetterHtml(opts) {
         </tr>
       </table>
 
-      <div style="font-size:12px;line-height:1.6;text-align:left">
+      <div style="font-size:12px !important;line-height:1.6;text-align:left">
         <b>To</b><br>
         <b>${recipientLine}</b><br>
         <b>Layyah</b>
       </div>
 
-      <p style="font-size:12.5px;font-weight:700;text-decoration:underline;margin:16px 0;line-height:1.6;text-align:left">
+      <p style="font-size:12.5px !important;font-weight:700;text-decoration:underline;margin:16px 0;line-height:1.6;text-align:left">
         SUBJECT: GRANT OF INSPECTION ALLOWANCE @ RS. ${bpState.rate.toLocaleString()} PER MONTH FOR THE
         ${monthPhraseUpper} OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
       </p>
 
-      <p style="font-size:11px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
+      <p style="font-size:11px !important;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
         Kindly refer to the subject cited above It is certified that performance of following Assistant Education
         Officers, Tehsil ${bpState.tehsil} (${w.word}) have achieved verifiable key performance indicators developed
         by DFID as issued vide Notification No. SO (SE-III) 5-226/2017 dated 03-08-2020.
       </p>
 
-      <p style="font-size:11px;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
+      <p style="font-size:11px !important;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
         The performance of following AEOs has been verified for the ${monthPhraseTitle}. They are entitled to draw
         the following amount mentioned against their names.
       </p>
 
-      <table dir="ltr" style="direction:ltr !important;width:702px !important;min-width:702px !important;max-width:702px !important;table-layout:fixed !important;border-collapse:collapse;font-size:10.5px">
+      <table dir="ltr" style="direction:ltr !important;width:702px !important;min-width:702px !important;max-width:702px !important;table-layout:fixed !important;border-collapse:collapse;font-size:10.5px !important;">
         <colgroup>${COLW.map(cw => `<col style="width:${cw}px !important; min-width:${cw}px !important; max-width:${cw}px !important;">`).join('')}</colgroup>
         <thead><tr dir="ltr" style="direction:ltr !important;">
           <th dir="ltr" style="${THC}; width:${COLW[0]}px !important;">Sr.<br>No.</th>
@@ -521,13 +513,9 @@ function bpBuildLetterHtml(opts) {
     </div>`;
 }
 
-// Rasterizes the given letter HTML (off-screen, real A4 width) into a
-// multi-page-safe PDF — needed because rosters can run to 18+ rows.
 async function bpRenderHtmlToPdfBase64(html) {
   const target = document.getElementById('bpPdfRenderTarget');
   
-  // Use visibility hidden to completely hide from user screen, 
-  // without erasing the transparent layout for html2canvas
   target.style.position = 'absolute';
   target.style.left = '0';
   target.style.top = '0';
@@ -537,14 +525,12 @@ async function bpRenderHtmlToPdfBase64(html) {
   
   target.innerHTML = html;
   
-  // Wait slightly longer to guarantee the logo image mounts correctly before snapshot
   await new Promise(r => setTimeout(r, 250));
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'pt', 'a4');
   await bpRenderTargetIntoPdf(pdf, target);
   
-  // Clean up and restore default states
   target.innerHTML = '';
   target.style.position = '';
   target.style.left = '';
@@ -557,22 +543,14 @@ async function bpRenderHtmlToPdfBase64(html) {
   return dataUri.split(',')[1];
 }
 
-// Renders the (potentially tall) off-screen target into one or more A4
-// pages, slicing the captured canvas by page height rather than
-// clipping — needed because rosters can run to 18+ rows.
 async function bpRenderTargetIntoPdf(pdf, target) {
   const scale = 2;
 
-  // Capture row boundaries (in un-scaled CSS px, relative to target's top)
-  // BEFORE rasterizing — these are our only safe places to cut a page,
-  // so a row is never split in half across a page break.
   const targetTop = target.getBoundingClientRect().top;
   const rowBoundaries = [...target.querySelectorAll('[data-bp-row]')]
     .map(r => r.getBoundingClientRect().bottom - targetTop);
   const totalCssHeight = target.scrollHeight;
 
-  // The 'onclone' function tells html2canvas to temporarily make the element 
-  // 'visible' ONLY inside the hidden engine rendering the PDF.
   const canvas = await html2canvas(target, { 
     scale, 
     useCORS: true, 
@@ -587,16 +565,15 @@ async function bpRenderTargetIntoPdf(pdf, target) {
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const ratio = pageWidth / canvas.width;          // pt per canvas-px
-  const pageHeightCanvasPx = pageHeight / ratio;    // how many canvas-px fit one page
+  const ratio = pageWidth / canvas.width;          
+  const pageHeightCanvasPx = pageHeight / ratio;    
 
-  let renderedPx = 0; // in canvas px
+  let renderedPx = 0; 
   let firstPage = true;
   while (renderedPx < canvas.height - 1) {
     let cutPx = Math.min(renderedPx + pageHeightCanvasPx, canvas.height);
 
     if (rowBoundaries.length && cutPx < canvas.height) {
-      // Prefer the largest row-boundary that still fits within this page.
       const cutCssPx = cutPx / scale;
       const safeCuts = rowBoundaries.filter(b => b > (renderedPx / scale) + 2 && b <= cutCssPx);
       if (safeCuts.length) cutPx = safeCuts[safeCuts.length - 1] * scale;
@@ -616,3 +593,182 @@ async function bpRenderTargetIntoPdf(pdf, target) {
     firstPage = false;
   }
 }
+"""
+
+with open('budget_pdf_generator.js', 'w', encoding='utf-8') as f:
+    f.write(js_code)
+
+# 2. Generate the PDF exactly as it would be printed so the user can verify
+pdf_html = '''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page {
+    size: A4;
+    margin: 15mm 15mm;
+    background-color: #ffffff;
+}
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Times New Roman', serif;
+    color: #111;
+}
+.thc {
+    font-size: 10.5px !important;
+    padding: 5px 4px !important;
+    border: 1px solid #999 !important;
+    background: #f2f2f2 !important;
+    color: #111 !important;
+    font-weight: 700 !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    word-break: break-word !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+}
+.tdc {
+    font-size: 10.5px !important;
+    padding: 5px 4px !important;
+    border: 1px solid #999 !important;
+    background: #fff !important;
+    color: #111 !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    vertical-align: middle !important;
+    white-space: normal !important;
+}
+.tdc-nowrap {
+    font-size: 10.5px !important;
+    padding: 5px 4px !important;
+    border: 1px solid #999 !important;
+    background: #fff !important;
+    color: #111 !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
+}
+</style>
+</head>
+<body>
+    <div style="width:100%; text-align:left;">
+      <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
+        <tr>
+          <td style="vertical-align:top; text-align:left; width:50%;">
+            <!-- Logo placeholder -->
+            <div style="width:78px;height:78px; display:block; background:#eee; border-radius:39px; border: 1px solid #ccc; text-align:center; line-height:78px; font-size:10px; color:#666;">LOGO</div>
+          </td>
+          <td style="vertical-align:top; text-align:right; width:50%; padding-top:10px;">
+            <div style="display:inline-block; text-align:left;">
+              <table style="font-size:10.5px !important; border-collapse:collapse;">
+                <tbody>
+                  <tr>
+                    <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">No.:</td>
+                    <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">Dated:</td>
+                    <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <div style="font-size:12px !important;line-height:1.6;text-align:left">
+        <b>To</b><br>
+        <b>The District Education Officer (M-EE)</b><br>
+        <b>Layyah</b>
+      </div>
+
+      <p style="font-size:12.5px !important;font-weight:700;text-decoration:underline;margin:16px 0;line-height:1.6;text-align:left">
+        SUBJECT: GRANT OF INSPECTION ALLOWANCE @ RS. 25,000 PER MONTH FOR THE
+        MONTH OF SEPTEMBER 2025 OF THE ASSISTANT EDUCATION OFFICERS SUBJECT TO VERIFIABLE KEY PERFORMANCE INDICATORS.
+      </p>
+
+      <p style="font-size:11px !important;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0">
+        Kindly refer to the subject cited above It is certified that performance of following Assistant Education
+        Officers, Tehsil Karor (Male) have achieved verifiable key performance indicators developed
+        by DFID as issued vide Notification No. SO (SE-III) 5-226/2017 dated 03-08-2020.
+      </p>
+
+      <p style="font-size:11px !important;line-height:1.7;text-align:justify;text-indent:36pt;margin:14px 0 18px">
+        The performance of following AEOs has been verified for the Month of September 2025. They are entitled to draw
+        the following amount mentioned against their names.
+      </p>
+
+      <table style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:10.5px !important;">
+        <colgroup>
+          <col style="width:4.2%;">
+          <col style="width:10.6%;">
+          <col style="width:20%;">
+          <col style="width:18.5%;">
+          <col style="width:28.5%;">
+          <col style="width:10%;">
+          <col style="width:8%;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="thc">Sr.<br>No.</th>
+            <th class="thc">Personal<br>Number</th>
+            <th class="thc">Name</th>
+            <th class="thc">Markaz name</th>
+            <th class="thc">Tehsil</th>
+            <th class="thc">DDO<br>Code</th>
+            <th class="thc">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+'''
+
+rows_data = [
+    (1, "31424237", "Tariq Bashir", "112/Ml-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (2, "31973236", "Zameer ul Hassan", "90-Ml-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (3, "32080362", "Muhammad Zubair Anjum", "93/Ml-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (4, "31977833", "Abdul Rehman", "98/Ml-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (5, "31698847", "Muhammad Kamran Ashraf", "Ali Rajan-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (6, "31998373", "Muhammad Sibtain", "Shah Pur Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (7, "31655017", "Muhammad Waqas", "Fateh Pur-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (8, "31655035", "Aamir Abbas", "Karor-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (9, "31713652", "Hafiz Abdul Qadoos", "Pir Chattar-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (10, "31973226", "Muhammad Ajmal", "Pir Sewag-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (11, "31714087", "Imran Jamil", "Qazi Abad-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (12, "31655086", "Ghulam Abbas", "Roshan Shah-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (13, "31864299", "Riaz Hussain", "Sahu Wala-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (14, "31499497", "Muhammad Fakhar-E-Alam", "Samtia-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (15, "31493244", "Habib Ur Rehman", "Shauket Abad-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (16, "32078918", "Farhan Abid", "Thal Jandi-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (17, "31973189", "Hafeez Ul Qamar", "Thal Kalan-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+    (18, "31481245", "Muhammad Ashraf", "Wara Sehran-Male", "Dy. DEO (M) Karor", "LL-6013", "49,000"),
+]
+
+for row in rows_data:
+    pdf_html += f'''
+          <tr>
+            <td class="tdc-nowrap" style="text-align:center !important;">{row[0]}</td>
+            <td class="tdc-nowrap" style="text-align:center !important;">{row[1]}</td>
+            <td class="tdc" style="text-align:left !important;">{row[2]}</td>
+            <td class="tdc" style="text-align:left !important;">{row[3]}</td>
+            <td class="tdc" style="text-align:left !important;">{row[4]}</td>
+            <td class="tdc-nowrap" style="text-align:center !important;">{row[5]}</td>
+            <td class="tdc-nowrap" style="text-align:right !important;font-weight:bold;">{row[6]}</td>
+          </tr>
+'''
+
+pdf_html += '''
+        </tbody>
+      </table>
+
+      <div style="text-align:right; font-family:'Times New Roman',serif; font-weight:700; font-size:14px !important; margin-top:80px">
+         DY. DISTRICT EDUCATION OFFICER<br>TEHSIL KAROR (MALE)
+      </div>
+    </div>
+</body>
+</html>
+'''
+
+HTML(string=pdf_html).write_pdf('Inspection_Allowance_Sep_2025.pdf')
+print("File generation completed successfully.")
