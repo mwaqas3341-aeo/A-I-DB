@@ -404,7 +404,6 @@ function bpFormatDdo(code) {
 }
 
 // ─── The actual government letter (matches the real sample PDFs) ────
-// ─── The actual government letter (matches the real sample PDFs) ────
 function bpBuildLetterHtml(opts) {
   const rosterById = Object.fromEntries(bpState.roster.map(u => [u.id, u]));
   const wing = bpState.roster[0]?.wing || 'M-EE';
@@ -458,27 +457,24 @@ function bpBuildLetterHtml(opts) {
   return `
     <div dir="ltr" style="direction:ltr !important;width:794px !important;min-width:794px !important;max-width:794px !important;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff;text-align:left">
       
-      <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
-        <tr>
-          <td style="vertical-align:top; text-align:left; width:20%;">
-            <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px; display:block;">
-          </td>
-          <td style="vertical-align:top; text-align:right; width:80%;">
-            <table style="float:right; font-size:11px; border-collapse:collapse; text-align:left;">
-              <tbody>
-                <tr>
-                  <td style="padding:3px 8px 3px 0; font-weight:bold; white-space:nowrap">No.:</td>
-                  <td style="padding:3px 0; width:220px; border-bottom:1px solid #111">&nbsp;</td>
-                </tr>
-                <tr>
-                  <td style="padding:3px 8px 3px 0; font-weight:bold; white-space:nowrap">Dated:</td>
-                  <td style="padding:3px 0; width:220px; border-bottom:1px solid #111">&nbsp;</td>
-                </tr>
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      </table>
+      <!-- FIXED: Logo on the absolute left, No. and Dated on the absolute right (no table coupling) -->
+      <div style="position: relative; height: 100px; margin-bottom: 18px; width: 100%;">
+        <!-- Logo -->
+        <div style="position: absolute; left: 0; top: 0;">
+          <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px; display:block;">
+        </div>
+        <!-- No. and Dated block -->
+        <div style="position: absolute; right: 0; top: 0; text-align: right; font-size: 11px;">
+          <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: bold; margin-right: 8px; white-space: nowrap;">No.:</span>
+            <span style="display: inline-block; width: 220px; border-bottom: 1px solid #111;">&nbsp;</span>
+          </div>
+          <div style="display: flex; justify-content: flex-end; align-items: center;">
+            <span style="font-weight: bold; margin-right: 8px; white-space: nowrap;">Dated:</span>
+            <span style="display: inline-block; width: 220px; border-bottom: 1px solid #111;">&nbsp;</span>
+          </div>
+        </div>
+      </div>
 
       <div style="font-size:16px;line-height:1.6;text-align:left; clear:both;">
         <b>To</b><br>
@@ -519,6 +515,7 @@ function bpBuildLetterHtml(opts) {
       ${signatureHtml}
     </div>`;
 }
+
 // Rasterizes the given letter HTML (off-screen, real A4 width) into a
 // multi-page-safe PDF — needed because rosters can run to 18+ rows.
 async function bpRenderHtmlToPdfBase64(html) {
@@ -555,9 +552,6 @@ async function bpRenderHtmlToPdfBase64(html) {
   return dataUri.split(',')[1];
 }
 
-// Renders the (potentially tall) off-screen target into one or more A4
-// pages, slicing the captured canvas by page height rather than
-// clipping — needed because rosters can run to 18+ rows.
 // Renders the (potentially tall) off-screen target into one or more A4
 // pages, slicing the captured canvas by page height rather than
 // clipping — needed because rosters can run to 18+ rows.
