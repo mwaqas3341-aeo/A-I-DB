@@ -444,17 +444,14 @@ function bpBuildLetterHtml(opts) {
     </tr>`;
   }).join('');
 
-  // ═══ SIGNATURE BLOCK - FIXED LEFT ALIGNMENT FOR BOTH RECIPIENTS ═══
-  // Note: text-align:left strictly aligns the second line starting under the D 
-  // of the first line. Flexbox anchors are used to place the blocks on the 
-  // right (for DEO) or split between both sides (for CEO).
+  // ═══ SIGNATURE BLOCK - 3-SPACE INDENT ON SECOND LINE ═══
   const signatureHtml = recipient === 'CEO'
     ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px;width:100%;">
-         <div style="width:48%;text-align:left;">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
-         <div style="width:48%;text-align:left;">DISTRICT EDUCATION OFFICER<br>DISTRICT LAYYAH (${w.code})</div>
+         <div style="width:48%;text-align:left;">DY. DISTRICT EDUCATION OFFICER<br><span style="padding-left:3ch;">TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</span></div>
+         <div style="width:48%;text-align:left;">DISTRICT EDUCATION OFFICER<br><span style="padding-left:3ch;">DISTRICT LAYYAH (${w.code})</span></div>
        </div>`
     : `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:flex-end;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px;width:100%;">
-         <div style="text-align:left;">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
+         <div style="text-align:left;">DY. DISTRICT EDUCATION OFFICER<br><span style="padding-left:3ch;">TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</span></div>
        </div>`;
 
   return `
