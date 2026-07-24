@@ -277,8 +277,8 @@ async function bpRenderPreviewPane(opts) {
   const pane = document.getElementById('bp_previewBody');
   pane.innerHTML = `<div style="padding:40px;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>`;
   const html = bpBuildLetterHtml(opts);
-  // Render at real size directly in the modal (no PDF conversion needed for preview).
-  pane.innerHTML = `<div style="transform:scale(.92);transform-origin:top center">${html}</div>`;
+  // Render at real size but allow horizontal scrolling on mobile
+  pane.innerHTML = `<div style="width:100%; overflow-x:auto;"><div style="transform:scale(.92);transform-origin:top left; width:794px;">${html}</div></div>`;
 }
 
 // ─── Confirm: NOW we actually save to DB, generate real PDFs, download, and email ──
@@ -421,16 +421,11 @@ function bpBuildLetterHtml(opts) {
     ? 'The Chief Executive Officer (DEA)'
     : `The District Education Officer (${w.code})`;
 
-  // Explicit cell style strings — !important overrides this app's own global
-  // `thead th{background:var(--ink)...white-space:nowrap}` / `tbody td{white-space:nowrap}`
-  // rules, which otherwise leak into this off-screen render (same document).
   const THC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#f2f2f2 !important;color:#111 !important;font-weight:700 !important;text-transform:none !important;letter-spacing:normal !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;vertical-align:middle;position:static !important;text-align:center';
   const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:normal !important;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;vertical-align:middle';
   
-  // Column widths sum to 100% — table-layout:fixed means the table can never
-  // grow past its container no matter how long a tehsil/markaz name is; text
-  // wraps within the cell instead.
-  const COLW = [5, 12, 17, 17, 25, 11, 13]; // Sr/Personal/Name/Markaz/Tehsil/DDO/Amount — Amount narrowed
+  // Exact pixel widths summing to 702px (794px total width minus 46px padding on left/right)
+  const COLW = [35, 84, 119, 119, 176, 77, 92];
 
   const rows = opts.entries.map((e, i) => {
     const u = rosterById[e.user_id] || {};
@@ -447,9 +442,6 @@ function bpBuildLetterHtml(opts) {
     </tr>`;
   }).join('');
 
-  // Signature/stamp block — Deputy DEO always. Single stamp sits on the
-  // right; when CEO is the recipient, Deputy goes left and District DEO
-  // goes right (two stamps).
   const signatureHtml = recipient === 'CEO'
     ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:12.5px;margin-top:60px">
          <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
@@ -460,7 +452,7 @@ function bpBuildLetterHtml(opts) {
        </div>`;
 
   return `
-    <div dir="ltr" style="direction:ltr !important;width:794px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff;text-align:left">
+    <div dir="ltr" style="direction:ltr !important;width:794px !important;min-width:794px !important;max-width:794px !important;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box;background:#fff;text-align:left">
       
       <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
         <tr>
@@ -506,15 +498,15 @@ function bpBuildLetterHtml(opts) {
         the following amount mentioned against their names.
       </p>
 
-      <table dir="ltr" style="direction:ltr !important;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
+      <table dir="ltr" style="direction:ltr !important;width:702px !important;min-width:702px !important;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
         <thead><tr>
-          <th style="${THC}; width:${COLW[0]}%">Sr.<br>No.</th>
-          <th style="${THC}; width:${COLW[1]}%">Personal<br>Number</th>
-          <th style="${THC}; width:${COLW[2]}%">Name</th>
-          <th style="${THC}; width:${COLW[3]}%">Markaz name</th>
-          <th style="${THC}; width:${COLW[4]}%">Tehsil</th>
-          <th style="${THC}; width:${COLW[5]}%">DDO<br>Code</th>
-          <th style="${THC}; width:${COLW[6]}%">Amount</th>
+          <th style="${THC}; width:${COLW[0]}px !important; min-width:${COLW[0]}px !important;">Sr.<br>No.</th>
+          <th style="${THC}; width:${COLW[1]}px !important; min-width:${COLW[1]}px !important;">Personal<br>Number</th>
+          <th style="${THC}; width:${COLW[2]}px !important; min-width:${COLW[2]}px !important;">Name</th>
+          <th style="${THC}; width:${COLW[3]}px !important; min-width:${COLW[3]}px !important;">Markaz name</th>
+          <th style="${THC}; width:${COLW[4]}px !important; min-width:${COLW[4]}px !important;">Tehsil</th>
+          <th style="${THC}; width:${COLW[5]}px !important; min-width:${COLW[5]}px !important;">DDO<br>Code</th>
+          <th style="${THC}; width:${COLW[6]}px !important; min-width:${COLW[6]}px !important;">Amount</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -527,13 +519,26 @@ function bpBuildLetterHtml(opts) {
 // multi-page-safe PDF — needed because rosters can run to 18+ rows.
 async function bpRenderHtmlToPdfBase64(html) {
   const target = document.getElementById('bpPdfRenderTarget');
+  
+  // Temporarily force target out of viewport flow to bypass mobile screen width limits
+  target.style.position = 'absolute';
+  target.style.left = '-9999px';
+  target.style.top = '0';
+  target.style.width = '794px';
+  
   target.innerHTML = html;
   await new Promise(r => setTimeout(r, 150));
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'pt', 'a4');
   await bpRenderTargetIntoPdf(pdf, target);
+  
+  // Clean up and restore default states
   target.innerHTML = '';
+  target.style.position = '';
+  target.style.left = '';
+  target.style.top = '';
+  target.style.width = '';
 
   const dataUri = pdf.output('datauristring');
   return dataUri.split(',')[1];
