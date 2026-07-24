@@ -526,7 +526,7 @@ function openActionFormModal(actionType, row) {
     </div>
     <div class="form-row">
       <label>Effective Date${notifRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>
-      <input type="date" id="af_effectiveDate">
+      <input type="date" id="af_effectiveDate" onclick="try{this.showPicker()}catch(e){}">
       <div class="transfer-err" id="afe_date"></div>
     </div>
     <button class="primary-btn" id="af_submitBtn" style="width:100%;margin-top:12px">
