@@ -404,6 +404,7 @@ function bpFormatDdo(code) {
 }
 
 // ─── The actual government letter (matches the real sample PDFs) ────
+// ─── The actual government letter (matches the real sample PDFs) ────
 function bpBuildLetterHtml(opts) {
   const rosterById = Object.fromEntries(bpState.roster.map(u => [u.id, u]));
   const wing = bpState.roster[0]?.wing || 'M-EE';
@@ -426,7 +427,7 @@ function bpBuildLetterHtml(opts) {
   const TDC = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;word-break:break-word !important;overflow-wrap:break-word !important;vertical-align:middle !important;white-space:normal !important;';
   const TDCNOWRAP = 'padding:5px 4px !important;border:1px solid #999 !important;background:#fff !important;color:#111 !important;white-space:nowrap !important;vertical-align:middle !important;';
   
-  // Adjusted exact pixel widths summing to 702px — giving more room to Name (140), Markaz (130), and Tehsil (200)
+  // Adjusted exact pixel widths summing to 702px
   const COLW = [30, 75, 140, 130, 200, 70, 57];
 
   const rows = opts.entries.map((e, i) => {
@@ -444,7 +445,7 @@ function bpBuildLetterHtml(opts) {
     </tr>`;
   }).join('');
 
-  // Signature Block - Size 14px as requested
+  // Signature Block - Size 14px
   const signatureHtml = recipient === 'CEO'
     ? `<div dir="ltr" style="direction:ltr !important;display:flex;justify-content:space-between;font-family:'Times New Roman',serif;font-weight:700;font-size:14px;margin-top:80px">
          <div style="width:48%;text-align:left">DY. DISTRICT EDUCATION OFFICER<br>TEHSIL ${bpState.tehsil.toUpperCase()} (${w.wordUpper})</div>
@@ -459,24 +460,22 @@ function bpBuildLetterHtml(opts) {
       
       <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
         <tr>
-          <td style="vertical-align:top; text-align:left; width:50%;">
+          <td style="vertical-align:top; text-align:left; width:40%;">
             <img src="${BP_LOGO_DATA_URI}" style="width:78px;height:78px; display:block;">
           </td>
-          <td style="vertical-align:top; text-align:right; width:50%; padding-top:10px;">
-            <div style="display:inline-block; text-align:left;">
-              <table style="font-size:11px; border-collapse:collapse;">
-                <tbody>
-                  <tr>
-                    <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">No.:</td>
-                    <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:2px 6px 2px 0; font-weight:bold; white-space:nowrap">Dated:</td>
-                    <td style="padding:2px 0; width:150px; border-bottom:1px solid #111">&nbsp;</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+          <td style="vertical-align:top; text-align:right; width:60%; padding-top:5px;">
+            <table style="font-size:11px; border-collapse:collapse; margin-left:auto; text-align:left;">
+              <tbody>
+                <tr>
+                  <td style="padding:3px 8px 3px 0; font-weight:bold; white-space:nowrap">No.:</td>
+                  <td style="padding:3px 0; width:180px; border-bottom:1px solid #111">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 8px 3px 0; font-weight:bold; white-space:nowrap">Dated:</td>
+                  <td style="padding:3px 0; width:180px; border-bottom:1px solid #111">&nbsp;</td>
+                </tr>
+              </tbody>
+            </table>
           </td>
         </tr>
       </table>
@@ -520,7 +519,6 @@ function bpBuildLetterHtml(opts) {
       ${signatureHtml}
     </div>`;
 }
-
 // Rasterizes the given letter HTML (off-screen, real A4 width) into a
 // multi-page-safe PDF — needed because rosters can run to 18+ rows.
 async function bpRenderHtmlToPdfBase64(html) {
