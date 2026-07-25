@@ -1,18 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 //  PERFORMANCE REPORT — "AEO Monthly Performance Certificate"
-//  Letter-size, single-page layout with fixed column widths.
-//  Remarks & Initials columns match Entitlement width (12%).
+//  Letter-size (Portrait), fixed column widths, narrow layout.
+//  AEO details are strictly left-aligned; Sr. numbers are visible.
 // ═══════════════════════════════════════════════════════════════════
 
 const PERF_MAX_MONTHS = 4;
 const PERF_MIN_MONTHS = 1;
 
 // Letter page dimensions: 612pt × 792pt
-const PERF_HEAD_PT     = 8.5;
-const PERF_BODY_PT     = 7.5;
-const PERF_LINE_HEIGHT = 1.1;
+const PERF_HEAD_PT     = 9.0;
+const PERF_BODY_PT     = 8.0;
+const PERF_LINE_HEIGHT = 1.15;
 
-// Explicit black text, tight padding, box-sizing
+// Explicit black text, tight but readable padding
 const PERF_TH_STYLE = `border:1px solid #000;padding:2px 3px;background:#f2f2f2;color:#000000;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;box-sizing:border-box;`;
 const PERF_TD_STYLE = `border:1px solid #000;padding:1px 3px;color:#000000;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;box-sizing:border-box;`;
 
@@ -160,18 +160,18 @@ function perfConfigTableHtml(month, cfg) {
 
   const th = 'border:1px solid var(--b0);background:var(--s2);padding:4px 3px;font-size:.7rem;font-weight:700;text-align:left;vertical-align:middle;color:#000000;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
   const heads = isOpen
-    ? `<th style="${th}width:5%">Sr.</th>
-       <th style="${th}width:22%">Indicators</th>
-       <th style="${th}width:25%">Targets %age</th>
+    ? `<th style="${th}width:6%">Sr.</th>
+       <th style="${th}width:24%">Indicators</th>
+       <th style="${th}width:24%">Targets %age</th>
        <th style="${th}width:12%">Target Achieved by AEO</th>
        <th style="${th}width:12%;text-align:right">Entitlement</th>
        <th style="${th}width:12%">Remarks of Immediate Officer</th>
-       <th style="${th}width:12%">Initials of DDO</th>`
-    : `<th style="${th}width:5%">Sr.</th>
-       <th style="${th}width:22%">Indicators</th>
+       <th style="${th}width:10%">Initials of DDO</th>`
+    : `<th style="${th}width:6%">Sr.</th>
+       <th style="${th}width:24%">Indicators</th>
        <th style="${th}width:35%">Targets</th>
        <th style="${th}width:18%">Performance</th>
-       <th style="${th}width:20%">Remarks of Immediate Officer</th>`;
+       <th style="${th}width:17%">Remarks of Immediate Officer</th>`;
 
   return `<table style="width:100%;border-collapse:collapse;font-size:.7rem;table-layout:fixed">
     <thead><tr>${heads}</tr></thead>
@@ -191,7 +191,7 @@ function perfIndicatorRowHtml(month, row, idx, cfg, isOpen) {
     achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
   } else if (row.kind === 'percent') {
     const val = stored ?? row.targetPct;
-    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:48px;height:24px;border:1px solid var(--b0);border-radius:5px;padding:0 3px;font-size:.65rem"
+    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:48px;height:24px;border:1px solid var(--b0);border-radius:5px;padding:0 3px;font-size:.7rem"
       oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
   } else {
     const val = stored ?? true;
@@ -312,47 +312,50 @@ async function perfDownloadCertificate() {
   }
 }
 
-// ─── Shared Split-Layout Header ─────────────────────────────────────
+// ─── Shared Split-Layout Header (Left side AEO details) ─────────────
 function perfHeaderHtml(officeLine, u, monthLabel) {
+  // Using flex with strict left alignment for AEO details
   return `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:9pt;">
-      <table style="width:35%; border-collapse:collapse; font-weight:700; font-size:8.5pt;">
-        <tr><td style="padding:2px 0; width:55px">AEO Name:</td><td style="padding:2px 0; border-bottom:1px solid #333">${u.name || ''}</td></tr>
-        <tr><td style="padding:2px 0">Markaz:</td><td style="padding:2px 0; border-bottom:1px solid #333">${u.markaz_name || ''}</td></tr>
-        <tr><td style="padding:2px 0">Month:</td><td style="padding:2px 0; border-bottom:1px solid #333">${monthLabel}</td></tr>
-        <tr><td style="padding:2px 0">Cell No:</td><td style="padding:2px 0; border-bottom:1px solid #333">${u.cell_no || u.cnic || ''}</td></tr>
-      </table>
-      <div style="width:63%; text-align:center;">
-        <div style="font-size:11pt; font-weight:700; line-height:1.1; margin-bottom:3px; word-wrap:break-word; overflow-wrap:break-word;">${officeLine}</div>
-        <div style="font-size:10pt; font-weight:700; text-decoration:underline; text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; font-size:9.5pt;">
+      <div style="width:36%; text-align:left;">
+        <table style="width:100%; border-collapse:collapse; font-weight:700; font-size:9pt;">
+          <tr><td style="padding:2px 0; width:50px; text-align:left;">AEO Name:</td><td style="padding:2px 0; border-bottom:1px solid #333; text-align:left;">${u.name || ''}</td></tr>
+          <tr><td style="padding:2px 0; text-align:left;">Markaz:</td><td style="padding:2px 0; border-bottom:1px solid #333; text-align:left;">${u.markaz_name || ''}</td></tr>
+          <tr><td style="padding:2px 0; text-align:left;">Month:</td><td style="padding:2px 0; border-bottom:1px solid #333; text-align:left;">${monthLabel}</td></tr>
+          <tr><td style="padding:2px 0; text-align:left;">Cell No:</td><td style="padding:2px 0; border-bottom:1px solid #333; text-align:left;">${u.cell_no || u.cnic || ''}</td></tr>
+        </table>
+      </div>
+      <div style="width:62%; text-align:center;">
+        <div style="font-size:11.5pt; font-weight:700; line-height:1.15; margin-bottom:4px; word-wrap:break-word; overflow-wrap:break-word;">${officeLine}</div>
+        <div style="font-size:10.5pt; font-weight:700; text-decoration:underline; text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
       </div>
     </div>`;
 }
 
 function perfFooterHtml(amount, u, sigUrl) {
   return `
-    <p style="font-size:8.5pt;font-weight:700;margin:3px 0 10px;line-height:1.2;word-wrap:break-word;overflow-wrap:break-word;">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
+    <p style="font-size:8.5pt;font-weight:700;margin:4px 0 12px;line-height:1.25;word-wrap:break-word;overflow-wrap:break-word;">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
     <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700">
       <tr>
         <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px">
-          <div style="height:28px;display:flex;align-items:flex-end;justify-content:center">
-            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:26px;max-width:140px;filter:grayscale(1) contrast(1.4) brightness(.85)">` : ''}
+          <div style="height:30px;display:flex;align-items:flex-end;justify-content:center">
+            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:28px;max-width:140px;filter:grayscale(1) contrast(1.4) brightness(.85)">` : ''}
           </div>
           <div style="border-top:1px solid #000;padding-top:2px">Assistant Education Officer</div>
-          <div style="font-weight:400;font-size:7pt">${u.markaz_name || ''}</div>
+          <div style="font-weight:400;font-size:7.5pt">${u.markaz_name || ''}</div>
         </td>
         <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px">
-          <div style="height:28px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center">
+          <div style="height:30px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center">
             <span style="font-weight:400;font-size:6.5pt;color:#555">Signature &amp; Office Stamp</span>
           </div>
           <div style="border-top:1px solid #000;padding-top:2px">Deputy District Education Officer</div>
-          <div style="font-weight:400;font-size:7pt">Tehsil Karor</div>
+          <div style="font-weight:400;font-size:7.5pt">Tehsil Karor</div>
         </td>
       </tr>
     </table>`;
 }
 
-// ─── OPEN format — Letter Fixed Column Widths ──────────────────────
+// ─── OPEN format — Letter Portrait Narrow ────────────────────────────
 function perfOpenHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -374,29 +377,29 @@ function perfOpenHtml(data) {
     </tr>`;
   }).join('');
 
-  // Letter container: 612pt wide, 792pt high, with 20pt left/right margins
+  // Letter portrait: narrower content with 30pt side margins
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
     <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
-          <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:22%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:25%">Targets %age</th>
+          <th style="${PERF_TH_STYLE}width:6%">Sr.</th>
+          <th style="${PERF_TH_STYLE}width:24%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:24%">Targets %age</th>
           <th style="${PERF_TH_STYLE}width:12%">Target Achieved by AEO</th>
           <th style="${PERF_TH_STYLE}width:12%">Entitlement of Allowance rupees</th>
           <th style="${PERF_TH_STYLE}width:12%">Remarks of Immediate Officer</th>
-          <th style="${PERF_TH_STYLE}width:12%">Initials of DDO</th>
+          <th style="${PERF_TH_STYLE}width:10%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
   
-  return `<div style="width:612pt;min-height:792pt;padding:20pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:612pt;min-height:792pt;padding:28pt 30pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
-// ─── CLOSED format — Letter Fixed Column Widths ────────────────────
+// ─── CLOSED format — Letter Portrait Narrow ──────────────────────────
 function perfClosedHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -418,21 +421,21 @@ function perfClosedHtml(data) {
     <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
-          <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:22%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:6%">Sr.</th>
+          <th style="${PERF_TH_STYLE}width:24%">Indicators</th>
           <th style="${PERF_TH_STYLE}width:35%">Targets</th>
           <th style="${PERF_TH_STYLE}width:18%">Performance</th>
-          <th style="${PERF_TH_STYLE}width:20%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:17%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
     
-  return `<div style="width:612pt;min-height:792pt;padding:20pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:612pt;min-height:792pt;padding:28pt 30pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
-// ─── PDF Engine for Letter output ────────────────────────────────────
+// ─── PDF Engine for Letter Portrait ──────────────────────────────────
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById('iaPdfRenderTarget');
   target.style.width = '612pt';
@@ -444,12 +447,12 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
 
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 300));
     const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff'
-      // No fixed width – let it capture the full element
+      // DO NOT set width – let it capture the full 612pt element
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
