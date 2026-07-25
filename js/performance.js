@@ -143,7 +143,7 @@ function perfHeaderHtml(officeLine, u, monthLabel) {
   const th = "border:1px solid #000;padding:5px 8px;font-weight:700;text-align:left;vertical-align:middle;";
   const td = "border:1px solid #000;padding:5px 8px;text-align:left;vertical-align:middle;";
   return `
-  <table dir="ltr" style="width:100%;border-collapse:collapse;margin-bottom:0;font-size:9.5pt;color:#000;table-layout:fixed;">
+  <table dir="ltr" style="width:100%;border-collapse:collapse;margin-bottom:0;font-size:9.5pt;color:#000;">
     <tr><td colspan="2" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;font-size:11.5pt;line-height:1.15;word-wrap:break-word;overflow-wrap:break-word;">${officeLine}</td></tr>
     <tr><td colspan="2" style="border:1px solid #000;padding:5px 8px;text-align:center;font-weight:700;font-size:10.5pt;text-decoration:underline;text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</td></tr>
     <tr><td style="${th}width:18%;">AEO Name:</td><td style="${td}">${perfSafe(u?.name)}</td></tr>
@@ -198,7 +198,7 @@ function perfOpenHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:10px;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:10px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
       <thead>
         <tr>
           <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
@@ -241,7 +241,7 @@ function perfClosedHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:10px;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:10px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
       <thead>
         <tr>
           <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
