@@ -1,11 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════
 //  PERFORMANCE REPORT — "AEO Monthly Performance Certificate"
-//  Updated for Letter-size, single-page layout with split-header.
-//  Includes exact Letter aspect-ratio container and column wrapping.
+//  Updated for A4-size, single-page layout with fixed column widths.
+//  All text wraps to multiple lines with no truncation.
 // ═══════════════════════════════════════════════════════════════════
 
 const PERF_MAX_MONTHS = 4;
 const PERF_MIN_MONTHS = 1;
+
+// Optimised font sizes for A4 (595pt wide, 841.89pt tall)
+const PERF_HEAD_PT     = 9.0;
+const PERF_BODY_PT     = 8.2;
+const PERF_LINE_HEIGHT = 1.15;
+
+const PERF_TH_STYLE = `border:1px solid #000;padding:3px 4px;background:#f2f2f2;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;`;
+const PERF_TD_STYLE = `border:1px solid #000;padding:2px 4px;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;`;
 
 const PERF_OPEN_ROWS = [
   { ind: 'AEO Visits',                                                    tgtLabel: '100',                                                        kind: 'percent', targetPct: 100, weight: 0.40 },
@@ -46,17 +54,6 @@ const PERF_CLOSED_ROWS = [
 ].map(r => ({ ...r, kind: 'yesno', weight: 1 / 16 }));
 
 const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and issued by SED vide No. SO (SE-III) 5-226/200 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection';
-
-// ─── Compact single-page grid tokens ────────────────────────────────
-// Header cells sit a notch larger + bold to read as a distinct row
-// (mirrors the reference XLSX's 12pt-bold-header / 11pt-body pattern,
-// scaled down to fit 16 rows + header + footer on one Letter page).
-// Data cells stay a hair smaller with tight, uniform line-height.
-const PERF_HEAD_PT     = 8.6;
-const PERF_BODY_PT     = 7.9;
-const PERF_LINE_HEIGHT = 1.12;
-const PERF_TH_STYLE = `border:1px solid #000;padding:3px 4px;background:#f2f2f2;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;`;
-const PERF_TD_STYLE = `border:1px solid #000;padding:2px 4px;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;`;
 
 let perfState = { months: [], selected: new Set(), config: {} };
 
@@ -226,8 +223,6 @@ function perfRowAmount(row) {
   return Math.round(row.weight * (iaState.rate || 25000));
 }
 
-// Shared with the PDF renderer (perfOpenHtml) so the prep-view and the
-// exported certificate never drift apart on what "Achieved"/"Remarks" show.
 function perfRowDisplayCells(row, storedVal, credited) {
   if (row.kind === 'fixed') return { achCell: row.fixedAch, rmkCell: row.fixedRmk };
   if (row.kind === 'percent') return { achCell: credited ? (storedVal ?? row.targetPct) : '', rmkCell: '' };
@@ -318,45 +313,46 @@ async function perfDownloadCertificate() {
 
 // ─── Shared Split-Layout Header ─────────────────────────────────────
 function perfHeaderHtml(officeLine, u, monthLabel) {
+  // Using smaller font sizes and tighter spacing to fit within A4 constraints
   return `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-      <table style="width:38%; border-collapse:collapse; font-size:10.5pt; font-weight:700;">
-        <tr><td style="padding:4px 0; width:70px">AEO Name:</td><td style="padding:4px 0; border-bottom:1px solid #333">${u.name || ''}</td></tr>
-        <tr><td style="padding:4px 0">Markaz:</td><td style="padding:4px 0; border-bottom:1px solid #333">${u.markaz_name || ''}</td></tr>
-        <tr><td style="padding:4px 0">Month:</td><td style="padding:4px 0; border-bottom:1px solid #333">${monthLabel}</td></tr>
-        <tr><td style="padding:4px 0">Cell No:</td><td style="padding:4px 0; border-bottom:1px solid #333">${u.cell_no || u.cnic || ''}</td></tr>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:10pt;">
+      <table style="width:38%; border-collapse:collapse; font-weight:700; font-size:9.5pt;">
+        <tr><td style="padding:3px 0; width:65px">AEO Name:</td><td style="padding:3px 0; border-bottom:1px solid #333">${u.name || ''}</td></tr>
+        <tr><td style="padding:3px 0">Markaz:</td><td style="padding:3px 0; border-bottom:1px solid #333">${u.markaz_name || ''}</td></tr>
+        <tr><td style="padding:3px 0">Month:</td><td style="padding:3px 0; border-bottom:1px solid #333">${monthLabel}</td></tr>
+        <tr><td style="padding:3px 0">Cell No:</td><td style="padding:3px 0; border-bottom:1px solid #333">${u.cell_no || u.cnic || ''}</td></tr>
       </table>
       <div style="width:60%; text-align:center;">
-        <div style="font-size:13.5pt; font-weight:700; line-height:1.2; margin-bottom:8px;">${officeLine}</div>
-        <div style="font-size:12.5pt; font-weight:700; text-decoration:underline; text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
+        <div style="font-size:12.5pt; font-weight:700; line-height:1.15; margin-bottom:6px; word-wrap:break-word; overflow-wrap:break-word;">${officeLine}</div>
+        <div style="font-size:11.5pt; font-weight:700; text-decoration:underline; text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
       </div>
     </div>`;
 }
 
 function perfFooterHtml(amount, u, sigUrl) {
   return `
-    <p style="font-size:9.5pt;font-weight:700;margin:8px 0 16px;line-height:1.28">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
-    <table style="width:100%;border-collapse:collapse;font-size:9.5pt;font-weight:700">
+    <p style="font-size:9pt;font-weight:700;margin:6px 0 14px;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
+    <table style="width:100%;border-collapse:collapse;font-size:9pt;font-weight:700">
       <tr>
-        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 16px">
-          <div style="height:34px;display:flex;align-items:flex-end;justify-content:center">
-            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:32px;max-width:170px;filter:grayscale(1) contrast(1.4) brightness(.85)">` : ''}
+        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 12px">
+          <div style="height:32px;display:flex;align-items:flex-end;justify-content:center">
+            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:30px;max-width:160px;filter:grayscale(1) contrast(1.4) brightness(.85)">` : ''}
           </div>
           <div style="border-top:1px solid #000;padding-top:3px">Assistant Education Officer</div>
-          <div style="font-weight:400;font-size:8.5pt">${u.markaz_name || ''}</div>
+          <div style="font-weight:400;font-size:8pt">${u.markaz_name || ''}</div>
         </td>
-        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 16px">
-          <div style="height:34px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center">
+        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 12px">
+          <div style="height:32px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center">
             <span style="font-weight:400;font-size:7pt;color:#555">Signature &amp; Office Stamp</span>
           </div>
           <div style="border-top:1px solid #000;padding-top:3px">Deputy District Education Officer</div>
-          <div style="font-weight:400;font-size:8.5pt">Tehsil Karor</div>
+          <div style="font-weight:400;font-size:8pt">Tehsil Karor</div>
         </td>
       </tr>
     </table>`;
 }
 
-// ─── OPEN format — Constrained Layout ───────────────────────────────
+// ─── OPEN format — A4 Fixed Column Widths ───────────────────────────
 function perfOpenHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -378,30 +374,29 @@ function perfOpenHtml(data) {
     </tr>`;
   }).join('');
 
+  // A4 container: 595pt wide, 841.89pt high, with 30pt margins
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
     <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
-          <!-- Tweaked widths to give text-heavy columns more horizontal room -->
-          <th style="${PERF_TH_STYLE}width:4%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:15%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
+          <th style="${PERF_TH_STYLE}width:16%">Indicators</th>
           <th style="${PERF_TH_STYLE}width:20%">Targets %age</th>
-          <th style="${PERF_TH_STYLE}width:15%">Target Achieved by AEO</th>
-          <th style="${PERF_TH_STYLE}width:16%">Entitlement of Allowance rupees</th>
-          <th style="${PERF_TH_STYLE}width:18%">Remarks of Immediate Officer</th>
-          <th style="${PERF_TH_STYLE}width:12%">Initials of DDO</th>
+          <th style="${PERF_TH_STYLE}width:14%">Target Achieved by AEO</th>
+          <th style="${PERF_TH_STYLE}width:15%">Entitlement of Allowance rupees</th>
+          <th style="${PERF_TH_STYLE}width:20%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:10%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
   
-  // Bound to minimum pixel height of 11-inch letter paper to prevent vertical scaling issues
-  return `<div style="width:816px;min-height:1056px;padding:36px 48px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:595pt;min-height:841.89pt;padding:30pt 36pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
-// ─── CLOSED format — Constrained Layout ─────────────────────────────
+// ─── CLOSED format — A4 Fixed Column Widths ─────────────────────────
 function perfClosedHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -423,45 +418,56 @@ function perfClosedHtml(data) {
     <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
-          <!-- Tweaked widths to give Targets and Indicators max space -->
           <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:16%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:30%">Targets</th>
-          <th style="${PERF_TH_STYLE}width:17%">Performance</th>
-          <th style="${PERF_TH_STYLE}width:32%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:18%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:32%">Targets</th>
+          <th style="${PERF_TH_STYLE}width:18%">Performance</th>
+          <th style="${PERF_TH_STYLE}width:27%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
     
-  return `<div style="width:816px;min-height:1056px;padding:36px 48px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:595pt;min-height:841.89pt;padding:30pt 36pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
-// ─── PDF Engine configured to 'letter' output ───────────────────────
+// ─── PDF Engine for A4 output ────────────────────────────────────────
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById('iaPdfRenderTarget');
+  // Force render target to match A4 width (595pt)
+  target.style.width = '595pt';
   const { jsPDF } = window.jspdf;
   
-  const pdf = new jsPDF('p', 'pt', 'letter'); 
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
+  const pdf = new jsPDF('p', 'pt', 'a4'); 
+  const pageWidth = pdf.internal.pageSize.getWidth(); // 595.28pt
+  const pageHeight = pdf.internal.pageSize.getHeight(); // 841.89pt
 
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
-    await new Promise(r => setTimeout(r, 300));
-    const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    await new Promise(r => setTimeout(r, 250)); // wait for layout
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      width: 595 // enforce A4 width in pixels for the canvas
+    });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
-    const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+    // Scale the canvas exactly to fit the A4 page
+    const scaleX = pageWidth / canvas.width;
+    const scaleY = pageHeight / canvas.height;
+    const scale = Math.min(scaleX, scaleY);
+    
     const drawWidth = canvas.width * scale;
     const drawHeight = canvas.height * scale;
     const offsetX = (pageWidth - drawWidth) / 2;
     const offsetY = (pageHeight - drawHeight) / 2;
 
-    if (i > 0) pdf.addPage('letter', 'p');
+    if (i > 0) pdf.addPage('a4', 'p');
     pdf.addImage(imgData, 'JPEG', offsetX, offsetY, drawWidth, drawHeight);
   }
+  target.style.width = ''; // reset
   target.innerHTML = '';
   return pdf.output('arraybuffer');
 }
