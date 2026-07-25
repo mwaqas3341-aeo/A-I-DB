@@ -145,16 +145,7 @@ function perfRenderConfigPanels() {
             </label>
           </div>
         </div>
-        <table style="width:100%;border-collapse:collapse;font-size:.78rem">
-          <thead><tr style="text-align:left;border-bottom:1px solid var(--b0);color:var(--t3)">
-            <th style="padding:5px 6px;width:4%">Sr</th>
-            <th style="padding:5px 6px;width:26%">Indicator</th>
-            <th style="padding:5px 6px;width:30%">Target</th>
-            <th style="padding:5px 6px;width:20%">Achieved</th>
-            <th style="padding:5px 6px;width:20%;text-align:right">Entitlement</th>
-          </tr></thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
+        <div style="border-top:1px solid var(--b0)">${rowsHtml}</div>
         <div style="text-align:right;margin-top:8px;padding-top:8px;border-top:1px dashed var(--b0);font-weight:700;font-size:.88rem">
           Month Total: <span style="color:#0d9488" id="perfMonthTotal_${month}">PKR ${total.toLocaleString()}</span>
         </div>
@@ -183,13 +174,14 @@ function perfIndicatorRowHtml(month, row, idx, cfg) {
   }
 
   const credited = perfIsCredited(row, cfg.achieved[idx]);
-  return `<tr style="border-bottom:1px solid var(--s2)">
-    <td style="padding:5px 6px">${idx + 1}</td>
-    <td style="padding:5px 6px">${row.ind}</td>
-    <td style="padding:5px 6px;color:var(--t3)">${row.tgtLabel}</td>
-    <td style="padding:5px 6px">${achievedCell}</td>
-    <td style="padding:5px 6px;text-align:right;font-weight:600;color:${credited ? '#0d9488' : 'var(--t3)'}">PKR ${(credited ? entitlement : 0).toLocaleString()}</td>
-  </tr>`;
+  return `<div style="padding:9px 4px;border-bottom:1px solid var(--s2)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div style="font-weight:600;font-size:.8rem;flex:1;word-wrap:break-word">${idx + 1}. ${row.ind}</div>
+      <div style="font-weight:700;font-size:.8rem;white-space:nowrap;color:${credited ? '#0d9488' : 'var(--t3)'}">PKR ${(credited ? entitlement : 0).toLocaleString()}</div>
+    </div>
+    <div style="font-size:.74rem;color:var(--t3);line-height:1.35;margin:3px 0 7px;word-wrap:break-word">${row.tgtLabel}</div>
+    <div style="font-size:.8rem">${achievedCell}</div>
+  </div>`;
 }
 
 function perfRowAmount(row) {
