@@ -47,6 +47,17 @@ const PERF_CLOSED_ROWS = [
 
 const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and issued by SED vide No. SO (SE-III) 5-226/200 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection';
 
+// ─── Compact single-page grid tokens ────────────────────────────────
+// Header cells sit a notch larger + bold to read as a distinct row
+// (mirrors the reference XLSX's 12pt-bold-header / 11pt-body pattern,
+// scaled down to fit 16 rows + header + footer on one Letter page).
+// Data cells stay a hair smaller with tight, uniform line-height.
+const PERF_HEAD_PT     = 8.6;
+const PERF_BODY_PT     = 7.9;
+const PERF_LINE_HEIGHT = 1.12;
+const PERF_TH_STYLE = `border:1px solid #000;padding:3px 4px;background:#f2f2f2;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;word-wrap:break-word;overflow-wrap:break-word;`;
+const PERF_TD_STYLE = `border:1px solid #000;padding:2px 4px;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;word-wrap:break-word;overflow-wrap:break-word;`;
+
 let perfState = { months: [], selected: new Set(), config: {} };
 
 function perfInit() {
@@ -333,29 +344,29 @@ function perfOpenHtml(data) {
     }
 
     return `<tr>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${i + 1}</td>
-      <td style="border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:left">${r.ind}</td>
-      <td style="border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:left">${r.tgtLabel}</td>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${achCell}</td>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${amt.toLocaleString()}/-</td>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${rmkCell}</td>
-      <td style="border:1px solid #000;padding:2px 4px;vertical-align:middle"></td>
+      <td style="${PERF_TD_STYLE}text-align:center">${i + 1}</td>
+      <td style="${PERF_TD_STYLE}text-align:left">${r.ind}</td>
+      <td style="${PERF_TD_STYLE}text-align:left">${r.tgtLabel}</td>
+      <td style="${PERF_TD_STYLE}text-align:center">${achCell}</td>
+      <td style="${PERF_TD_STYLE}text-align:center">${amt.toLocaleString()}/-</td>
+      <td style="${PERF_TD_STYLE}text-align:center">${rmkCell}</td>
+      <td style="${PERF_TD_STYLE}"></td>
     </tr>`;
   }).join('');
 
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:8.2pt;font-weight:700;margin-bottom:0;line-height:1.15;table-layout:fixed;overflow-wrap:break-word;">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
           <!-- Tweaked widths to give text-heavy columns more horizontal room -->
-          <th style="border:1px solid #000;padding:3px;width:4%">Sr.</th>
-          <th style="border:1px solid #000;padding:3px;width:18%">Indicators</th>
-          <th style="border:1px solid #000;padding:3px;width:26%">Targets %age</th>
-          <th style="border:1px solid #000;padding:3px;width:13%">Target Achieved by AEO</th>
-          <th style="border:1px solid #000;padding:3px;width:14%">Entitlement of Allowance rupees</th>
-          <th style="border:1px solid #000;padding:3px;width:16%">Remarks of Immediate Officer</th>
-          <th style="border:1px solid #000;padding:3px;width:9%">Initials of DDO</th>
+          <th style="${PERF_TH_STYLE}width:4%">Sr.</th>
+          <th style="${PERF_TH_STYLE}width:18%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:26%">Targets %age</th>
+          <th style="${PERF_TH_STYLE}width:13%">Target Achieved by AEO</th>
+          <th style="${PERF_TH_STYLE}width:14%">Entitlement of Allowance rupees</th>
+          <th style="${PERF_TH_STYLE}width:16%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:9%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
@@ -375,25 +386,25 @@ function perfClosedHtml(data) {
     const stored = cfg.achieved[i];
     const credited = perfIsCredited(r, stored);
     return `<tr>
-      <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:middle">${i + 1}</td>
-      <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle;text-align:left">${r.ind}</td>
-      <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle;text-align:left">${r.tgtLabel}</td>
-      <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:middle">${credited ? 'Achieved' : 'Not Achieved'}</td>
-      <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle"></td>
+      <td style="${PERF_TD_STYLE}text-align:center">${i + 1}</td>
+      <td style="${PERF_TD_STYLE}text-align:left">${r.ind}</td>
+      <td style="${PERF_TD_STYLE}text-align:left">${r.tgtLabel}</td>
+      <td style="${PERF_TD_STYLE}text-align:center">${credited ? 'Achieved' : 'Not Achieved'}</td>
+      <td style="${PERF_TD_STYLE}"></td>
     </tr>`;
   }).join('');
 
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:8.2pt;font-weight:700;margin-bottom:0;line-height:1.15;table-layout:fixed;overflow-wrap:break-word;">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
           <!-- Tweaked widths to give Targets and Indicators max space -->
-          <th style="border:1px solid #000;padding:3px;width:5%">Sr.</th>
-          <th style="border:1px solid #000;padding:3px;width:20%">Indicators</th>
-          <th style="border:1px solid #000;padding:3px;width:38%">Targets</th>
-          <th style="border:1px solid #000;padding:3px;width:15%">Performance</th>
-          <th style="border:1px solid #000;padding:3px;width:22%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
+          <th style="${PERF_TH_STYLE}width:20%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:38%">Targets</th>
+          <th style="${PERF_TH_STYLE}width:15%">Performance</th>
+          <th style="${PERF_TH_STYLE}width:22%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
