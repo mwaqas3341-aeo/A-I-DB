@@ -368,116 +368,266 @@ function iaBillBHtml(bill) {
 
 // ═══════════════════════════════════════════════════════════════════
 //  PERFORMANCE CERTIFICATE — "AEO Monthly Performance Certificate"
-//  Two fixed templates (indicator text/targets never change):
-//   - OPEN   : 16-row detailed format (%age Achieved + per-row Entitlement)
-//   - CLOSED : 16-row simplified format (Performance + Remarks only)
-//  Only Name / Markaz / Month / Cell No. / final entitled amount vary.
+//  Replicates the two fixed government templates (Open / Closed) exactly
+//  as laid out in the source workbook — same wording, column layout,
+//  Arial Narrow font, A4 portrait page. Only the AEO's entered indicator
+//  achievement (a %age against target, or a Yes/No) varies; the rupee
+//  entitlement for each indicator is derived from that automatically —
+//  the user never types an amount.
+//
+//  Indicator "weight" = share of the monthly Inspection Allowance rate
+//  that indicator is worth (matches the source sheet's fixed rupee
+//  split: 10000+15×1000 = 25000 for Open; an even 16-way split for
+//  Closed, which has no printed money column). Weights are applied to
+//  whatever iaState.rate currently is, so this stays correct if the
+//  configured rate ever changes.
 // ═══════════════════════════════════════════════════════════════════
 
+const PERF_MAX_MONTHS = 4;
+const PERF_MIN_MONTHS = 1;
+
+// kind: 'percent' → user enters achieved %, credited if achieved >= targetPct
+//       'yesno'   → user ticks Achieved/Not Achieved
+//       'fixed'   → not editable, always credited (matches template default)
 const PERF_OPEN_ROWS = [
-  { ind: 'AEO Visits',                                            tgt: '100',                                                        ach: '',                          amt: 10000, rmk: '' },
-  { ind: 'LND (E,M,U)',                                           tgt: '80% per Quarter',                                            ach: 'Not Conducted By PMIU',     amt: 1000,  rmk: 'Not Applicable' },
-  { ind: 'Student Attendance ECE-8',                              tgt: '90',                                                          ach: '',                          amt: 1000,  rmk: '' },
-  { ind: 'Teacher Presence',                                      tgt: '85',                                                          ach: '',                          amt: 1000,  rmk: '' },
-  { ind: 'Functioning of facilities (BW, DW, Electricity, Furniture)', tgt: '80',                                                     ach: '',                          amt: 1000,  rmk: '' },
-  { ind: 'Student Retention',                                     tgt: '85',                                                          ach: '',                          amt: 1000,  rmk: '' },
-  { ind: 'Litnum Material',                                       tgt: '80',                                                          ach: '',                          amt: 1000,  rmk: '' },
-  { ind: 'On time resolution of Hotline Complaint',                tgt: '90',                                                         ach: '',                          amt: 1000,  rmk: '' },
-  { ind: 'Classroom Observation',                                 tgt: '90',                                                          ach: '',                          amt: 1000,  rmk: '' },
-  { ind: 'Co-curricular activities',                              tgt: 'As directed by department',                                  ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
-  { ind: 'School records',                                        tgt: 'Properly maintained Students, Teachers, NSB and FTF',        ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
-  { ind: 'School based action plan',                              tgt: 'Ensure SBAP is prepared and present in school',              ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
-  { ind: 'School Council',                                        tgt: 'Ensure 1 SC meeting per month',                              ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
-  { ind: 'Attend monthly meeting',                                tgt: 'As directed by higher authorities',                          ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
-  { ind: 'Visit ADP schemes under construction',                  tgt: 'Visit of ADP scheme and give status to department when required', ach: 'Yes',                  amt: 1000,  rmk: 'Achieved' },
-  { ind: 'Update SIS Data',                                       tgt: 'Ensure all schools of markaz have updated data on SIS',      ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
+  { ind: 'AEO Visits',                                                    tgtLabel: '100',                                                        kind: 'percent', targetPct: 100, weight: 0.40 },
+  { ind: 'LND (E,M,U)',                                                   tgtLabel: '80% per Quarter',                                            kind: 'fixed',   fixedAch: 'Not Conducted By PMIU', fixedRmk: 'N/A', weight: 0.04 },
+  { ind: 'Student Attendance ECE-8',                                      tgtLabel: '90',                                                          kind: 'percent', targetPct: 90,  weight: 0.04 },
+  { ind: 'Teacher Presence',                                              tgtLabel: '85',                                                          kind: 'percent', targetPct: 85,  weight: 0.04 },
+  { ind: 'Functioning of facilities (BW, DW, Electricity, Furniture)',    tgtLabel: '80',                                                          kind: 'percent', targetPct: 80,  weight: 0.04 },
+  { ind: 'Student Retention',                                             tgtLabel: '85',                                                          kind: 'percent', targetPct: 85,  weight: 0.04 },
+  { ind: 'Litnum Material',                                               tgtLabel: '80',                                                          kind: 'percent', targetPct: 80,  weight: 0.04 },
+  { ind: 'On time resolution of Hotline Complaint',                       tgtLabel: '90',                                                          kind: 'percent', targetPct: 90,  weight: 0.04 },
+  { ind: 'Classroom Observation',                                        tgtLabel: '90',                                                          kind: 'percent', targetPct: 90,  weight: 0.04 },
+  { ind: 'Co-curricular activities',                                      tgtLabel: 'As directed by department',                                  kind: 'yesno',   weight: 0.04 },
+  { ind: 'School records',                                                tgtLabel: 'Properly maintained Students, Teachers, NSB and FTF',        kind: 'yesno',   weight: 0.04 },
+  { ind: 'School based action plan',                                      tgtLabel: 'Ensure SBAP is prepared and present in school',              kind: 'yesno',   weight: 0.04 },
+  { ind: 'School Council',                                                tgtLabel: 'Ensure 1 SC meeting per month',                              kind: 'yesno',   weight: 0.04 },
+  { ind: 'Attend monthly meeting',                                        tgtLabel: 'As directed by higher authorities',                          kind: 'yesno',   weight: 0.04 },
+  { ind: 'Visit ADP schemes under construction',                          tgtLabel: 'Visit of ADP scheme and give status to department when required', kind: 'yesno', weight: 0.04 },
+  { ind: 'Update SIS Data',                                               tgtLabel: 'Ensure all schools of markaz have updated data on SIS',      kind: 'yesno',   weight: 0.04 },
 ];
-const PERF_OPEN_DEFAULT_TOTAL = PERF_OPEN_ROWS.reduce((s, r) => s + r.amt, 0); // 25000
 
 const PERF_CLOSED_ROWS = [
-  { ind: 'Aeo Visits',                            tgt: 'Once in a Month' },
-  { ind: 'Teacher Training',                      tgt: 'Ensure That Teachers Attend Trainings' },
-  { ind: 'Cot Analysis Report',                   tgt: 'Submit Analysis Report to Immediate Officer' },
-  { ind: 'Ht Orientation',                        tgt: 'Ht Meeting of Markaz and Submit Attendance' },
-  { ind: 'Sbap Report',                           tgt: 'Develop and Submit Sbap Report' },
-  { ind: 'Awareness Campaign',                    tgt: 'Smc 1 Session Regarding Importance of Schooling and Hygiene' },
-  { ind: 'Ece Support and Guidance',              tgt: 'Up Gradation of Ece Room and Material' },
-  { ind: 'Oosc Survey',                           tgt: 'Once a Year' },
-  { ind: 'Ece Support for Enrollment Drive',      tgt: 'Smc, Ht and Community Plan for Upcoming Enrollment Drive' },
-  { ind: 'Ece Awareness Campaign',                tgt: 'Creating Awareness of the Importance of Ece in Community' },
-  { ind: 'Sis Orientation',                       tgt: 'Collect Feedback from Ht and Submit to Immediate Officer' },
-  { ind: 'Dengue Awareness Campaign',             tgt: 'Creating Awareness Regarding Anti-dengue Activities in Schools Like Seminars' },
-  { ind: 'Visit Adp Schemes Under Construction',  tgt: 'Visit of Adp Scheme and Give Status to Department When Required' },
-  { ind: 'Observance of Govt. Sops in Private Schools', tgt: 'Observe Govt. Sops Followed by Private Schools' },
-  { ind: 'Update Sis Data',                       tgt: 'Ensure All Schools of Markaz Have Updated Data on Sis' },
-  { ind: 'Online Complaint Resolution',           tgt: 'In-time Resolution of Complaints on Dashboard' },
-];
-const PERF_CLOSED_DEFAULT_TOTAL = 25000;
+  { ind: 'Aeo Visits',                                    tgtLabel: 'Once in a Month' },
+  { ind: 'Teacher Training',                              tgtLabel: 'Ensure That Teachers Attend Trainings' },
+  { ind: 'Cot Analysis Report',                           tgtLabel: 'Submit Analysis Report to Immediate Officer' },
+  { ind: 'Ht Orientation',                                tgtLabel: 'Ht Meeting of Markaz and Submit Attendance' },
+  { ind: 'Sbap Report',                                   tgtLabel: 'Develop and Submit Sbap Report' },
+  { ind: 'Awareness Campaign Smc',                        tgtLabel: '1 Session Regarding Importance of Schooling and Hygiene' },
+  { ind: 'Ece Support and Guidance',                      tgtLabel: 'Up Gradation of Ece Room and Material' },
+  { ind: 'Oosc Survey',                                   tgtLabel: 'Once a Year' },
+  { ind: 'Ece Support for Enrollment Drive',               tgtLabel: 'Smc, Ht and Community Plan for Upcoming Enrollment Drive' },
+  { ind: 'Ece Awareness Campaign',                        tgtLabel: 'Creating Awareness of the Importance of Ece in Community' },
+  { ind: 'Sis Orientation',                               tgtLabel: 'Collect Feedback from Ht and Submit to Immediate Officer' },
+  { ind: 'Dengue Awareness Campaign',                     tgtLabel: 'Creating Awareness Regarding Anti-dengue Activities in Schools Like Seminars' },
+  { ind: 'Visit Adp Schemes Under Construction',          tgtLabel: 'Visit of Adp Scheme and Give Status to Department When Required' },
+  { ind: 'Observance of Govt. Sops in Private Schools',   tgtLabel: 'Observe Govt. Sops Followed by Private Schools' },
+  { ind: 'Update Sis Data',                               tgtLabel: 'Ensure All Schools of Markaz Have Updated Data on Sis' },
+  { ind: 'Online Complaint Resolution',                   tgtLabel: 'In-time Resolution of Complaints on Dashboard' },
+].map(r => ({ ...r, kind: 'yesno', weight: 1 / 16 }));
 
-const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and issued by SED vide No. SO (SE-III) 5-226/200 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection';
+const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and issued by SED vide No. SO (SE-III) 5-226/200 dated 03-08-2020 has been achieved by the above named AEO.   His performance is mentioned above against each indicator. He is entitled to get Inspection';
 
-let perfState = { months: [], status: 'open' };
+let perfState = { months: [], selected: new Set(), config: {} };
+// config[month] = { status: 'open'|'closed', achieved: { rowIndex: number|boolean } }
 
-// ─── Init / month picker (mirrors "My Bill" prepared-months gating) ──
+// ─── Init / month picker (min 1, max 4 — same cap as My Bill) ──────
 function perfInit() {
   const yearSel = document.getElementById('perf_year');
   const yNow = new Date().getFullYear();
   yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1].map(y => `<option value="${y}" ${y === yNow ? 'selected' : ''}>${y}</option>`).join('');
-  document.getElementById('perf_amount').value = PERF_OPEN_DEFAULT_TOTAL;
-  perfLoadMonthOptions();
+  perfState.selected = new Set();
+  perfState.config = {};
+  perfLoadMonths();
 }
 
-async function perfLoadMonthOptions() {
+async function perfLoadMonths() {
   const year = Number(document.getElementById('perf_year').value);
-  const monthSel = document.getElementById('perf_month');
+  const grid = document.getElementById('perfMonthsGrid');
   const warn = document.getElementById('perf_monthWarn');
-  const btn = document.getElementById('perf_downloadBtn');
-  monthSel.innerHTML = `<option>Loading…</option>`;
-  btn.disabled = true;
+  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading months…</div>`;
 
-  // Reuse the same prepared-months source as "My Bill"
   const res = await apiCall('getMyInspectionAllowanceMonths', { year });
-  if (!res || !res.success) { monthSel.innerHTML = ''; warn.style.display = 'block'; return; }
+  perfState.selected = new Set();
+  perfState.config = {};
+  if (!res || !res.success) { grid.innerHTML = ''; warn.style.display = 'block'; perfRenderConfigPanels(); return; }
 
   perfState.months = (res.months || []).filter(m => m.prepared);
-  if (!perfState.months.length) {
-    monthSel.innerHTML = '';
-    warn.style.display = 'block';
+  if (!perfState.months.length) { grid.innerHTML = ''; warn.style.display = 'block'; perfRenderConfigPanels(); return; }
+
+  warn.style.display = 'none';
+  perfRenderMonthsGrid();
+  perfRenderConfigPanels();
+}
+
+function perfRenderMonthsGrid() {
+  const grid = document.getElementById('perfMonthsGrid');
+  grid.innerHTML = perfState.months.map(m => {
+    const checked = perfState.selected.has(m.month);
+    return `<label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--b0);border-radius:8px;cursor:pointer;font-size:.85rem;${checked ? 'background:#f0fdfa;border-color:#0d9488' : ''}">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="perfToggleMonth(${m.month}, this.checked)"> ${IA_MONTH_NAMES[m.month - 1]}
+    </label>`;
+  }).join('');
+}
+
+function perfToggleMonth(month, checked) {
+  if (checked) {
+    if (perfState.selected.size >= PERF_MAX_MONTHS) {
+      showToast(`Maximum ${PERF_MAX_MONTHS} months per certificate.`, false);
+      perfRenderMonthsGrid();
+      return;
+    }
+    perfState.selected.add(month);
+    if (!perfState.config[month]) perfState.config[month] = { status: 'open', achieved: {} };
+  } else {
+    perfState.selected.delete(month);
+    delete perfState.config[month];
+  }
+  perfRenderMonthsGrid();
+  perfRenderConfigPanels();
+}
+
+// ─── Per-month config panels (status + indicator entry) ────────────
+function perfRenderConfigPanels() {
+  const wrap = document.getElementById('perfConfigPanels');
+  const months = [...perfState.selected].sort((a, b) => a - b);
+
+  if (!months.length) {
+    wrap.innerHTML = `<div style="padding:16px;text-align:center;color:var(--t3);font-size:.85rem">Select at least ${PERF_MIN_MONTHS} prepared month above to begin.</div>`;
+    document.getElementById('perf_downloadBtn').disabled = true;
+    document.getElementById('perfGrandTotalDisplay').textContent = 'PKR 0';
     return;
   }
-  warn.style.display = 'none';
-  monthSel.innerHTML = perfState.months.map(m => `<option value="${m.month}">${IA_MONTH_NAMES[m.month - 1]}</option>`).join('');
-  perfOnMonthChange();
+
+  wrap.innerHTML = months.map(month => {
+    const cfg = perfState.config[month];
+    const rows = cfg.status === 'open' ? PERF_OPEN_ROWS : PERF_CLOSED_ROWS;
+    const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg)).join('');
+    const total = perfComputeMonthTotal(month);
+
+    return `
+      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:16px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+          <div style="font-weight:700;font-size:.95rem">${IA_MONTH_NAMES[month - 1]}</div>
+          <div style="display:flex;gap:14px;align-items:center;font-size:.85rem">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="perf_status_${month}" ${cfg.status === 'open' ? 'checked' : ''} onchange="perfSetStatus(${month},'open')"> Open
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="perf_status_${month}" ${cfg.status === 'closed' ? 'checked' : ''} onchange="perfSetStatus(${month},'closed')"> Closed
+            </label>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+          <thead><tr style="text-align:left;border-bottom:1px solid var(--b0);color:var(--t3)">
+            <th style="padding:5px 6px;width:4%">Sr</th>
+            <th style="padding:5px 6px;width:26%">Indicator</th>
+            <th style="padding:5px 6px;width:30%">Target</th>
+            <th style="padding:5px 6px;width:20%">Achieved</th>
+            <th style="padding:5px 6px;width:20%;text-align:right">Entitlement</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div style="text-align:right;margin-top:8px;padding-top:8px;border-top:1px dashed var(--b0);font-weight:700;font-size:.88rem">
+          Month Total: <span style="color:#0d9488" id="perfMonthTotal_${month}">PKR ${total.toLocaleString()}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('perf_downloadBtn').disabled = months.length < PERF_MIN_MONTHS;
+  perfUpdateGrandTotal();
 }
 
-function perfOnMonthChange() {
-  const monthSel = document.getElementById('perf_month');
-  const btn = document.getElementById('perf_downloadBtn');
-  btn.disabled = !monthSel.value;
+function perfIndicatorRowHtml(month, row, idx, cfg) {
+  let achievedCell;
+  let entitlement = perfRowAmount(row);
+
+  if (row.kind === 'fixed') {
+    achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
+  } else if (row.kind === 'percent') {
+    const val = cfg.achieved[idx] ?? row.targetPct; // default: exactly meets target
+    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:64px;height:28px;border:1px solid var(--b0);border-radius:5px;padding:0 6px"
+      oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
+  } else { // yesno
+    const val = cfg.achieved[idx] ?? true; // default: achieved
+    achievedCell = `<label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+      <input type="checkbox" ${val ? 'checked' : ''} onchange="perfUpdateAchieved(${month}, ${idx}, this.checked)"> Achieved
+    </label>`;
+  }
+
+  const credited = perfIsCredited(row, cfg.achieved[idx]);
+  return `<tr style="border-bottom:1px solid var(--s2)">
+    <td style="padding:5px 6px">${idx + 1}</td>
+    <td style="padding:5px 6px">${row.ind}</td>
+    <td style="padding:5px 6px;color:var(--t3)">${row.tgtLabel}</td>
+    <td style="padding:5px 6px">${achievedCell}</td>
+    <td style="padding:5px 6px;text-align:right;font-weight:600;color:${credited ? '#0d9488' : 'var(--t3)'}">PKR ${(credited ? entitlement : 0).toLocaleString()}</td>
+  </tr>`;
 }
 
-function perfOnStatusChange() {
-  const status = document.querySelector('input[name="perf_status"]:checked').value;
-  perfState.status = status;
-  document.getElementById('perf_amount').value = status === 'open' ? PERF_OPEN_DEFAULT_TOTAL : PERF_CLOSED_DEFAULT_TOTAL;
+function perfRowAmount(row) {
+  return Math.round(row.weight * (iaState.rate || 25000));
 }
 
-// ─── Generate + download ──────────────────────────────────────────
+function perfIsCredited(row, storedVal) {
+  if (row.kind === 'fixed') return true;
+  if (row.kind === 'percent') {
+    const v = storedVal ?? row.targetPct;
+    return Number(v) >= row.targetPct;
+  }
+  return (storedVal ?? true) === true; // yesno defaults to achieved
+}
+
+function perfUpdateAchieved(month, idx, value) {
+  const cfg = perfState.config[month];
+  if (!cfg) return;
+  const rows = cfg.status === 'open' ? PERF_OPEN_ROWS : PERF_CLOSED_ROWS;
+  const row = rows[idx];
+  cfg.achieved[idx] = row.kind === 'percent' ? Number(value) : Boolean(value);
+  perfRenderConfigPanels(); // re-render to refresh credited highlighting + totals
+}
+
+function perfSetStatus(month, status) {
+  const cfg = perfState.config[month];
+  if (!cfg) return;
+  cfg.status = status;
+  cfg.achieved = {}; // indicator sets differ between formats — start fresh
+  perfRenderConfigPanels();
+}
+
+function perfComputeMonthTotal(month) {
+  const cfg = perfState.config[month];
+  if (!cfg) return 0;
+  const rows = cfg.status === 'open' ? PERF_OPEN_ROWS : PERF_CLOSED_ROWS;
+  return rows.reduce((sum, row, idx) => sum + (perfIsCredited(row, cfg.achieved[idx]) ? perfRowAmount(row) : 0), 0);
+}
+
+function perfUpdateGrandTotal() {
+  const total = [...perfState.selected].reduce((s, m) => s + perfComputeMonthTotal(m), 0);
+  document.getElementById('perfGrandTotalDisplay').textContent = 'PKR ' + total.toLocaleString();
+}
+
+// ─── Generate + download (one page per selected month) ─────────────
 async function perfDownloadCertificate() {
   if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
-  const year = Number(document.getElementById('perf_year').value);
-  const month = Number(document.getElementById('perf_month').value);
-  if (!month) { showToast('Select a prepared month.', false); return; }
-  const status = document.querySelector('input[name="perf_status"]:checked').value;
-  const amount = Number(document.getElementById('perf_amount').value) || 0;
+  const months = [...perfState.selected].sort((a, b) => a - b);
+  if (months.length < PERF_MIN_MONTHS) { showToast(`Select at least ${PERF_MIN_MONTHS} prepared month.`, false); return; }
 
   const btn = document.getElementById('perf_downloadBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
   try {
-    const data = { user: iaState.profile, year, month, amount };
-    const pdfBytes = status === 'open' ? await perfBuildOpenPdfBytes(data) : await perfBuildClosedPdfBytes(data);
-    iaDownloadPdf(pdfBytes, `Performance_Certificate_${status}_${iaState.profile.personal_no}_${IA_MONTH_NAMES[month - 1]}_${year}.pdf`);
+    const year = Number(document.getElementById('perf_year').value);
+    const pages = months.map(month => {
+      const cfg = perfState.config[month];
+      const total = perfComputeMonthTotal(month);
+      const data = { user: iaState.profile, year, month, amount: total, cfg };
+      return cfg.status === 'open' ? perfOpenHtml(data) : perfClosedHtml(data);
+    });
+    const pdfBytes = await perfBuildCertificatePdfBytes(pages);
+    const label = months.map(m => IA_MONTH_NAMES[m - 1]).join('-');
+    iaDownloadPdf(pdfBytes, `Performance_Certificate_${iaState.profile.personal_no}_${label}_${year}.pdf`);
     showToast('Certificate downloaded.', true);
   } catch (err) {
     showToast('Error generating certificate: ' + err.message, false);
@@ -487,133 +637,133 @@ async function perfDownloadCertificate() {
   }
 }
 
-// ─── Shared header block for both formats ─────────────────────────
+// ─── Shared header block for both formats (matches source workbook) ─
 function perfHeaderHtml(officeLine, u, monthLabel) {
   return `
-    <div style="text-align:center;font-size:11.5px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${officeLine}</div>
-    <div style="text-align:center;font-size:13.5px;font-weight:700;text-transform:uppercase;margin-bottom:12px">AEO Monthly Performance Certificate</div>
-    <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:12px">
+    <div style="text-align:center;font-size:16pt;font-weight:700;margin-bottom:2px">${officeLine}</div>
+    <div style="text-align:center;font-size:16pt;font-weight:700;text-decoration:underline;margin-bottom:14px">AEO Monthly Performance Certificate</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12pt;font-weight:700;margin-bottom:10px">
       <tr>
-        <td style="padding:2px 4px;font-weight:700;width:12%">AEO Name:</td><td style="padding:2px 4px;width:38%">${u.name || ''}</td>
-        <td style="padding:2px 4px;font-weight:700;width:12%">Cell No:</td><td style="padding:2px 4px;width:38%">${u.cell_no || u.cnic || ''}</td>
+        <td style="padding:2px 4px;width:50%">AEO Name: ${u.name || ''}</td>
+        <td style="padding:2px 4px;width:50%">Cell No: ${u.cell_no || u.cnic || ''}</td>
       </tr>
       <tr>
-        <td style="padding:2px 4px;font-weight:700">Markaz:</td><td style="padding:2px 4px">${u.markaz_name || ''}</td>
-        <td style="padding:2px 4px;font-weight:700">Month:</td><td style="padding:2px 4px">${monthLabel}</td>
+        <td style="padding:2px 4px">Markaz: ${u.markaz_name || ''}</td>
+        <td style="padding:2px 4px">Month: ${monthLabel}</td>
       </tr>
     </table>`;
 }
 
-function perfFooterHtml(amount, markazName) {
+function perfFooterHtml(amount, markazName, isOpen) {
   return `
-    <p style="font-size:11px;margin:14px 0 34px;line-height:1.5">${PERF_KPI_NOTICE} worth <b>PKR ${Number(amount).toLocaleString()}</b></p>
-    <table style="width:100%;font-size:11.5px"><tr>
+    <p style="font-size:12pt;font-weight:700;margin:12px 0 40px;line-height:1.45">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
+    <table style="width:100%;font-size:12pt;font-weight:700"><tr>
+      <td style="width:50%;text-align:center">Assistant Education Officer</td>
       <td style="width:50%;text-align:center">
-        <div style="border-top:1px solid #333;padding-top:4px">Assistant Education Officer</div>
-        <div>${markazName || ''}</div>
-      </td>
-      <td style="width:50%;text-align:center">
-        <div style="border-top:1px solid #333;padding-top:4px">Deputy District Education Officer</div>
+        <div>Deputy District Education Officer</div>
         <div>Tehsil Karor</div>
       </td>
     </tr></table>`;
 }
 
-// ─── OPEN format (7-column detailed table, landscape) ──────────────
+// ─── OPEN format — 7 columns, exact widths from source workbook ────
 function perfOpenHtml(data) {
   const u = data.user;
+  const cfg = data.cfg;
   const monthLabel = `${IA_MONTH_NAMES[data.month - 1]} ${data.year}`;
-  const rows = PERF_OPEN_ROWS.map((r, i) => `
-    <tr>
-      <td style="border:1px solid #444;padding:4px 5px;text-align:center">${i + 1}</td>
-      <td style="border:1px solid #444;padding:4px 5px">${r.ind}</td>
-      <td style="border:1px solid #444;padding:4px 5px;text-align:center">${r.tgt}</td>
-      <td style="border:1px solid #444;padding:4px 5px;text-align:center">${r.ach}</td>
-      <td style="border:1px solid #444;padding:4px 5px;text-align:right">${r.amt.toLocaleString()}/-</td>
-      <td style="border:1px solid #444;padding:4px 5px">${r.rmk}</td>
-      <td style="border:1px solid #444;padding:4px 5px"></td>
-    </tr>`).join('');
+  const rows = PERF_OPEN_ROWS.map((r, i) => {
+    const stored = cfg.achieved[i];
+    const credited = perfIsCredited(r, stored);
+    const amt = credited ? perfRowAmount(r) : 0;
+    let achCell, rmkCell;
+    if (r.kind === 'fixed') { achCell = r.fixedAch; rmkCell = r.fixedRmk; }
+    else if (r.kind === 'percent') { achCell = (stored ?? r.targetPct) + '%'; rmkCell = ''; }
+    else { achCell = credited ? 'Yes' : 'No'; rmkCell = credited ? 'Acheived' : ''; }
+    return `<tr>
+      <td style="border:1px solid #000;padding:4px 5px;text-align:center">${i + 1}</td>
+      <td style="border:1px solid #000;padding:4px 5px">${r.ind}</td>
+      <td style="border:1px solid #000;padding:4px 5px;text-align:center">${r.tgtLabel}</td>
+      <td style="border:1px solid #000;padding:4px 5px;text-align:center">${achCell}</td>
+      <td style="border:1px solid #000;padding:4px 5px;text-align:center">${amt.toLocaleString()}/-</td>
+      <td style="border:1px solid #000;padding:4px 5px;text-align:center">${rmkCell}</td>
+      <td style="border:1px solid #000;padding:4px 5px"></td>
+    </tr>`;
+  }).join('');
 
   const body = `
-    ${perfHeaderHtml('Office of the Deputy District Education Officer (M-EE) Tehsil Karor', u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px">
+    ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
+    <table style="width:100%;border-collapse:collapse;font-size:10.5pt;font-weight:700;margin-bottom:0">
       <thead>
-        <tr style="background:#f2f2f2">
-          <th style="border:1px solid #444;padding:4px 5px;width:3%">Sr.</th>
-          <th style="border:1px solid #444;padding:4px 5px;width:20%">Indicators</th>
-          <th style="border:1px solid #444;padding:4px 5px;width:14%">Targets</th>
-          <th style="border:1px solid #444;padding:4px 5px;width:12%">%age Target Achieved by AEO</th>
-          <th style="border:1px solid #444;padding:4px 5px;width:12%">Entitlement of Allowance rupees</th>
-          <th style="border:1px solid #444;padding:4px 5px;width:16%">Remarks of Immediate Officer</th>
-          <th style="border:1px solid #444;padding:4px 5px;width:10%">Initials of DDO</th>
+        <tr>
+          <th style="border:1px solid #000;padding:4px 5px;width:14.1%">Sr.</th>
+          <th style="border:1px solid #000;padding:4px 5px;width:17.8%">Indicators</th>
+          <th style="border:1px solid #000;padding:4px 5px;width:25.8%">Targets %age</th>
+          <th style="border:1px solid #000;padding:4px 5px;width:14.1%">Target Achieved by AEO</th>
+          <th style="border:1px solid #000;padding:4px 5px;width:9.4%">Entitlement of Allowance rupees</th>
+          <th style="border:1px solid #000;padding:4px 5px;width:9.4%">Remarks of Immediate Officer</th>
+          <th style="border:1px solid #000;padding:4px 5px;width:9.4%">Initials of DDO</th>
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
+      <tbody style="font-weight:400">${rows}</tbody>
     </table>
-    ${perfFooterHtml(data.amount, u.markaz_name)}`;
-  return `<div style="width:1123px;min-height:794px;padding:34px 40px;font-family:'Calibri','Arial',sans-serif;color:#111;box-sizing:border-box">${body}</div>`;
+    ${perfFooterHtml(data.amount, u.markaz_name, true)}`;
+  return `<div style="width:794px;min-height:1123px;padding:96px 72px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box">${body}</div>`;
 }
 
-async function perfBuildOpenPdfBytes(data) {
-  return perfRenderToPdf(perfOpenHtml(data), 'l'); // landscape — 7 columns
-}
-
-// ─── CLOSED format (5-column simplified table, portrait) ───────────
+// ─── CLOSED format — 5 columns, exact widths from source workbook ──
 function perfClosedHtml(data) {
   const u = data.user;
+  const cfg = data.cfg;
   const monthLabel = `${IA_MONTH_NAMES[data.month - 1]} ${data.year}`;
-  const rows = PERF_CLOSED_ROWS.map((r, i) => `
-    <tr>
-      <td style="border:1px solid #444;padding:4px 6px;text-align:center">${i + 1}</td>
-      <td style="border:1px solid #444;padding:4px 6px">${r.ind}</td>
-      <td style="border:1px solid #444;padding:4px 6px">${r.tgt}</td>
-      <td style="border:1px solid #444;padding:4px 6px;text-align:center">Acheived</td>
-      <td style="border:1px solid #444;padding:4px 6px"></td>
-    </tr>`).join('');
+  const rows = PERF_CLOSED_ROWS.map((r, i) => {
+    const stored = cfg.achieved[i];
+    const credited = perfIsCredited(r, stored);
+    return `<tr>
+      <td style="border:1px solid #000;padding:4px 6px;text-align:center">${i + 1}</td>
+      <td style="border:1px solid #000;padding:4px 6px">${r.ind}</td>
+      <td style="border:1px solid #000;padding:4px 6px">${r.tgtLabel}</td>
+      <td style="border:1px solid #000;padding:4px 6px;text-align:center">${credited ? 'Acheived' : 'Not Acheived'}</td>
+      <td style="border:1px solid #000;padding:4px 6px"></td>
+    </tr>`;
+  }).join('');
 
   const body = `
-    ${perfHeaderHtml('Office of the Dy. District Education Officer (M-EE) Tehsil Karor', u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px">
+    ${perfHeaderHtml('OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
+    <table style="width:100%;border-collapse:collapse;font-size:10.5pt;font-weight:700;margin-bottom:0">
       <thead>
-        <tr style="background:#f2f2f2">
-          <th style="border:1px solid #444;padding:4px 6px;width:5%">Sr.</th>
-          <th style="border:1px solid #444;padding:4px 6px;width:22%">Indicators</th>
-          <th style="border:1px solid #444;padding:4px 6px;width:38%">Targets</th>
-          <th style="border:1px solid #444;padding:4px 6px;width:15%">Performance</th>
-          <th style="border:1px solid #444;padding:4px 6px;width:20%">Remarks of Immediate Officer</th>
+        <tr>
+          <th style="border:1px solid #000;padding:4px 6px;width:11.4%">Sr.</th>
+          <th style="border:1px solid #000;padding:4px 6px;width:17.3%">Indicators</th>
+          <th style="border:1px solid #000;padding:4px 6px;width:35.7%">Targets</th>
+          <th style="border:1px solid #000;padding:4px 6px;width:18.5%">Performance</th>
+          <th style="border:1px solid #000;padding:4px 6px;width:17.1%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
+      <tbody style="font-weight:400">${rows}</tbody>
     </table>
-    ${perfFooterHtml(data.amount, u.markaz_name)}`;
-  return `<div style="width:794px;min-height:1123px;padding:40px 46px;font-family:'Calibri','Arial',sans-serif;color:#111;box-sizing:border-box">${body}</div>`;
+    ${perfFooterHtml(data.amount, u.markaz_name, false)}`;
+  return `<div style="width:794px;min-height:1123px;padding:96px 72px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box">${body}</div>`;
 }
 
-async function perfBuildClosedPdfBytes(data) {
-  return perfRenderToPdf(perfClosedHtml(data), 'p'); // portrait — 5 columns
-}
-
-// ─── Shared single-page HTML → PDF renderer ─────────────────────────
-async function perfRenderToPdf(html, orientation) {
+// ─── Multi-page HTML → single PDF (A4 portrait, one page per month) ─
+async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById('iaPdfRenderTarget');
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF(orientation, 'pt', 'a4');
+  const pdf = new jsPDF('p', 'pt', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
-  // The render target has a fixed 794px (portrait) width in its base CSS —
-  // widen it for landscape content so html2canvas doesn't clip the table.
-  const prevWidth = target.style.width;
-  target.style.width = orientation === 'l' ? '1123px' : '794px';
-  target.innerHTML = html;
-  await new Promise(r => setTimeout(r, 120));
-  const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-  const imgData = canvas.toDataURL('image/jpeg', 0.92);
-  const ratio = pageWidth / canvas.width;
-  const scaledHeight = canvas.height * ratio;
-  pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(scaledHeight, pageHeight));
+  for (let i = 0; i < pagesHtml.length; i++) {
+    target.innerHTML = pagesHtml[i];
+    await new Promise(r => setTimeout(r, 120));
+    const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const ratio = pageWidth / canvas.width;
+    const scaledHeight = canvas.height * ratio;
+    if (i > 0) pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(scaledHeight, pageHeight));
+  }
   target.innerHTML = '';
-  target.style.width = prevWidth || '794px';
   return pdf.output('arraybuffer');
 }
 
