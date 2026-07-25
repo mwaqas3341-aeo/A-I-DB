@@ -254,7 +254,19 @@ function perfClosedHtml(data) {
 
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById("iaPdfRenderTarget");
+
+  // Same reliable off-screen-capture pattern as bpRenderTargetIntoPdf
+  // (budget-preparation.js): position:fixed;left:-9999px can get
+  // partially culled/painted by the browser before html2canvas grabs
+  // it, causing intermittent missing content (e.g. one footer column
+  // vanishing). Explicitly hiding via visibility, then forcing the
+  // clone visible only inside html2canvas's private DOM, avoids that.
+  target.style.position = "absolute";
+  target.style.left = "0";
+  target.style.top = "0";
   target.style.width = `${PERFLETTER_WIDTH_PX}px`;
+  target.style.visibility = "hidden";
+  target.style.zIndex = "-1";
   target.setAttribute("dir", "ltr");
   target.style.direction = "ltr";
 
@@ -278,6 +290,10 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
       height: captureHeight,
       windowWidth: captureWidth,
       windowHeight: captureHeight,
+      onclone: function (clonedDoc) {
+        const clonedTarget = clonedDoc.getElementById("iaPdfRenderTarget");
+        if (clonedTarget) clonedTarget.style.visibility = "visible";
+      },
     });
 
     const imgData = canvas.toDataURL("image/jpeg", 0.92);
@@ -293,8 +309,13 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
     pdf.addImage(imgData, "JPEG", offsetX, offsetY, drawWidth, drawHeight);
   }
 
-  target.style.width = "";
   target.innerHTML = "";
+  target.style.position = "";
+  target.style.left = "";
+  target.style.top = "";
+  target.style.width = "";
+  target.style.visibility = "";
+  target.style.zIndex = "";
   return pdf.output("arraybuffer");
 }
 
