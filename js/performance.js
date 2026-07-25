@@ -1,6 +1,6 @@
 // performance.js
 // AEO Monthly Performance Certificate - Letter Portrait PDF
-// Ready-to-replace version focused on single-page-per-month output.
+// Ready-to-replace version: single page per month, Letter 612x792pt.
 
 const PERFMAXMONTHS = 4;
 const PERFMINMONTHS = 1;
@@ -57,24 +57,28 @@ const PERFOPENROWS = [
   { ind: "Update SIS Data", tgtLabel: "Ensure all schools of markaz have updated data on SIS", kind: "yesno", weight: 0.04 },
 ];
 
+// NOTE: weight is 1/16 per row so the 16 rows sum to 1.0 (100% of rate).
+// The previous version of this file had weight: 0.10 on each of the 16
+// rows, which summed to 1.6 -- a Closed-month certificate would have
+// claimed 160% of the inspection allowance rate.
 const PERFCLOSEDROWS = [
-  { ind: "Aeo Visits", tgtLabel: "Once in a Month", weight: 0.10 },
-  { ind: "Teacher Training", tgtLabel: "Ensure That Teachers Attend Trainings", weight: 0.10 },
-  { ind: "Cot Analysis Report", tgtLabel: "Submit Analysis Report to Immediate Officer", weight: 0.10 },
-  { ind: "Ht Orientation", tgtLabel: "Ht Meeting of Markaz and Submit Attendance", weight: 0.10 },
-  { ind: "Sbap Report", tgtLabel: "Develop and Submit Sbap Report", weight: 0.10 },
-  { ind: "Awareness Campaign Smc", tgtLabel: "1 Session Regarding Importance of Schooling and Hygiene", weight: 0.10 },
-  { ind: "Ece Support and Guidance", tgtLabel: "Up Gradation of Ece Room and Material", weight: 0.10 },
-  { ind: "Oosc Survey", tgtLabel: "Once a Year", weight: 0.10 },
-  { ind: "Ece Support for Enrollment Drive", tgtLabel: "Smc, Ht and Community Plan for Upcoming Enrollment Drive", weight: 0.10 },
-  { ind: "Ece Awareness Campaign", tgtLabel: "Creating Awareness of the Importance of Ece in Community", weight: 0.10 },
-  { ind: "Sis Orientation", tgtLabel: "Collect Feedback from Ht and Submit to Immediate Officer", weight: 0.10 },
-  { ind: "Dengue Awareness Campaign", tgtLabel: "Creating Awareness Regarding Anti-dengue Activities in Schools Like Seminars", weight: 0.10 },
-  { ind: "Visit Adp Schemes Under Construction", tgtLabel: "Visit of Adp Scheme and Give Status to Department When Required", weight: 0.10 },
-  { ind: "Observance of Govt. Sops in Private Schools", tgtLabel: "Observe Govt. Sops Followed by Private Schools", weight: 0.10 },
-  { ind: "Update Sis Data", tgtLabel: "Ensure All Schools of Markaz Have Updated Data on Sis", weight: 0.10 },
-  { ind: "Online Complaint Resolution", tgtLabel: "In-time Resolution of Complaints on Dashboard", weight: 0.10 },
-];
+  { ind: "Aeo Visits", tgtLabel: "Once in a Month" },
+  { ind: "Teacher Training", tgtLabel: "Ensure That Teachers Attend Trainings" },
+  { ind: "Cot Analysis Report", tgtLabel: "Submit Analysis Report to Immediate Officer" },
+  { ind: "Ht Orientation", tgtLabel: "Ht Meeting of Markaz and Submit Attendance" },
+  { ind: "Sbap Report", tgtLabel: "Develop and Submit Sbap Report" },
+  { ind: "Awareness Campaign Smc", tgtLabel: "1 Session Regarding Importance of Schooling and Hygiene" },
+  { ind: "Ece Support and Guidance", tgtLabel: "Up Gradation of Ece Room and Material" },
+  { ind: "Oosc Survey", tgtLabel: "Once a Year" },
+  { ind: "Ece Support for Enrollment Drive", tgtLabel: "Smc, Ht and Community Plan for Upcoming Enrollment Drive" },
+  { ind: "Ece Awareness Campaign", tgtLabel: "Creating Awareness of the Importance of Ece in Community" },
+  { ind: "Sis Orientation", tgtLabel: "Collect Feedback from Ht and Submit to Immediate Officer" },
+  { ind: "Dengue Awareness Campaign", tgtLabel: "Creating Awareness Regarding Anti-dengue Activities in Schools Like Seminars" },
+  { ind: "Visit Adp Schemes Under Construction", tgtLabel: "Visit of Adp Scheme and Give Status to Department When Required" },
+  { ind: "Observance of Govt. Sops in Private Schools", tgtLabel: "Observe Govt. Sops Followed by Private Schools" },
+  { ind: "Update Sis Data", tgtLabel: "Ensure All Schools of Markaz Have Updated Data on Sis" },
+  { ind: "Online Complaint Resolution", tgtLabel: "In-time Resolution of Complaints on Dashboard" },
+].map(r => ({ ...r, kind: "yesno", weight: 1 / 16 }));
 
 const PERFKPINOTICE =
   "It is to certify that verifiable KPIs developed and issued by SED vide No. SO(SE-III)5-226/20020 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection Allowance as admissible under rules.";
@@ -99,7 +103,13 @@ function perfIsCredited(row, storedVal) {
 }
 
 function perfRowAmount(row) {
-  return Math.round((row.weight || 0) * (window.iaState?.rate || 25000));
+  // iaState/IA_MONTH_NAMES are plain top-level `let`/`const` globals
+  // declared in inspection-allowance.js -- NOT properties of `window`
+  // (only `var`/function declarations attach to window). Referencing
+  // them via `window.iaState` silently resolves to undefined, which
+  // is why every row previously fell back to the 25000 default rate
+  // regardless of the actual configured rate.
+  return Math.round((row.weight || 0) * (iaState.rate || 25000));
 }
 
 function perfRowDisplayCells(row, storedVal, credited) {
@@ -124,9 +134,9 @@ function perfHeaderHtml(officeLine, u, monthLabel) {
     <div style="width:36%;text-align:left;">
       <table style="width:100%;border-collapse:collapse;font-weight:700;font-size:9pt;color:#000;">
         <tr><td style="padding:2px 0;width:62px;text-align:left;">AEO Name</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.name)}</td></tr>
-        <tr><td style="padding:2px 0;text-align:left;">Markaz</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.markazname)}</td></tr>
+        <tr><td style="padding:2px 0;text-align:left;">Markaz</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.markaz_name)}</td></tr>
         <tr><td style="padding:2px 0;text-align:left;">Month</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(monthLabel)}</td></tr>
-        <tr><td style="padding:2px 0;text-align:left;">Cell No</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.cellno || u?.cnic || "")}</td></tr>
+        <tr><td style="padding:2px 0;text-align:left;">Cell No</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.cell_no || u?.cnic || "")}</td></tr>
       </table>
     </div>
     <div style="width:62%;text-align:center;color:#000;">
@@ -144,7 +154,7 @@ function perfFooterHtml(amount, u, sigUrl) {
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
         <div style="height:30px;display:flex;align-items:flex-end;justify-content:center;">${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:28px;max-width:140px;filter:grayscale(1) contrast(1.4) brightness(.85);" />` : ""}</div>
         <div style="border-top:1px solid #000;padding-top:2px;">Assistant Education Officer</div>
-        <div style="font-weight:400;font-size:7.5pt;">${perfSafe(u?.markazname)}</div>
+        <div style="font-weight:400;font-size:7.5pt;">${perfSafe(u?.markaz_name)}</div>
       </td>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
         <div style="height:30px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center;">
@@ -157,10 +167,11 @@ function perfFooterHtml(amount, u, sigUrl) {
   </table>`;
 }
 
-function perfOpenHtmldata(data) {
+// ─── OPEN format — Letter portrait, single page ─────────────────────
+function perfOpenHtml(data) {
   const u = data.user || {};
   const cfg = data.cfg || {};
-  const monthLabel = `${window.IA_MONTH_NAMES?.[data.month - 1] || data.month} ${data.year}`;
+  const monthLabel = `${IA_MONTH_NAMES[data.month - 1] || data.month} ${data.year}`;
   const rows = PERFOPENROWS.map((r, i) => {
     const stored = cfg.achieved?.[i];
     const credited = perfIsCredited(r, stored);
@@ -203,10 +214,11 @@ function perfOpenHtmldata(data) {
     </div>`;
 }
 
-function perfClosedHtmldata(data) {
+// ─── CLOSED format — Letter portrait, single page ───────────────────
+function perfClosedHtml(data) {
   const u = data.user || {};
   const cfg = data.cfg || {};
-  const monthLabel = `${window.IA_MONTH_NAMES?.[data.month - 1] || data.month} ${data.year}`;
+  const monthLabel = `${IA_MONTH_NAMES[data.month - 1] || data.month} ${data.year}`;
   const rows = PERFCLOSEDROWS.map((r, i) => {
     const stored = cfg.achieved?.[i];
     const credited = perfIsCredited(r, stored);
@@ -247,7 +259,10 @@ async function perfGetSignatureUrl() {
   return new Promise((resolve) => {
     try {
       if (typeof getGoogleConnectionStatus !== "function") return resolve("");
-      getGoogleConnectionStatus((status) => resolve(status?.signatureurl || ""));
+      // Field is `signature_url` (see dispatch-google.js) -- the
+      // previous version read `signatureurl`, which is always
+      // undefined, so no AEO signature was ever printed.
+      getGoogleConnectionStatus((status) => resolve(status?.signature_url || ""));
     } catch {
       resolve("");
     }
@@ -267,6 +282,9 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
     target.innerHTML = pagesHtml[i];
     await new Promise((r) => setTimeout(r, 300));
 
+    // CRITICAL: no `width` option here -- letting html2canvas capture
+    // the element's own full width is what keeps the Remarks/Initials
+    // columns from being clipped.
     const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
@@ -289,4 +307,238 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
   target.style.width = "";
   target.innerHTML = "";
   return pdf.output("arraybuffer");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PREP-VIEW UI — pick months, choose Open/Closed, fill indicators.
+//  index.html calls perfInit() (on tab switch), perfLoadMonths()
+//  (year <select> onchange), and perfDownloadCertificate() (button).
+//  This layer was missing from the last commit, which broke the tab.
+// ═══════════════════════════════════════════════════════════════════
+
+function perfInit() {
+  const yearSel = document.getElementById("perf_year");
+  const yNow = new Date().getFullYear();
+  yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1]
+    .map((y) => `<option value="${y}" ${y === yNow ? "selected" : ""}>${y}</option>`)
+    .join("");
+  perfState.selected = new Set();
+  perfState.config = {};
+  perfLoadMonths();
+}
+
+async function perfLoadMonths() {
+  const year = Number(document.getElementById("perf_year").value);
+  const grid = document.getElementById("perfMonthsGrid");
+  const warn = document.getElementById("perf_monthWarn");
+  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading months…</div>`;
+
+  const res = await apiCall("getMyInspectionAllowanceMonths", { year });
+  perfState.selected = new Set();
+  perfState.config = {};
+  if (!res || !res.success) { grid.innerHTML = ""; warn.style.display = "block"; perfRenderConfigPanels(); return; }
+
+  perfState.months = (res.months || []).filter((m) => m.prepared);
+  if (!perfState.months.length) { grid.innerHTML = ""; warn.style.display = "block"; perfRenderConfigPanels(); return; }
+
+  warn.style.display = "none";
+  perfRenderMonthsGrid();
+  perfRenderConfigPanels();
+}
+
+function perfRenderMonthsGrid() {
+  const grid = document.getElementById("perfMonthsGrid");
+  grid.innerHTML = perfState.months.map((m) => {
+    const checked = perfState.selected.has(m.month);
+    return `<label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--b0);border-radius:8px;cursor:pointer;font-size:.85rem;${checked ? "background:#f0fdfa;border-color:#0d9488" : ""}">
+      <input type="checkbox" ${checked ? "checked" : ""} onchange="perfToggleMonth(${m.month}, this.checked)"> ${IA_MONTH_NAMES[m.month - 1]}
+    </label>`;
+  }).join("");
+}
+
+function perfToggleMonth(month, checked) {
+  if (checked) {
+    if (perfState.selected.size >= PERFMAXMONTHS) {
+      showToast(`Maximum ${PERFMAXMONTHS} months per certificate.`, false);
+      perfRenderMonthsGrid();
+      return;
+    }
+    perfState.selected.add(month);
+    if (!perfState.config[month]) perfState.config[month] = { status: "open", achieved: {} };
+  } else {
+    perfState.selected.delete(month);
+    delete perfState.config[month];
+  }
+  perfRenderMonthsGrid();
+  perfRenderConfigPanels();
+}
+
+function perfSetStatus(month, status) {
+  const cfg = perfState.config[month];
+  if (!cfg) return;
+  cfg.status = status;
+  cfg.achieved = {};
+  perfRenderConfigPanels();
+}
+
+function perfUpdateAchieved(month, idx, value) {
+  const cfg = perfState.config[month];
+  if (!cfg) return;
+  const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
+  const row = rows[idx];
+  cfg.achieved[idx] = row.kind === "percent" ? Number(value) : Boolean(value);
+  perfRenderConfigPanels();
+}
+
+function perfComputeMonthTotal(month) {
+  const cfg = perfState.config[month];
+  if (!cfg) return 0;
+  const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
+  const rawTotal = rows.reduce((sum, row, idx) => {
+    const credited = perfIsCredited(row, cfg.achieved[idx]);
+    return sum + (credited ? perfRowAmount(row) : 0);
+  }, 0);
+  return Math.round(rawTotal);
+}
+
+function perfUpdateGrandTotal() {
+  const total = [...perfState.selected].reduce((s, m) => s + perfComputeMonthTotal(m), 0);
+  document.getElementById("perfGrandTotalDisplay").textContent = "PKR " + total.toLocaleString();
+}
+
+function perfRenderConfigPanels() {
+  const wrap = document.getElementById("perfConfigPanels");
+  const months = [...perfState.selected].sort((a, b) => a - b);
+
+  if (!months.length) {
+    wrap.innerHTML = `<div style="padding:16px;text-align:center;color:var(--t3);font-size:.85rem">Select at least ${PERFMINMONTHS} prepared month above to begin.</div>`;
+    document.getElementById("perf_downloadBtn").disabled = true;
+    document.getElementById("perfGrandTotalDisplay").textContent = "PKR 0";
+    return;
+  }
+
+  wrap.innerHTML = months.map((month) => {
+    const cfg = perfState.config[month];
+    const total = perfComputeMonthTotal(month);
+    return `
+      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:16px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+          <div style="font-weight:700;font-size:.95rem">${IA_MONTH_NAMES[month - 1]}</div>
+          <div style="display:flex;gap:14px;align-items:center;font-size:.85rem">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="perf_status_${month}" ${cfg.status === "open" ? "checked" : ""} onchange="perfSetStatus(${month},'open')"> Open
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="perf_status_${month}" ${cfg.status === "closed" ? "checked" : ""} onchange="perfSetStatus(${month},'closed')"> Closed
+            </label>
+          </div>
+        </div>
+        ${perfConfigTableHtml(month, cfg)}
+        <div style="text-align:right;margin-top:8px;padding-top:8px;border-top:1px dashed var(--b0);font-weight:700;font-size:.88rem">
+          Month Total: <span style="color:#0d9488" id="perfMonthTotal_${month}">PKR ${total.toLocaleString()}</span>
+        </div>
+      </div>`;
+  }).join("");
+
+  document.getElementById("perf_downloadBtn").disabled = months.length < PERFMINMONTHS;
+  perfUpdateGrandTotal();
+}
+
+// On-screen prep table -- mirrors the certificate's own column layout
+// (same header set, same width ratios) so what you edit looks like
+// what will print, just sized for screen instead of 8-9pt print.
+function perfConfigTableHtml(month, cfg) {
+  const isOpen = cfg.status === "open";
+  const rows = isOpen ? PERFOPENROWS : PERFCLOSEDROWS;
+  const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg, isOpen)).join("");
+
+  const th = "border:1px solid var(--b0);background:var(--s2);padding:6px 5px;font-size:.72rem;font-weight:700;text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;";
+  const heads = isOpen
+    ? `<th style="${th}width:6%">Sr.</th>
+       <th style="${th}width:24%">Indicators</th>
+       <th style="${th}width:24%">Targets %age</th>
+       <th style="${th}width:12%">Target Achieved by AEO</th>
+       <th style="${th}width:12%;text-align:right">Entitlement</th>
+       <th style="${th}width:12%">Remarks</th>
+       <th style="${th}width:10%">Initials of DDO</th>`
+    : `<th style="${th}width:6%">Sr.</th>
+       <th style="${th}width:24%">Indicators</th>
+       <th style="${th}width:35%">Targets</th>
+       <th style="${th}width:18%">Performance</th>
+       <th style="${th}width:17%">Remarks</th>`;
+
+  return `<table style="width:100%;border-collapse:collapse;font-size:.72rem;table-layout:fixed">
+    <thead><tr>${heads}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>`;
+}
+
+function perfIndicatorRowHtml(month, row, idx, cfg, isOpen) {
+  const stored = cfg.achieved[idx];
+  const credited = perfIsCredited(row, stored);
+  const entitlement = perfRowAmount(row);
+  const { rmkCell } = perfRowDisplayCells(row, stored, credited);
+  const td = "border:1px solid var(--b0);padding:5px;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;";
+
+  let achievedCell;
+  if (row.kind === "fixed") {
+    achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
+  } else if (row.kind === "percent") {
+    const val = stored ?? row.targetPct;
+    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:56px;height:26px;border:1px solid var(--b0);border-radius:5px;padding:0 5px;font-size:.72rem"
+      oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
+  } else {
+    const val = stored ?? true;
+    achievedCell = `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap">
+      <input type="checkbox" ${val ? "checked" : ""} onchange="perfUpdateAchieved(${month}, ${idx}, this.checked)"> Achieved
+    </label>`;
+  }
+
+  if (isOpen) {
+    return `<tr>
+      <td style="${td}text-align:center">${idx + 1}</td>
+      <td style="${td}">${row.ind}</td>
+      <td style="${td}color:var(--t3)">${row.tgtLabel}</td>
+      <td style="${td}text-align:center">${achievedCell}</td>
+      <td style="${td}text-align:right;font-weight:600;color:${credited ? "#0d9488" : "var(--t3)"}">PKR ${(credited ? entitlement : 0).toLocaleString()}</td>
+      <td style="${td}color:var(--t3)">${rmkCell}</td>
+      <td style="${td}"></td>
+    </tr>`;
+  }
+  return `<tr>
+    <td style="${td}text-align:center">${idx + 1}</td>
+    <td style="${td}">${row.ind}</td>
+    <td style="${td}color:var(--t3)">${row.tgtLabel}</td>
+    <td style="${td}text-align:center">${achievedCell}</td>
+    <td style="${td}"></td>
+  </tr>`;
+}
+
+async function perfDownloadCertificate() {
+  if (!iaState.profile) { showToast("Profile not loaded yet.", false); return; }
+  const months = [...perfState.selected].sort((a, b) => a - b);
+  if (months.length < PERFMINMONTHS) { showToast(`Select at least ${PERFMINMONTHS} prepared month.`, false); return; }
+
+  const btn = document.getElementById("perf_downloadBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
+  try {
+    const year = Number(document.getElementById("perf_year").value);
+    const sigUrl = await perfGetSignatureUrl();
+    const pages = months.map((month) => {
+      const cfg = perfState.config[month];
+      const total = perfComputeMonthTotal(month);
+      const data = { user: iaState.profile, year, month, amount: total, cfg, sigUrl };
+      return cfg.status === "open" ? perfOpenHtml(data) : perfClosedHtml(data);
+    });
+    const pdfBytes = await perfBuildCertificatePdfBytes(pages);
+    const label = months.map((m) => IA_MONTH_NAMES[m - 1]).join("-");
+    iaDownloadPdf(pdfBytes, `Performance_Certificate_${iaState.profile.personal_no}_${label}_${year}.pdf`);
+    showToast("Certificate downloaded.", true);
+  } catch (err) {
+    showToast("Error generating certificate: " + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
+  }
 }
