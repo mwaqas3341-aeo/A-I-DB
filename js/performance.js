@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 //  PERFORMANCE REPORT — "AEO Monthly Performance Certificate"
 //  Updated for A4-size, single-page layout with fixed column widths.
-//  All text wraps to multiple lines with no truncation.
+//  Remarks and Initials columns reduced to match Entitlement width.
 // ═══════════════════════════════════════════════════════════════════
 
 const PERF_MAX_MONTHS = 4;
@@ -161,17 +161,17 @@ function perfConfigTableHtml(month, cfg) {
   const th = 'border:1px solid var(--b0);background:var(--s2);padding:4px 3px;font-size:.7rem;font-weight:700;text-align:left;vertical-align:middle;color:#000000;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
   const heads = isOpen
     ? `<th style="${th}width:4%">Sr.</th>
-       <th style="${th}width:15%">Indicators</th>
-       <th style="${th}width:18%">Targets %age</th>
+       <th style="${th}width:20%">Indicators</th>
+       <th style="${th}width:22%">Targets %age</th>
        <th style="${th}width:12%">Target Achieved by AEO</th>
        <th style="${th}width:12%;text-align:right">Entitlement</th>
-       <th style="${th}width:25%">Remarks of Immediate Officer</th>
-       <th style="${th}width:14%">Initials of DDO</th>`
+       <th style="${th}width:12%">Remarks of Immediate Officer</th>
+       <th style="${th}width:12%">Initials of DDO</th>`
     : `<th style="${th}width:5%">Sr.</th>
-       <th style="${th}width:18%">Indicators</th>
-       <th style="${th}width:32%">Targets</th>
-       <th style="${th}width:22%">Performance</th>
-       <th style="${th}width:23%">Remarks of Immediate Officer</th>`;
+       <th style="${th}width:20%">Indicators</th>
+       <th style="${th}width:35%">Targets</th>
+       <th style="${th}width:18%">Performance</th>
+       <th style="${th}width:22%">Remarks of Immediate Officer</th>`;
 
   return `<table style="width:100%;border-collapse:collapse;font-size:.7rem;table-layout:fixed">
     <thead><tr>${heads}</tr></thead>
@@ -314,7 +314,6 @@ async function perfDownloadCertificate() {
 
 // ─── Shared Split-Layout Header ─────────────────────────────────────
 function perfHeaderHtml(officeLine, u, monthLabel) {
-  // Reduced margins and tighter spacing to squeeze more width
   return `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:9pt;">
       <table style="width:35%; border-collapse:collapse; font-weight:700; font-size:8.5pt;">
@@ -382,12 +381,12 @@ function perfOpenHtml(data) {
       <thead>
         <tr>
           <th style="${PERF_TH_STYLE}width:4%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:15%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:18%">Targets %age</th>
+          <th style="${PERF_TH_STYLE}width:20%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:22%">Targets %age</th>
           <th style="${PERF_TH_STYLE}width:12%">Target Achieved by AEO</th>
           <th style="${PERF_TH_STYLE}width:12%">Entitlement of Allowance rupees</th>
-          <th style="${PERF_TH_STYLE}width:25%">Remarks of Immediate Officer</th>
-          <th style="${PERF_TH_STYLE}width:14%">Initials of DDO</th>
+          <th style="${PERF_TH_STYLE}width:12%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:12%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
@@ -420,10 +419,10 @@ function perfClosedHtml(data) {
       <thead>
         <tr>
           <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:18%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:32%">Targets</th>
+          <th style="${PERF_TH_STYLE}width:20%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:35%">Targets</th>
           <th style="${PERF_TH_STYLE}width:18%">Performance</th>
-          <th style="${PERF_TH_STYLE}width:27%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:22%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
@@ -436,7 +435,6 @@ function perfClosedHtml(data) {
 // ─── PDF Engine for A4 output ────────────────────────────────────────
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById('iaPdfRenderTarget');
-  // Force render target to match A4 width (595pt) - but don't set html2canvas width
   target.style.width = '595pt';
   const { jsPDF } = window.jspdf;
   
@@ -446,16 +444,15 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
 
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
-    await new Promise(r => setTimeout(r, 250)); // wait for layout
+    await new Promise(r => setTimeout(r, 250));
     const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff'
-      // DO NOT set width – let it capture the full element width
+      // No fixed width – capture full element
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
-    // Scale the canvas exactly to fit the A4 page
     const scaleX = pageWidth / canvas.width;
     const scaleY = pageHeight / canvas.height;
     const scale = Math.min(scaleX, scaleY);
@@ -468,7 +465,7 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
     if (i > 0) pdf.addPage('a4', 'p');
     pdf.addImage(imgData, 'JPEG', offsetX, offsetY, drawWidth, drawHeight);
   }
-  target.style.width = ''; // reset
+  target.style.width = '';
   target.innerHTML = '';
   return pdf.output('arraybuffer');
 }
