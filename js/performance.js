@@ -141,9 +141,9 @@ function perfRowDisplayCells(row, storedVal, credited) {
 
 function perfHeaderHtml(officeLine, u, monthLabel) {
   return `
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;font-size:9.5pt;color:#000;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;font-size:9.5pt;color:#000;" dir="ltr">
     <div style="width:36%;text-align:left;">
-      <table style="width:100%;border-collapse:collapse;font-weight:700;font-size:9pt;color:#000;">
+      <table style="width:100%;border-collapse:collapse;font-weight:700;font-size:9pt;color:#000;" dir="ltr">
         <tr><td style="padding:2px 0;width:62px;text-align:left;">AEO Name</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.name)}</td></tr>
         <tr><td style="padding:2px 0;text-align:left;">Markaz</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.markaz_name)}</td></tr>
         <tr><td style="padding:2px 0;text-align:left;">Month</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(monthLabel)}</td></tr>
@@ -160,7 +160,7 @@ function perfHeaderHtml(officeLine, u, monthLabel) {
 function perfFooterHtml(amount, u, sigUrl) {
   return `
   <p style="font-size:8.5pt;font-weight:700;margin:4px 0 12px;line-height:1.25;color:#000;word-wrap:break-word;overflow-wrap:break-word;">${PERFKPINOTICE} worth PKR ${Number(amount || 0).toLocaleString()}.</p>
-  <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700;color:#000;">
+  <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700;color:#000;" dir="ltr">
     <tr>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
         <div style="height:30px;display:flex;align-items:flex-end;justify-content:center;">${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:28px;max-width:140px;filter:grayscale(1) contrast(1.4) brightness(.85);" />` : ""}</div>
@@ -202,7 +202,7 @@ function perfOpenHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
       <thead>
         <tr>
           <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
@@ -220,7 +220,7 @@ function perfOpenHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
       ${body}
     </div>`;
 }
@@ -245,7 +245,7 @@ function perfClosedHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
       <thead>
         <tr>
           <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
@@ -261,7 +261,7 @@ function perfClosedHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
       ${body}
     </div>`;
 }
@@ -286,6 +286,15 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
   // is shared with the 794px-wide Inspection Allowance/Budget Prep
   // builders, so it's re-set on every call rather than assumed.
   target.style.width = `${PERFLETTER_WIDTH_PX}px`;
+  // Some Android WebViews derive default text/table directionality
+  // from the device's system locale (common on Urdu-locale phones)
+  // rather than defaulting to ltr. That silently mirrors table
+  // columns -- the Sr./Indicators columns rendering on the right and
+  // the header AEO Name/Markaz labels swapping with their values is
+  // exactly that mirroring, not a layout bug in the markup itself.
+  // Force it explicitly so the certificate can't inherit that.
+  target.setAttribute("dir", "ltr");
+  target.style.direction = "ltr";
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF("p", "pt", "letter");
