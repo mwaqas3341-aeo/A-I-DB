@@ -1,18 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 //  PERFORMANCE REPORT — "AEO Monthly Performance Certificate"
-//  Updated for A4-size, single-page layout with fixed column widths.
-//  Remarks and Initials columns reduced to match Entitlement width.
+//  Letter-size, single-page layout with fixed column widths.
+//  Remarks & Initials columns match Entitlement width (12%).
 // ═══════════════════════════════════════════════════════════════════
 
 const PERF_MAX_MONTHS = 4;
 const PERF_MIN_MONTHS = 1;
 
-// Optimised font sizes for A4 (595pt wide, 841.89pt tall)
+// Letter page dimensions: 612pt × 792pt
 const PERF_HEAD_PT     = 8.5;
 const PERF_BODY_PT     = 7.5;
 const PERF_LINE_HEIGHT = 1.1;
 
-// Explicit black text, tight padding, and box-sizing to include borders
+// Explicit black text, tight padding, box-sizing
 const PERF_TH_STYLE = `border:1px solid #000;padding:2px 3px;background:#f2f2f2;color:#000000;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;box-sizing:border-box;`;
 const PERF_TD_STYLE = `border:1px solid #000;padding:1px 3px;color:#000000;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;box-sizing:border-box;`;
 
@@ -160,18 +160,18 @@ function perfConfigTableHtml(month, cfg) {
 
   const th = 'border:1px solid var(--b0);background:var(--s2);padding:4px 3px;font-size:.7rem;font-weight:700;text-align:left;vertical-align:middle;color:#000000;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
   const heads = isOpen
-    ? `<th style="${th}width:4%">Sr.</th>
-       <th style="${th}width:20%">Indicators</th>
-       <th style="${th}width:22%">Targets %age</th>
+    ? `<th style="${th}width:5%">Sr.</th>
+       <th style="${th}width:22%">Indicators</th>
+       <th style="${th}width:25%">Targets %age</th>
        <th style="${th}width:12%">Target Achieved by AEO</th>
        <th style="${th}width:12%;text-align:right">Entitlement</th>
        <th style="${th}width:12%">Remarks of Immediate Officer</th>
        <th style="${th}width:12%">Initials of DDO</th>`
     : `<th style="${th}width:5%">Sr.</th>
-       <th style="${th}width:20%">Indicators</th>
+       <th style="${th}width:22%">Indicators</th>
        <th style="${th}width:35%">Targets</th>
        <th style="${th}width:18%">Performance</th>
-       <th style="${th}width:22%">Remarks of Immediate Officer</th>`;
+       <th style="${th}width:20%">Remarks of Immediate Officer</th>`;
 
   return `<table style="width:100%;border-collapse:collapse;font-size:.7rem;table-layout:fixed">
     <thead><tr>${heads}</tr></thead>
@@ -352,7 +352,7 @@ function perfFooterHtml(amount, u, sigUrl) {
     </table>`;
 }
 
-// ─── OPEN format — A4 Fixed Column Widths ───────────────────────────
+// ─── OPEN format — Letter Fixed Column Widths ──────────────────────
 function perfOpenHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -374,15 +374,15 @@ function perfOpenHtml(data) {
     </tr>`;
   }).join('');
 
-  // A4 container: 595pt wide, 841.89pt high, with 16pt left/right margins
+  // Letter container: 612pt wide, 792pt high, with 20pt left/right margins
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
     <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
-          <th style="${PERF_TH_STYLE}width:4%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:20%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:22%">Targets %age</th>
+          <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
+          <th style="${PERF_TH_STYLE}width:22%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:25%">Targets %age</th>
           <th style="${PERF_TH_STYLE}width:12%">Target Achieved by AEO</th>
           <th style="${PERF_TH_STYLE}width:12%">Entitlement of Allowance rupees</th>
           <th style="${PERF_TH_STYLE}width:12%">Remarks of Immediate Officer</th>
@@ -393,10 +393,10 @@ function perfOpenHtml(data) {
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
   
-  return `<div style="width:595pt;min-height:841.89pt;padding:16pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:612pt;min-height:792pt;padding:20pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
-// ─── CLOSED format — A4 Fixed Column Widths ─────────────────────────
+// ─── CLOSED format — Letter Fixed Column Widths ────────────────────
 function perfClosedHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -419,28 +419,28 @@ function perfClosedHtml(data) {
       <thead>
         <tr>
           <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:20%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:22%">Indicators</th>
           <th style="${PERF_TH_STYLE}width:35%">Targets</th>
           <th style="${PERF_TH_STYLE}width:18%">Performance</th>
-          <th style="${PERF_TH_STYLE}width:22%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:20%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
     
-  return `<div style="width:595pt;min-height:841.89pt;padding:16pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:612pt;min-height:792pt;padding:20pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
-// ─── PDF Engine for A4 output ────────────────────────────────────────
+// ─── PDF Engine for Letter output ────────────────────────────────────
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById('iaPdfRenderTarget');
-  target.style.width = '595pt';
+  target.style.width = '612pt';
   const { jsPDF } = window.jspdf;
   
-  const pdf = new jsPDF('p', 'pt', 'a4'); 
-  const pageWidth = pdf.internal.pageSize.getWidth(); // 595.28pt
-  const pageHeight = pdf.internal.pageSize.getHeight(); // 841.89pt
+  const pdf = new jsPDF('p', 'pt', 'letter'); 
+  const pageWidth = pdf.internal.pageSize.getWidth(); // 612pt
+  const pageHeight = pdf.internal.pageSize.getHeight(); // 792pt
 
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
@@ -449,7 +449,7 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff'
-      // No fixed width – capture full element
+      // No fixed width – let it capture the full element
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
@@ -462,7 +462,7 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
     const offsetX = (pageWidth - drawWidth) / 2;
     const offsetY = (pageHeight - drawHeight) / 2;
 
-    if (i > 0) pdf.addPage('a4', 'p');
+    if (i > 0) pdf.addPage('letter', 'p');
     pdf.addImage(imgData, 'JPEG', offsetX, offsetY, drawWidth, drawHeight);
   }
   target.style.width = '';
