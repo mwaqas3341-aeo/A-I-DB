@@ -9,8 +9,8 @@ const PERFLETTER_WIDTH_PT = 612;
 const PERFLETTER_HEIGHT_PT = 792;
 const PERFLETTER_WIDTH_PX = Math.round((PERFLETTER_WIDTH_PT * 96) / 72); // 816
 const PERFLETTER_HEIGHT_PX = Math.round((PERFLETTER_HEIGHT_PT * 96) / 72); // 1056
-const PERFHEAD_PT = 9.5;
-const PERFBODY_PT = 8.0;
+const PERFHEAD_PT = 7.5;
+const PERFBODY_PT = 9.5;
 const PERFLINEHEIGHT = 1.2;
 
 const PERFTHSTYLE = `
@@ -91,6 +91,10 @@ function perfSafe(v) {
   return (v ?? "").toString().trim();
 }
 
+function perfTitleCase(v) {
+  return perfSafe(v).toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function perfIsCredited(row, storedVal) {
   if (row.kind === "fixed") return true;
   if (row.kind === "percent") {
@@ -123,7 +127,7 @@ function perfRowDisplayCells(row, storedVal, credited) {
 
 function perfOfficeLine(officeTitle, u) {
   const wing = perfSafe(u?.wing);
-  const tehsil = perfSafe(u?.tehsil);
+  const tehsil = perfTitleCase(u?.tehsil);
   const wingPart = wing ? ` (${wing})` : "";
   const tehsilPart = tehsil ? ` TEHSIL ${tehsil.toUpperCase()}` : "";
   return `${officeTitle}${wingPart}${tehsilPart}`;
@@ -138,27 +142,27 @@ function perfHeaderHtml(officeTitle, u, monthLabel) {
     <tr><td colspan="2" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;font-size:11.5pt;line-height:1.15;word-wrap:break-word;overflow-wrap:break-word;">${officeLine}</td></tr>
     <tr><td colspan="2" style="border:1px solid #000;padding:5px 8px;text-align:center;font-weight:700;font-size:10.5pt;text-decoration:underline;text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</td></tr>
     <tr><td style="${th}width:18%;">AEO Name:</td><td style="${td}">${perfSafe(u?.name)}</td></tr>
-    <tr><td style="${th}">Markaz:</td><td style="${td}">${perfSafe(u?.markaz_name)}</td></tr>
+    <tr><td style="${th}">Markaz:</td><td style="${td}">${perfTitleCase(u?.markaz_name)}</td></tr>
     <tr><td style="${th}">Month:</td><td style="${td}">${perfSafe(monthLabel)}</td></tr>
     <tr><td style="${th}">Cell No:</td><td style="${td}">${perfSafe(u?.cell_no || u?.cnic || "")}</td></tr>
   </table>`;
 }
 
 function perfFooterHtml(amount, u) {
-  const tehsil = perfSafe(u?.tehsil);
+  const tehsil = perfTitleCase(u?.tehsil);
   return `
   <p style="font-size:8.5pt;font-weight:700;margin:6px 0 10px;line-height:1.25;color:#000;word-wrap:break-word;overflow-wrap:break-word;">${PERFKPINOTICE} worth PKR ${Number(amount || 0).toLocaleString()}.</p>
   <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700;color:#000;" dir="ltr">
     <tr>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
         <div style="height:32px;"></div>
-        <div style="border-top:1px solid #000;padding-top:2px;">Assistant Education Officer</div>
-        <div style="font-weight:400;font-size:7.5pt;">${perfSafe(u?.markaz_name)}</div>
+        <div style="padding-top:2px;font-weight:700;">Assistant Education Officer</div>
+        <div style="font-weight:700;font-size:7.5pt;">${perfTitleCase(u?.markaz_name)}</div>
       </td>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
         <div style="height:32px;"></div>
-        <div style="border-top:1px solid #000;padding-top:2px;">Deputy District Education Officer</div>
-        <div style="font-weight:400;font-size:7.5pt;">${tehsil ? `Tehsil ${tehsil}` : ""}</div>
+        <div style="padding-top:2px;font-weight:700;">Deputy District Education Officer</div>
+        <div style="font-weight:700;font-size:7.5pt;">${tehsil ? `Tehsil ${tehsil}` : ""}</div>
       </td>
     </tr>
   </table>`;
@@ -180,7 +184,7 @@ function perfOpenHtml(data) {
         <td style="${PERFTDSTYLE}text-align:left;">${r.ind}</td>
         <td style="${PERFTDSTYLE}text-align:left;">${r.tgtLabel}</td>
         <td style="${PERFTDSTYLE}text-align:center;">${achCell}</td>
-        <td style="${PERFTDSTYLE}text-align:center;">${credited ? `PKR ${amt.toLocaleString()}` : "-"}</td>
+        <td style="${PERFTDSTYLE}text-align:center;">${credited ? amt.toLocaleString() : "-"}</td>
         <td style="${PERFTDSTYLE}text-align:center;">${rmkCell}</td>
         <td style="${PERFTDSTYLE}text-align:center;"></td>
       </tr>`;
@@ -188,16 +192,20 @@ function perfOpenHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
+    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
+      <colgroup>
+        <col style="width:6%"><col style="width:24%"><col style="width:22%">
+        <col style="width:12%"><col style="width:12%"><col style="width:14%"><col style="width:10%">
+      </colgroup>
       <thead>
         <tr>
-          <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
-          <th style="${PERFTHSTYLE}width:24%;">Indicators</th>
-          <th style="${PERFTHSTYLE}width:24%;">Targets %age</th>
-          <th style="${PERFTHSTYLE}width:12%;">Target Achieved by AEO</th>
-          <th style="${PERFTHSTYLE}width:12%;">Entitlement of Allowance rupees</th>
-          <th style="${PERFTHSTYLE}width:12%;">Remarks of Immediate Officer</th>
-          <th style="${PERFTHSTYLE}width:10%;">Initials of DDO</th>
+          <th style="${PERFTHSTYLE}">Sr.</th>
+          <th style="${PERFTHSTYLE}">Indicators</th>
+          <th style="${PERFTHSTYLE}">Targets %age</th>
+          <th style="${PERFTHSTYLE}">Target Achieved by AEO</th>
+          <th style="${PERFTHSTYLE}">Entitlement of Allowance rupees</th>
+          <th style="${PERFTHSTYLE}">Remarks of Immediate Officer</th>
+          <th style="${PERFTHSTYLE}">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400;">${rows}</tbody>
@@ -206,7 +214,7 @@ function perfOpenHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:22pt 26pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:10pt 20pt 18pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;overflow:hidden;">
       ${body}
     </div>`;
 }
@@ -231,14 +239,18 @@ function perfClosedHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
+    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
+      <colgroup>
+        <col style="width:6%"><col style="width:24%"><col style="width:35%">
+        <col style="width:18%"><col style="width:17%">
+      </colgroup>
       <thead>
         <tr>
-          <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
-          <th style="${PERFTHSTYLE}width:24%;">Indicators</th>
-          <th style="${PERFTHSTYLE}width:35%;">Targets</th>
-          <th style="${PERFTHSTYLE}width:18%;">Performance</th>
-          <th style="${PERFTHSTYLE}width:17%;">Remarks of Immediate Officer</th>
+          <th style="${PERFTHSTYLE}">Sr.</th>
+          <th style="${PERFTHSTYLE}">Indicators</th>
+          <th style="${PERFTHSTYLE}">Targets</th>
+          <th style="${PERFTHSTYLE}">Performance</th>
+          <th style="${PERFTHSTYLE}">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400;">${rows}</tbody>
@@ -247,7 +259,7 @@ function perfClosedHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:22pt 26pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:10pt 20pt 18pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;overflow:hidden;">
       ${body}
     </div>`;
 }
