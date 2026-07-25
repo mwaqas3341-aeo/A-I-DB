@@ -121,9 +121,18 @@ function perfRowDisplayCells(row, storedVal, credited) {
   };
 }
 
-function perfHeaderHtml(officeLine, u, monthLabel) {
+function perfOfficeLine(officeTitle, u) {
+  const wing = perfSafe(u?.wing);
+  const tehsil = perfSafe(u?.tehsil);
+  const wingPart = wing ? ` (${wing})` : "";
+  const tehsilPart = tehsil ? ` TEHSIL ${tehsil.toUpperCase()}` : "";
+  return `${officeTitle}${wingPart}${tehsilPart}`;
+}
+
+function perfHeaderHtml(officeTitle, u, monthLabel) {
   const th = "border:1px solid #000;padding:5px 8px;font-weight:700;text-align:left;vertical-align:middle;";
   const td = "border:1px solid #000;padding:5px 8px;text-align:left;vertical-align:middle;";
+  const officeLine = perfOfficeLine(officeTitle, u);
   return `
   <table dir="ltr" style="width:100%;border-collapse:collapse;margin-bottom:0;font-size:9.5pt;color:#000;">
     <tr><td colspan="2" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;font-size:11.5pt;line-height:1.15;word-wrap:break-word;overflow-wrap:break-word;">${officeLine}</td></tr>
@@ -135,22 +144,21 @@ function perfHeaderHtml(officeLine, u, monthLabel) {
   </table>`;
 }
 
-function perfFooterHtml(amount, u, sigUrl) {
+function perfFooterHtml(amount, u) {
+  const tehsil = perfSafe(u?.tehsil);
   return `
   <p style="font-size:8.5pt;font-weight:700;margin:6px 0 10px;line-height:1.25;color:#000;word-wrap:break-word;overflow-wrap:break-word;">${PERFKPINOTICE} worth PKR ${Number(amount || 0).toLocaleString()}.</p>
   <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700;color:#000;" dir="ltr">
     <tr>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
-        <div style="height:32px;line-height:32px;text-align:center;">${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:30px;max-width:140px;vertical-align:bottom;filter:grayscale(1) contrast(1.4) brightness(.85);" />` : ""}</div>
+        <div style="height:32px;"></div>
         <div style="border-top:1px solid #000;padding-top:2px;">Assistant Education Officer</div>
         <div style="font-weight:400;font-size:7.5pt;">${perfSafe(u?.markaz_name)}</div>
       </td>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
-        <div style="height:32px;border:1px dashed #555;border-radius:4px;text-align:center;line-height:32px;">
-          <span style="font-weight:400;font-size:6.5pt;color:#555;vertical-align:middle;">Signature &amp; Office Stamp</span>
-        </div>
+        <div style="height:32px;"></div>
         <div style="border-top:1px solid #000;padding-top:2px;">Deputy District Education Officer</div>
-        <div style="font-weight:400;font-size:7.5pt;">Tehsil Karor</div>
+        <div style="font-weight:400;font-size:7.5pt;">${tehsil ? `Tehsil ${tehsil}` : ""}</div>
       </td>
     </tr>
   </table>`;
@@ -179,7 +187,7 @@ function perfOpenHtml(data) {
   }).join("");
 
   const body = `
-    ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
+    ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER", u, monthLabel)}
     <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
       <thead>
         <tr>
@@ -194,7 +202,7 @@ function perfOpenHtml(data) {
       </thead>
       <tbody style="font-weight:400;">${rows}</tbody>
     </table>
-    ${perfFooterHtml(data.amount, u, data.sigUrl)}
+    ${perfFooterHtml(data.amount, u)}
   `;
 
   return `
@@ -222,7 +230,7 @@ function perfClosedHtml(data) {
   }).join("");
 
   const body = `
-    ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
+    ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER", u, monthLabel)}
     <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
       <thead>
         <tr>
@@ -235,24 +243,13 @@ function perfClosedHtml(data) {
       </thead>
       <tbody style="font-weight:400;">${rows}</tbody>
     </table>
-    ${perfFooterHtml(data.amount, u, data.sigUrl)}
+    ${perfFooterHtml(data.amount, u)}
   `;
 
   return `
     <div style="width:${PERFLETTER_WIDTH_PX}px;padding:22pt 26pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
       ${body}
     </div>`;
-}
-
-async function perfGetSignatureUrl() {
-  return new Promise((resolve) => {
-    try {
-      if (typeof getGoogleConnectionStatus !== "function") return resolve("");
-      getGoogleConnectionStatus((status) => resolve(status?.signature_url || ""));
-    } catch {
-      resolve("");
-    }
-  });
 }
 
 async function perfBuildCertificatePdfBytes(pagesHtml) {
@@ -506,11 +503,10 @@ async function perfDownloadCertificate() {
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
   try {
     const year = Number(document.getElementById("perf_year").value);
-    const sigUrl = await perfGetSignatureUrl();
     const pages = months.map((month) => {
       const cfg = perfState.config[month];
       const total = perfComputeMonthTotal(month);
-      const data = { user: iaState.profile, year, month, amount: total, cfg, sigUrl };
+      const data = { user: iaState.profile, year, month, amount: total, cfg };
       return cfg.status === "open" ? perfOpenHtml(data) : perfClosedHtml(data);
     });
     const pdfBytes = await perfBuildCertificatePdfBytes(pages);
