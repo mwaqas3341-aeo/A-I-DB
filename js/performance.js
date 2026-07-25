@@ -1,26 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
 //  PERFORMANCE REPORT — "AEO Monthly Performance Certificate"
-//  Moved out of inspection-allowance.js into its own module (this file)
-//  so Performance Report generation is self-contained and easy to find.
-//  Depends on globals defined in inspection-allowance.js, which must be
-//  loaded first: IA_MONTH_NAMES, iaState, iaDownloadPdf, and the shared
-//  #iaPdfRenderTarget element used as the off-screen render surface for
-//  html2canvas. Also depends on getGoogleConnectionStatus() (defined in
-//  dispatch-google.js) to fetch the AEO's saved signature image.
-//
-//  Replicates the two fixed government templates (Open / Closed) exactly
-//  as laid out in the source workbook — same wording, column layout,
-//  Arial Narrow font, A4 portrait page, one month per page. Only the
-//  AEO's entered indicator achievement (a %age against target, or a
-//  Yes/No) varies; the rupee entitlement for each indicator is derived
-//  from that automatically — the user never types an amount.
-//
-//  Indicator "weight" = share of the monthly Inspection Allowance rate
-//  that indicator is worth (matches the source sheet's fixed rupee
-//  split: 10000+15×1000 = 25000 for Open; an even 16-way split for
-//  Closed, which has no printed money column). Weights are applied to
-//  whatever iaState.rate currently is, so this stays correct if the
-//  configured rate ever changes.
+//  Updated for Letter-size, single-page layout with split-header.
 // ═══════════════════════════════════════════════════════════════════
 
 const PERF_MAX_MONTHS = 4;
@@ -31,7 +11,7 @@ const PERF_MIN_MONTHS = 1;
 //       'fixed'   → not editable, always credited (matches template default)
 const PERF_OPEN_ROWS = [
   { ind: 'AEO Visits',                                                    tgtLabel: '100',                                                        kind: 'percent', targetPct: 100, weight: 0.40 },
-  { ind: 'LND (E,M,U)',                                                   tgtLabel: '80% per Quarter',                                            kind: 'fixed',   fixedAch: 'Not Conducted By PMIU', fixedRmk: 'N/A', weight: 0.04 },
+  { ind: 'LND (E,M,U)',                                                   tgtLabel: '80% per Quarter',                                            kind: 'fixed',   fixedAch: 'Not Conducted By PMIU', fixedRmk: 'Not Applicable', weight: 0.04 },
   { ind: 'Student Attendance ECE-8',                                      tgtLabel: '90',                                                          kind: 'percent', targetPct: 90,  weight: 0.04 },
   { ind: 'Teacher Presence',                                              tgtLabel: '85',                                                          kind: 'percent', targetPct: 85,  weight: 0.04 },
   { ind: 'Functioning of facilities (BW, DW, Electricity, Furniture)',    tgtLabel: '80',                                                          kind: 'percent', targetPct: 80,  weight: 0.04 },
@@ -67,12 +47,10 @@ const PERF_CLOSED_ROWS = [
   { ind: 'Online Complaint Resolution',                   tgtLabel: 'In-time Resolution of Complaints on Dashboard' },
 ].map(r => ({ ...r, kind: 'yesno', weight: 1 / 16 }));
 
-const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and issued by SED vide No. SO (SE-III) 5-226/200 dated 03-08-2020 has been achieved by the above named AEO.   His performance is mentioned above against each indicator. He is entitled to get Inspection';
+const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and issued by SED vide No. SO (SE-III) 5-226/200 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection';
 
 let perfState = { months: [], selected: new Set(), config: {} };
-// config[month] = { status: 'open'|'closed', achieved: { rowIndex: number|boolean } }
 
-// ─── Init / month picker (min 1, max 4 — same cap as My Bill) ──────
 function perfInit() {
   const yearSel = document.getElementById('perf_year');
   const yNow = new Date().getFullYear();
@@ -128,7 +106,6 @@ function perfToggleMonth(month, checked) {
   perfRenderConfigPanels();
 }
 
-// ─── Per-month config panels (status + indicator entry) ────────────
 function perfRenderConfigPanels() {
   const wrap = document.getElementById('perfConfigPanels');
   const months = [...perfState.selected].sort((a, b) => a - b);
@@ -186,11 +163,11 @@ function perfIndicatorRowHtml(month, row, idx, cfg) {
   if (row.kind === 'fixed') {
     achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
   } else if (row.kind === 'percent') {
-    const val = cfg.achieved[idx] ?? row.targetPct; // default: exactly meets target
+    const val = cfg.achieved[idx] ?? row.targetPct; 
     achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:64px;height:28px;border:1px solid var(--b0);border-radius:5px;padding:0 6px"
       oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
-  } else { // yesno
-    const val = cfg.achieved[idx] ?? true; // default: achieved
+  } else { 
+    const val = cfg.achieved[idx] ?? true; 
     achievedCell = `<label style="display:flex;align-items:center;gap:5px;cursor:pointer">
       <input type="checkbox" ${val ? 'checked' : ''} onchange="perfUpdateAchieved(${month}, ${idx}, this.checked)"> Achieved
     </label>`;
@@ -216,7 +193,7 @@ function perfIsCredited(row, storedVal) {
     const v = storedVal ?? row.targetPct;
     return Number(v) >= row.targetPct;
   }
-  return (storedVal ?? true) === true; // yesno defaults to achieved
+  return (storedVal ?? true) === true; 
 }
 
 function perfUpdateAchieved(month, idx, value) {
@@ -225,14 +202,14 @@ function perfUpdateAchieved(month, idx, value) {
   const rows = cfg.status === 'open' ? PERF_OPEN_ROWS : PERF_CLOSED_ROWS;
   const row = rows[idx];
   cfg.achieved[idx] = row.kind === 'percent' ? Number(value) : Boolean(value);
-  perfRenderConfigPanels(); // re-render to refresh credited highlighting + totals
+  perfRenderConfigPanels(); 
 }
 
 function perfSetStatus(month, status) {
   const cfg = perfState.config[month];
   if (!cfg) return;
   cfg.status = status;
-  cfg.achieved = {}; // indicator sets differ between formats — start fresh
+  cfg.achieved = {}; 
   perfRenderConfigPanels();
 }
 
@@ -248,10 +225,6 @@ function perfUpdateGrandTotal() {
   document.getElementById('perfGrandTotalDisplay').textContent = 'PKR ' + total.toLocaleString();
 }
 
-// ─── AEO's saved signature (uploaded via My Profile → Report Dispatch) ─
-// Reused here so the AEO's own signature appears on the certificate too,
-// instead of a blank line. Resolves to '' (no image, just the printed
-// line) if the AEO hasn't uploaded one — the certificate still generates.
 function perfGetSignatureUrl() {
   return new Promise(resolve => {
     if (typeof getGoogleConnectionStatus !== 'function') { resolve(''); return; }
@@ -259,7 +232,6 @@ function perfGetSignatureUrl() {
   });
 }
 
-// ─── Generate + download (one page per selected month) ─────────────
 async function perfDownloadCertificate() {
   if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
   const months = [...perfState.selected].sort((a, b) => a - b);
@@ -289,33 +261,23 @@ async function perfDownloadCertificate() {
   }
 }
 
-// ─── Shared header block for both formats (matches source workbook) ─
+// ─── Shared Split-Layout Header ─────────────────────────────────────
 function perfHeaderHtml(officeLine, u, monthLabel) {
   return `
-    <div style="text-align:center;font-size:13.5pt;font-weight:700;line-height:1.25;margin-bottom:2px">${officeLine}</div>
-    <div style="text-align:center;font-size:13.5pt;font-weight:700;text-decoration:underline;margin-bottom:8px">AEO Monthly Performance Certificate</div>
-    <table style="width:100%;border-collapse:collapse;font-size:10.5pt;font-weight:700;margin-bottom:6px">
-      <tr>
-        <td style="padding:1px 4px;width:50%">AEO Name: ${u.name || ''}</td>
-        <td style="padding:1px 4px;width:50%">Cell No: ${u.cell_no || u.cnic || ''}</td>
-      </tr>
-      <tr>
-        <td style="padding:1px 4px">Markaz: ${u.markaz_name || ''}</td>
-        <td style="padding:1px 4px">Month: ${monthLabel}</td>
-      </tr>
-    </table>`;
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+      <table style="width:38%; border-collapse:collapse; font-size:10.5pt; font-weight:700;">
+        <tr><td style="padding:4px 0; width:70px">AEO Name:</td><td style="padding:4px 0; border-bottom:1px solid #333">${u.name || ''}</td></tr>
+        <tr><td style="padding:4px 0">Markaz:</td><td style="padding:4px 0; border-bottom:1px solid #333">${u.markaz_name || ''}</td></tr>
+        <tr><td style="padding:4px 0">Month:</td><td style="padding:4px 0; border-bottom:1px solid #333">${monthLabel}</td></tr>
+        <tr><td style="padding:4px 0">Cell No:</td><td style="padding:4px 0; border-bottom:1px solid #333">${u.cell_no || u.cnic || ''}</td></tr>
+      </table>
+      <div style="width:60%; text-align:center;">
+        <div style="font-size:13.5pt; font-weight:700; line-height:1.2; margin-bottom:8px;">${officeLine}</div>
+        <div style="font-size:12.5pt; font-weight:700; text-decoration:underline; text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
+      </div>
+    </div>`;
 }
 
-// ─── Shared footer block — KPI notice + signature/stamp blocks ─────
-// Every page carries BOTH designated signature/stamp positions:
-//  • Left  — the AEO's own signature (auto-filled from their saved
-//            signature image if uploaded via My Profile → Report
-//            Dispatch), over a printed signature line.
-//  • Right — a labeled box reserved for the Deputy DEO's wet-ink
-//            signature and office stamp. The Deputy doesn't have an
-//            account in this system to pre-supply a digital signature,
-//            so the certificate prints a clearly bordered, properly
-//            positioned space for it instead of leaving a bare line.
 function perfFooterHtml(amount, u, sigUrl) {
   return `
     <p style="font-size:9.5pt;font-weight:700;margin:8px 0 16px;line-height:1.28">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
@@ -339,7 +301,7 @@ function perfFooterHtml(amount, u, sigUrl) {
     </table>`;
 }
 
-// ─── OPEN format — 7 columns, exact widths from source workbook ────
+// ─── OPEN format — Fixed display logic for max amounts and blanks ───
 function perfOpenHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -347,43 +309,57 @@ function perfOpenHtml(data) {
   const rows = PERF_OPEN_ROWS.map((r, i) => {
     const stored = cfg.achieved[i];
     const credited = perfIsCredited(r, stored);
-    const amt = credited ? perfRowAmount(r) : 0;
-    let achCell, rmkCell;
-    if (r.kind === 'fixed') { achCell = r.fixedAch; rmkCell = r.fixedRmk; }
-    else if (r.kind === 'percent') { achCell = (stored ?? r.targetPct) + '%'; rmkCell = ''; }
-    else { achCell = credited ? 'Yes' : 'No'; rmkCell = credited ? 'Acheived' : ''; }
+    const amt = perfRowAmount(r); // Entitlement col ALWAYS shows full allocation
+
+    let achCell = '', rmkCell = '';
+    if (r.kind === 'fixed') { 
+      achCell = r.fixedAch; 
+      rmkCell = r.fixedRmk; 
+    } else if (r.kind === 'percent') { 
+      if (credited) {
+        achCell = (stored ?? r.targetPct); // Remove % symbol when achieved
+      }
+    } else { 
+      if (credited) {
+        achCell = 'Yes'; 
+        rmkCell = 'Achieved'; 
+      }
+    }
+
     return `<tr>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center">${i + 1}</td>
-      <td style="border:1px solid #000;padding:2px 4px">${r.ind}</td>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center">${r.tgtLabel}</td>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center">${achCell}</td>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center">${amt.toLocaleString()}/-</td>
-      <td style="border:1px solid #000;padding:2px 4px;text-align:center">${rmkCell}</td>
-      <td style="border:1px solid #000;padding:2px 4px"></td>
+      <td style="border:1px solid #000;padding:3px 4px;text-align:center">${i + 1}</td>
+      <td style="border:1px solid #000;padding:3px 4px">${r.ind}</td>
+      <td style="border:1px solid #000;padding:3px 4px;text-align:center">${r.tgtLabel}</td>
+      <td style="border:1px solid #000;padding:3px 4px;text-align:center">${achCell}</td>
+      <td style="border:1px solid #000;padding:3px 4px;text-align:center">${amt.toLocaleString()}/-</td>
+      <td style="border:1px solid #000;padding:3px 4px;text-align:center">${rmkCell}</td>
+      <td style="border:1px solid #000;padding:3px 4px"></td>
     </tr>`;
   }).join('');
 
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:8.7pt;font-weight:700;margin-bottom:0;line-height:1.15">
+    <table style="width:100%;border-collapse:collapse;font-size:8.7pt;font-weight:700;margin-bottom:0;line-height:1.2">
       <thead>
         <tr>
-          <th style="border:1px solid #000;padding:2px 4px;width:14.1%">Sr.</th>
-          <th style="border:1px solid #000;padding:2px 4px;width:17.8%">Indicators</th>
-          <th style="border:1px solid #000;padding:2px 4px;width:25.8%">Targets %age</th>
-          <th style="border:1px solid #000;padding:2px 4px;width:14.1%">Target Achieved by AEO</th>
-          <th style="border:1px solid #000;padding:2px 4px;width:9.4%">Entitlement of Allowance rupees</th>
-          <th style="border:1px solid #000;padding:2px 4px;width:9.4%">Remarks of Immediate Officer</th>
-          <th style="border:1px solid #000;padding:2px 4px;width:9.4%">Initials of DDO</th>
+          <th style="border:1px solid #000;padding:4px;width:14.1%">Sr.</th>
+          <th style="border:1px solid #000;padding:4px;width:17.8%">Indicators</th>
+          <th style="border:1px solid #000;padding:4px;width:25.8%">Targets %age</th>
+          <th style="border:1px solid #000;padding:4px;width:14.1%">Target Achieved by AEO</th>
+          <th style="border:1px solid #000;padding:4px;width:9.4%">Entitlement of Allowance rupees</th>
+          <th style="border:1px solid #000;padding:4px;width:9.4%">Remarks of Immediate Officer</th>
+          <th style="border:1px solid #000;padding:4px;width:9.4%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
+  
+  // 794px width works cleanly for Letter pages using scaling
   return `<div style="width:794px;padding:44px 52px 36px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box">${body}</div>`;
 }
 
-// ─── CLOSED format — 5 columns, exact widths from source workbook ──
+// ─── CLOSED format — Clean matching spelling and layout ─────────────
 function perfClosedHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -392,24 +368,24 @@ function perfClosedHtml(data) {
     const stored = cfg.achieved[i];
     const credited = perfIsCredited(r, stored);
     return `<tr>
-      <td style="border:1px solid #000;padding:2px 5px;text-align:center">${i + 1}</td>
-      <td style="border:1px solid #000;padding:2px 5px">${r.ind}</td>
-      <td style="border:1px solid #000;padding:2px 5px">${r.tgtLabel}</td>
-      <td style="border:1px solid #000;padding:2px 5px;text-align:center">${credited ? 'Acheived' : 'Not Acheived'}</td>
-      <td style="border:1px solid #000;padding:2px 5px"></td>
+      <td style="border:1px solid #000;padding:3px 5px;text-align:center">${i + 1}</td>
+      <td style="border:1px solid #000;padding:3px 5px">${r.ind}</td>
+      <td style="border:1px solid #000;padding:3px 5px">${r.tgtLabel}</td>
+      <td style="border:1px solid #000;padding:3px 5px;text-align:center">${credited ? 'Achieved' : 'Not Achieved'}</td>
+      <td style="border:1px solid #000;padding:3px 5px"></td>
     </tr>`;
   }).join('');
 
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:8.7pt;font-weight:700;margin-bottom:0;line-height:1.15">
+    <table style="width:100%;border-collapse:collapse;font-size:8.7pt;font-weight:700;margin-bottom:0;line-height:1.2">
       <thead>
         <tr>
-          <th style="border:1px solid #000;padding:2px 5px;width:11.4%">Sr.</th>
-          <th style="border:1px solid #000;padding:2px 5px;width:17.3%">Indicators</th>
-          <th style="border:1px solid #000;padding:2px 5px;width:35.7%">Targets</th>
-          <th style="border:1px solid #000;padding:2px 5px;width:18.5%">Performance</th>
-          <th style="border:1px solid #000;padding:2px 5px;width:17.1%">Remarks of Immediate Officer</th>
+          <th style="border:1px solid #000;padding:4px;width:11.4%">Sr.</th>
+          <th style="border:1px solid #000;padding:4px;width:17.3%">Indicators</th>
+          <th style="border:1px solid #000;padding:4px;width:35.7%">Targets</th>
+          <th style="border:1px solid #000;padding:4px;width:18.5%">Performance</th>
+          <th style="border:1px solid #000;padding:4px;width:17.1%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
@@ -418,37 +394,29 @@ function perfClosedHtml(data) {
   return `<div style="width:794px;padding:44px 52px 36px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box">${body}</div>`;
 }
 
-// ─── Multi-page HTML → single PDF (A4 portrait, one page per month) ─
-// Each entry in pagesHtml renders to its OWN page — pdf.addPage() is
-// called between every page and never within one, so N selected months
-// always produce exactly N pages, never combined.
+// ─── PDF Engine configured to 'letter' output ───────────────────────
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById('iaPdfRenderTarget');
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF('p', 'pt', 'a4'); // A4, portrait — required page size/orientation
+  
+  // Set to Letter (8.5 x 11 in) rather than A4 to match requirements
+  const pdf = new jsPDF('p', 'pt', 'letter'); 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
-    // Give the browser time to load the AEO's signature image (if any)
-    // before capturing the canvas, so it isn't missed on a fast machine.
     await new Promise(r => setTimeout(r, 300));
     const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
-    // Fit the whole page to A4 while preserving aspect ratio (never
-    // stretch/crop). The template above is sized to comfortably fit
-    // one month within one page, so this is effectively a 1:1 fit
-    // centered on the sheet — but the math stays safe even if a
-    // page's content ever runs slightly long.
     const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
     const drawWidth = canvas.width * scale;
     const drawHeight = canvas.height * scale;
     const offsetX = (pageWidth - drawWidth) / 2;
     const offsetY = (pageHeight - drawHeight) / 2;
 
-    if (i > 0) pdf.addPage('a4', 'p');
+    if (i > 0) pdf.addPage('letter', 'p');
     pdf.addImage(imgData, 'JPEG', offsetX, offsetY, drawWidth, drawHeight);
   }
   target.innerHTML = '';
