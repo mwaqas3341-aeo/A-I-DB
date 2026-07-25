@@ -5,42 +5,58 @@
 const PERFMAXMONTHS = 4;
 const PERFMINMONTHS = 1;
 
-const PERFLETTER_WIDTH_PT = 612;
-const PERFLETTER_HEIGHT_PT = 792;
-const PERFLETTER_WIDTH_PX = Math.round((PERFLETTER_WIDTH_PT * 96) / 72); // 816
-const PERFLETTER_HEIGHT_PX = Math.round((PERFLETTER_HEIGHT_PT * 96) / 72); // 1056
+const PERFLETTER_WIDTH_PT = 650;
+const PERFLETTER_HEIGHT_PT = 820;
+const PERFLETTER_WIDTH_PX = Math.round((PERFLETTER_WIDTH_PT * 96) / 72); // 867
+const PERFLETTER_HEIGHT_PX = Math.round((PERFLETTER_HEIGHT_PT * 96) / 72); // 1093
 const PERFHEAD_PT = 7.0;
 const PERFBODY_PT = 9.0;
 const PERFLINEHEIGHT = 1.25;
 
-const PERFTHSTYLE = `
-  border:1px solid #000;
-  padding:3px 3px;
-  background:#f2f2f2;
-  color:#000000;
-  font-size:${PERFHEAD_PT}pt;
-  font-weight:700;
-  vertical-align:middle;
-  white-space:normal;
-  word-wrap:break-word;
-  overflow-wrap:break-word;
-  word-break:break-word;
-  box-sizing:border-box;
-`;
+// NOTE: the indicator grids are built with flexbox rows/cells (not a
+// native <table>) because html2canvas has long-standing bugs rendering
+// <table>/<colgroup> column widths — it was silently dropping the
+// right-most column(s) even when the declared widths summed correctly.
+// Flexbox with explicit fixed-width cells renders reliably.
+const PERFCOLGAP = 0; // borders sit flush against each other (grid look)
 
-const PERFTDSTYLE = `
-  border:1px solid #000;
-  padding:3px 3px;
-  color:#000000;
-  font-size:${PERFBODY_PT}pt;
-  font-weight:400;
-  vertical-align:middle;
-  white-space:normal;
-  word-wrap:break-word;
-  overflow-wrap:break-word;
-  word-break:break-word;
-  box-sizing:border-box;
-`;
+function perfFlexCell(widthPx, content, opts = {}) {
+  const align = opts.align || "left";
+  const justify = align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start";
+  const textAlign = align === "center" ? "center" : align === "right" ? "right" : "left";
+  const header = !!opts.header;
+  return `<div style="
+    flex:0 0 ${widthPx}px;
+    width:${widthPx}px;
+    max-width:${widthPx}px;
+    box-sizing:border-box;
+    border:1px solid #000;
+    padding:3px 3px;
+    display:flex;
+    align-items:center;
+    justify-content:${justify};
+    text-align:${textAlign};
+    white-space:normal;
+    word-wrap:break-word;
+    overflow-wrap:break-word;
+    word-break:break-word;
+    color:#000000;
+    font-weight:700;
+    font-size:${header ? PERFHEAD_PT : PERFBODY_PT}pt;
+    ${header ? "background:#f2f2f2;" : ""}
+  ">${content}</div>`;
+}
+
+function perfFlexRow(totalWidthPx, cellsHtml) {
+  return `<div style="display:flex;width:${totalWidthPx}px;">${cellsHtml.join("")}</div>`;
+}
+
+function perfFlexTable(totalWidthPx, headerCellsHtml, bodyRowsHtml) {
+  return `<div style="width:${totalWidthPx}px;line-height:${PERFLINEHEIGHT};color:#000;">
+    ${perfFlexRow(totalWidthPx, headerCellsHtml)}
+    ${bodyRowsHtml.join("")}
+  </div>`;
+}
 
 const PERFOPENROWS = [
   { ind: "AEO Visits", tgtLabel: "100", kind: "percent", targetPct: 100, weight: 0.40 },
@@ -137,7 +153,7 @@ function perfOfficeLine(officeTitle, u) {
 
 function perfHeaderHtml(officeTitle, u, monthLabel) {
   const th = "border:1px solid #000;padding:5px 8px;font-weight:700;text-align:left;vertical-align:middle;";
-  const td = "border:1px solid #000;padding:5px 8px;text-align:left;vertical-align:middle;";
+  const td = "border:1px solid #000;padding:5px 8px;text-align:left;vertical-align:middle;font-weight:700;";
   const officeLine = perfOfficeLine(officeTitle, u);
   return `
   <table dir="ltr" style="width:100%;border-collapse:collapse;margin-bottom:0;font-size:9.5pt;color:#000;">
@@ -154,17 +170,17 @@ function perfFooterHtml(amount, u) {
   const tehsil = perfTitleCase(u?.tehsil);
   return `
   <p style="font-size:11pt;font-weight:700;margin:12px 0 16px;line-height:1.4;color:#000;text-align:justify;text-indent:2em;word-wrap:break-word;overflow-wrap:break-word;">${PERFKPINOTICE} worth PKR ${Number(amount || 0).toLocaleString()}.</p>
-  <table style="width:100%;border-collapse:collapse;font-size:14pt;font-weight:700;color:#000;" dir="ltr">
+  <table style="width:100%;border-collapse:collapse;font-size:12.5pt;font-weight:700;color:#000;" dir="ltr">
     <tr>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
         <div style="height:26px;"></div>
-        <div style="font-weight:700;font-size:14pt;">Assistant Education Officer</div>
-        <div style="font-weight:700;font-size:14pt;">${perfTitleCase(u?.markaz_name)}</div>
+        <div style="font-weight:700;font-size:12.5pt;">Assistant Education Officer</div>
+        <div style="font-weight:700;font-size:12.5pt;">${perfTitleCase(u?.markaz_name)}</div>
       </td>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
         <div style="height:26px;"></div>
-        <div style="font-weight:700;font-size:14pt;">Deputy District Education Officer</div>
-        <div style="font-weight:700;font-size:14pt;">${tehsil ? `Tehsil ${tehsil}` : ""}</div>
+        <div style="font-weight:700;font-size:12.5pt;">Deputy District Education Officer</div>
+        <div style="font-weight:700;font-size:12.5pt;">${tehsil ? `Tehsil ${tehsil}` : ""}</div>
       </td>
     </tr>
   </table>`;
@@ -175,39 +191,40 @@ function perfOpenHtml(data) {
   const u = data.user || {};
   const cfg = data.cfg || {};
   const monthLabel = `${IA_MONTH_NAMES[data.month - 1] || data.month} ${data.year}`;
+  const PERFOPEN_COLS = [42, 165, 150, 100, 115, 140, 118]; // px — sums to ~830, fits the wider page
+  const openTotalW = PERFOPEN_COLS.reduce((a, b) => a + b, 0);
+
+  const headerCells = [
+    perfFlexCell(PERFOPEN_COLS[0], "Sr.", { header: true, align: "center" }),
+    perfFlexCell(PERFOPEN_COLS[1], "Indicators", { header: true, align: "center" }),
+    perfFlexCell(PERFOPEN_COLS[2], "Targets %age", { header: true, align: "center" }),
+    perfFlexCell(PERFOPEN_COLS[3], "Target Achieved by AEO", { header: true, align: "center" }),
+    perfFlexCell(PERFOPEN_COLS[4], "Entitlement of Allowance rupees", { header: true, align: "center" }),
+    perfFlexCell(PERFOPEN_COLS[5], "Remarks of Immediate Officer", { header: true, align: "center" }),
+    perfFlexCell(PERFOPEN_COLS[6], "Initials of DDO", { header: true, align: "center" }),
+  ];
+
   const rows = PERFOPENROWS.map((r, i) => {
     const stored = cfg.achieved?.[i];
     const credited = perfIsCredited(r, stored);
     const amt = perfRowAmount(r);
     const { achCell, rmkCell } = perfRowDisplayCells(r, stored, credited);
-    return `
-      <tr>
-        <td style="${PERFTDSTYLE}text-align:center;">${i + 1}</td>
-        <td style="${PERFTDSTYLE}text-align:left;">${r.ind}</td>
-        <td style="${PERFTDSTYLE}text-align:left;">${r.tgtLabel}</td>
-        <td style="${PERFTDSTYLE}text-align:center;">${achCell}</td>
-        <td style="${PERFTDSTYLE}text-align:center;">${credited ? amt.toLocaleString() : "-"}</td>
-        <td style="${PERFTDSTYLE}text-align:center;">${rmkCell}</td>
-        <td style="${PERFTDSTYLE}text-align:center;"></td>
-      </tr>`;
-  }).join("");
+    return perfFlexRow(openTotalW, [
+      perfFlexCell(PERFOPEN_COLS[0], i + 1, { align: "center" }),
+      perfFlexCell(PERFOPEN_COLS[1], r.ind, { align: "left" }),
+      perfFlexCell(PERFOPEN_COLS[2], r.tgtLabel, { align: "left" }),
+      perfFlexCell(PERFOPEN_COLS[3], achCell, { align: "center" }),
+      perfFlexCell(PERFOPEN_COLS[4], credited ? amt.toLocaleString() : "-", { align: "center" }),
+      perfFlexCell(PERFOPEN_COLS[5], rmkCell, { align: "center" }),
+      perfFlexCell(PERFOPEN_COLS[6], "", { align: "center" }),
+    ]);
+  });
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER", u, monthLabel)}
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;border-spacing:0;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
-      <thead>
-        <tr>
-          <th style="${PERFTHSTYLE}width:40px;">Sr.</th>
-          <th style="${PERFTHSTYLE}width:150px;">Indicators</th>
-          <th style="${PERFTHSTYLE}width:140px;">Targets %age</th>
-          <th style="${PERFTHSTYLE}width:95px;">Target Achieved by AEO</th>
-          <th style="${PERFTHSTYLE}width:108px;">Entitlement of Allowance rupees</th>
-          <th style="${PERFTHSTYLE}width:130px;">Remarks of Immediate Officer</th>
-          <th style="${PERFTHSTYLE}width:115px;">Initials of DDO</th>
-        </tr>
-      </thead>
-      <tbody style="font-weight:400;">${rows}</tbody>
-    </table>
+    <div style="margin-top:8px;">
+      ${perfFlexTable(openTotalW, headerCells, rows)}
+    </div>
     ${perfFooterHtml(data.amount, u)}
   `;
 
@@ -222,33 +239,35 @@ function perfClosedHtml(data) {
   const u = data.user || {};
   const cfg = data.cfg || {};
   const monthLabel = `${IA_MONTH_NAMES[data.month - 1] || data.month} ${data.year}`;
+
+  const PERFCLOSED_COLS = [42, 195, 230, 165, 198]; // px — sums to ~830, fits the wider page
+  const closedTotalW = PERFCLOSED_COLS.reduce((a, b) => a + b, 0);
+
+  const headerCells = [
+    perfFlexCell(PERFCLOSED_COLS[0], "Sr.", { header: true, align: "center" }),
+    perfFlexCell(PERFCLOSED_COLS[1], "Indicators", { header: true, align: "center" }),
+    perfFlexCell(PERFCLOSED_COLS[2], "Targets", { header: true, align: "center" }),
+    perfFlexCell(PERFCLOSED_COLS[3], "Performance", { header: true, align: "center" }),
+    perfFlexCell(PERFCLOSED_COLS[4], "Remarks of Immediate Officer", { header: true, align: "center" }),
+  ];
+
   const rows = PERFCLOSEDROWS.map((r, i) => {
     const stored = cfg.achieved?.[i];
     const credited = perfIsCredited(r, stored);
-    return `
-      <tr>
-        <td style="${PERFTDSTYLE}text-align:center;">${i + 1}</td>
-        <td style="${PERFTDSTYLE}text-align:left;">${r.ind}</td>
-        <td style="${PERFTDSTYLE}text-align:left;">${r.tgtLabel}</td>
-        <td style="${PERFTDSTYLE}text-align:center;">${credited ? "Achieved" : "Not Achieved"}</td>
-        <td style="${PERFTDSTYLE}text-align:center;"></td>
-      </tr>`;
-  }).join("");
+    return perfFlexRow(closedTotalW, [
+      perfFlexCell(PERFCLOSED_COLS[0], i + 1, { align: "center" }),
+      perfFlexCell(PERFCLOSED_COLS[1], r.ind, { align: "left" }),
+      perfFlexCell(PERFCLOSED_COLS[2], r.tgtLabel, { align: "left" }),
+      perfFlexCell(PERFCLOSED_COLS[3], credited ? "Achieved" : "Not Achieved", { align: "center" }),
+      perfFlexCell(PERFCLOSED_COLS[4], "", { align: "center" }),
+    ]);
+  });
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER", u, monthLabel)}
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;border-spacing:0;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
-      <thead>
-        <tr>
-          <th style="${PERFTHSTYLE}width:40px;">Sr.</th>
-          <th style="${PERFTHSTYLE}width:175px;">Indicators</th>
-          <th style="${PERFTHSTYLE}width:215px;">Targets</th>
-          <th style="${PERFTHSTYLE}width:155px;">Performance</th>
-          <th style="${PERFTHSTYLE}width:193px;">Remarks of Immediate Officer</th>
-        </tr>
-      </thead>
-      <tbody style="font-weight:400;">${rows}</tbody>
-    </table>
+    <div style="margin-top:8px;">
+      ${perfFlexTable(closedTotalW, headerCells, rows)}
+    </div>
     ${perfFooterHtml(data.amount, u)}
   `;
 
@@ -277,7 +296,7 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
   target.style.direction = "ltr";
 
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF("p", "pt", "letter");
+  const pdf = new jsPDF("p", "pt", [PERFLETTER_WIDTH_PT, PERFLETTER_HEIGHT_PT]);
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
@@ -312,7 +331,7 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
     const offsetX = (pageWidth - drawWidth) / 2;
     const offsetY = (pageHeight - drawHeight) / 2;
 
-    if (i > 0) pdf.addPage("letter", "p");
+    if (i > 0) pdf.addPage([PERFLETTER_WIDTH_PT, PERFLETTER_HEIGHT_PT], "p");
     pdf.addImage(imgData, "JPEG", offsetX, offsetY, drawWidth, drawHeight);
   }
 
