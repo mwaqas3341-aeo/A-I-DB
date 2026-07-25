@@ -377,12 +377,47 @@ async function perfLoadMonths() {
 
 function perfRenderMonthsGrid() {
   const grid = document.getElementById("perfMonthsGrid");
-  grid.innerHTML = perfState.months.map((m) => {
-    const checked = perfState.selected.has(m.month);
-    return `<label style="display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--b0);border-radius:8px;cursor:pointer;font-size:.85rem;${checked ? "background:#f0fdfa;border-color:#0d9488" : ""}">
-      <input type="checkbox" ${checked ? "checked" : ""} onchange="perfToggleMonth(${m.month}, this.checked)"> ${IA_MONTH_NAMES[m.month - 1]}
-    </label>`;
-  }).join("");
+  const available = perfState.months.filter((m) => !perfState.selected.has(m.month));
+  const selected = [...perfState.selected].sort((a, b) => a - b);
+  const atMax = perfState.selected.size >= PERFMAXMONTHS;
+
+  let pickerHtml;
+  if (atMax) {
+    pickerHtml = `<div style="font-size:.8rem;color:var(--t3)">Maximum ${PERFMAXMONTHS} months selected. Remove one below to add another.</div>`;
+  } else if (!available.length) {
+    pickerHtml = `<div style="font-size:.8rem;color:var(--t3)">All prepared months for this year are selected.</div>`;
+  } else {
+    pickerHtml = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="perfMonthPicker" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.85rem;color:#111">
+        ${available.map((m) => `<option value="${m.month}">${IA_MONTH_NAMES[m.month - 1]}</option>`).join("")}
+      </select>
+      <button type="button" style="background:#0d9488;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:.85rem;cursor:pointer" onclick="perfAddMonthFromPicker()">
+        <i class="bi bi-plus-lg"></i> Add
+      </button>
+    </div>`;
+  }
+
+  const chipsHtml = selected.length
+    ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        ${selected.map((month) => `
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:#f0fdfa;border:1px solid #0d9488;font-size:.85rem;color:#0f766e">
+            ${IA_MONTH_NAMES[month - 1]}
+            <i class="bi bi-x-lg" style="cursor:pointer" onclick="perfRemoveMonth(${month})"></i>
+          </span>`).join("")}
+      </div>`
+    : "";
+
+  grid.innerHTML = pickerHtml + chipsHtml;
+}
+
+function perfAddMonthFromPicker() {
+  const picker = document.getElementById("perfMonthPicker");
+  if (!picker || picker.value === "") return;
+  perfToggleMonth(Number(picker.value), true);
+}
+
+function perfRemoveMonth(month) {
+  perfToggleMonth(month, false);
 }
 
 function perfToggleMonth(month, checked) {
@@ -478,7 +513,7 @@ function perfConfigTableHtml(month, cfg) {
   const rows = isOpen ? PERFOPENROWS : PERFCLOSEDROWS;
   const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg, isOpen)).join("");
 
-  const th = "border:1px solid var(--b0);background:var(--s2);padding:6px 5px;font-size:.72rem;font-weight:700;text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;";
+  const th = "border:1px solid var(--b0);background:#e2e8f0;color:#1e293b;padding:6px 5px;font-size:.72rem;font-weight:700;text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;";
   const heads = isOpen
     ? `<th style="${th}width:6%">Sr.</th>
        <th style="${th}width:24%">Indicators</th>
