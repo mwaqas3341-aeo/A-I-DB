@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEO Performance Certificate</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/portal-polish.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <style>
+    body{ background:var(--s1); }
+    .pc-shell{ max-width:960px; margin:0 auto; padding:24px 16px 60px; }
+    .pc-header{
+      background:linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+      color:#fff; border-radius:var(--r2); padding:18px 22px; margin-bottom:20px;
+      display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;
+    }
+    .pc-header h5{ margin:0; font-weight:700; }
+    .pc-header .pc-sub{ font-size:.8rem; opacity:.85; margin-top:2px; }
+    .pc-header a{ color:#fff; text-decoration:none; font-size:.85rem; }
+    .pc-header a:hover{ text-decoration:underline; }
+    #pcGate, #pcApp{ display:none; }
+    #pcToastStack{ position:fixed; top:16px; right:16px; z-index:9999; display:flex; flex-direction:column; gap:8px; }
+    .pc-toast{ background:#10180F; color:#fff; padding:10px 16px; border-radius:8px; font-size:.85rem; box-shadow:0 4px 14px rgba(0,0,0,.2); }
+    .pc-toast.err{ background:#7a1f1f; }
+  </style>
+</head>
+<body>
+
+  <div id="pcToastStack"></div>
+
+  <div class="pc-shell">
+
+    <!-- ══ AUTH GATE (shown until we confirm a logged-in session) ══ -->
+    <div id="pcGate" style="text-align:center;padding:60px 16px">
+      <div class="spinner-border" style="color:var(--brand)" id="pcGateSpinner"></div>
+      <div id="pcGateMsg" style="margin-top:16px;color:var(--t2)">Checking your session…</div>
+      <a href="index.html" id="pcGateLoginLink" style="display:none;margin-top:14px;color:var(--brand);font-weight:600">
+        <i class="bi bi-box-arrow-in-right"></i> Go to login
+      </a>
+    </div>
+
+    <!-- ══ MAIN APP (shown once we have a confirmed logged-in user) ══ -->
+    <div id="pcApp">
+
+      <div class="pc-header">
+        <div>
+          <h5><i class="bi bi-file-earmark-medical-fill"></i> AEO Monthly Performance Certificate</h5>
+          <div class="pc-sub" id="pcWhoami">Loading your profile…</div>
+        </div>
+        <a href="index.html"><i class="bi bi-arrow-left-circle"></i> Back to dashboard</a>
+      </div>
+
+      <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:var(--r2);padding:12px 16px;margin-bottom:16px;font-size:.8rem;color:#0f766e;line-height:1.7">
+        <strong>AEO Monthly Performance Certificate</strong> — pick 1 to 4 prepared months. For each month choose the school status (Open/Closed) and fill in your indicator achievement — the rupee entitlement for each row, and the total, is calculated automatically from what you enter; you never type an amount directly.
+      </div>
+
+      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <span class="flabel" style="margin:0">Year</span>
+          <select id="perf_year" onchange="perfLoadMonths()" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 10px"></select>
+        </div>
+        <div class="section-title" style="margin:0 0 8px;font-size:.82rem"><i class="bi bi-calendar3"></i> Months (choose 1–4 prepared months)</div>
+        <div id="perfMonthsGrid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+        <div id="perf_monthWarn" style="display:none;margin-top:14px;padding:10px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:.82rem;color:#92400e">
+          <i class="bi bi-exclamation-triangle-fill"></i> No prepared months found for this year. Ask your Tehsil Representative to prepare a month first.
+        </div>
+      </div>
+
+      <div id="perfConfigPanels"></div>
+
+      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div style="font-size:.95rem"><b>Grand Total: <span id="perfGrandTotalDisplay" style="color:#0d9488">PKR 0</span></b></div>
+        <button class="btn btn-primary" id="perf_downloadBtn" onclick="perfDownloadCertificate()" disabled style="background:#0d9488;border-color:#0d9488">
+          <i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Off-screen render target used by performance.js to rasterize the certificate into a PDF -->
+  <div id="iaPdfRenderTarget" style="position:fixed;left:-9999px;top:0;width:816px;background:#fff"></div>
+
+  <script src="config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/inspection-allowance.js"></script>
+  <script src="js/performance.js"></script>
+
+  <script>
+    // ── Minimal toast, standalone for this page (mirrors the dual-signature
+    // showToast(msg, true/false | 'error'/'warning'/'info'/'success') used
+    // across performance.js / inspection-allowance.js) ──
+    function showToast(msg, okOrType = true) {
+      let ok = true;
+      if (typeof okOrType === 'string') {
+        const t = okOrType.toLowerCase();
+        ok = !(t === 'error' || t === 'danger' || t === 'warning' || t === 'warn');
+      } else {
+        ok = !!okOrType;
+      }
+      const stack = document.getElementById('pcToastStack');
+      const el = document.createElement('div');
+      el.className = 'pc-toast' + (ok ? '' : ' err');
+      el.textContent = msg;
+      stack.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    // ── Auth gate: this page is single-user only — it never shows anyone
+    // else's data and has no staff-picker. It relies on the same Supabase
+    // session already created by logging in on index.html (supabase-js
+    // persists that session in this browser automatically), so the user
+    // must have signed in there at least once first. ──
+    async function pcBoot() {
+      const { data: sessionData } = await _sb.auth.getSession();
+      const session = sessionData?.session;
+
+      if (!session) {
+        document.getElementById('pcGateSpinner').style.display = 'none';
+        document.getElementById('pcGateMsg').textContent =
+          "You're not signed in. Please log in on the main portal first, then come back to this page.";
+        document.getElementById('pcGateLoginLink').style.display = 'inline-block';
+        return;
+      }
+
+      const rateRes = await apiCall('getInspectionAllowanceRate');
+      if (rateRes && rateRes.success) iaState.rate = Number(rateRes.rate) || 25000;
+
+      const profileRes = await apiCall('getMyProfile');
+      if (!profileRes || !profileRes.success) {
+        document.getElementById('pcGateSpinner').style.display = 'none';
+        document.getElementById('pcGateMsg').textContent =
+          'Could not load your profile: ' + (profileRes?.message || 'Unknown error');
+        return;
+      }
+      iaState.profile = profileRes;
+
+      document.getElementById('pcWhoami').textContent =
+        `${profileRes.name || ''} · ${profileRes.markaz_name || ''}${profileRes.tehsil ? ' · Tehsil ' + profileRes.tehsil : ''}`;
+
+      document.getElementById('pcGate').style.display = 'none';
+      document.getElementById('pcApp').style.display = 'block';
+
+      perfInit();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('pcGate').style.display = 'block';
+      pcBoot();
+    });
+  </script>
+</body>
+</html>
