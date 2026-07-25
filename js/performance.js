@@ -55,8 +55,8 @@ const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and iss
 const PERF_HEAD_PT     = 8.6;
 const PERF_BODY_PT     = 7.9;
 const PERF_LINE_HEIGHT = 1.12;
-const PERF_TH_STYLE = `border:1px solid #000;padding:3px 4px;background:#f2f2f2;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;word-wrap:break-word;overflow-wrap:break-word;`;
-const PERF_TD_STYLE = `border:1px solid #000;padding:2px 4px;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;word-wrap:break-word;overflow-wrap:break-word;`;
+const PERF_TH_STYLE = `border:1px solid #000;padding:3px 4px;background:#f2f2f2;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;`;
+const PERF_TD_STYLE = `border:1px solid #000;padding:2px 4px;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;`;
 
 let perfState = { months: [], selected: new Set(), config: {} };
 
@@ -353,12 +353,12 @@ function perfOpenHtml(data) {
         <tr>
           <!-- Tweaked widths to give text-heavy columns more horizontal room -->
           <th style="${PERF_TH_STYLE}width:4%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:18%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:26%">Targets %age</th>
-          <th style="${PERF_TH_STYLE}width:13%">Target Achieved by AEO</th>
-          <th style="${PERF_TH_STYLE}width:14%">Entitlement of Allowance rupees</th>
-          <th style="${PERF_TH_STYLE}width:16%">Remarks of Immediate Officer</th>
-          <th style="${PERF_TH_STYLE}width:9%">Initials of DDO</th>
+          <th style="${PERF_TH_STYLE}width:15%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:20%">Targets %age</th>
+          <th style="${PERF_TH_STYLE}width:15%">Target Achieved by AEO</th>
+          <th style="${PERF_TH_STYLE}width:16%">Entitlement of Allowance rupees</th>
+          <th style="${PERF_TH_STYLE}width:18%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:12%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
@@ -393,10 +393,10 @@ function perfClosedHtml(data) {
         <tr>
           <!-- Tweaked widths to give Targets and Indicators max space -->
           <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:20%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:38%">Targets</th>
-          <th style="${PERF_TH_STYLE}width:15%">Performance</th>
-          <th style="${PERF_TH_STYLE}width:22%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:16%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:30%">Targets</th>
+          <th style="${PERF_TH_STYLE}width:17%">Performance</th>
+          <th style="${PERF_TH_STYLE}width:32%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
