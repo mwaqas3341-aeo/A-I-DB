@@ -1788,6 +1788,7 @@ async function apiCall(action, payload) {
         personal_no: data.personal_no,
         name:        data.name,
         cnic:        data.cnic,
+        cell_no:     data.cell_no,
         email:       data.email,
         designation: data.designation,
         district:    data.district,

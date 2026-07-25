@@ -38,11 +38,14 @@ async function openInspectionAllowanceView() {
 }
 
 function iaSwitchTab(tab) {
-  document.getElementById('iaMyBillTab').style.display     = tab === 'myBill'     ? 'block' : 'none';
-  document.getElementById('iaBudgetPrepTab').style.display = tab === 'budgetprep' ? 'block' : 'none';
+  document.getElementById('iaMyBillTab').style.display      = tab === 'myBill'      ? 'block' : 'none';
+  document.getElementById('iaPerformanceTab').style.display = tab === 'performance' ? 'block' : 'none';
+  document.getElementById('iaBudgetPrepTab').style.display  = tab === 'budgetprep'  ? 'block' : 'none';
   document.getElementById('iaTabMyBillBtn').classList.toggle('active', tab === 'myBill');
+  document.getElementById('iaTabPerfBtn').classList.toggle('active', tab === 'performance');
   document.getElementById('iaTabBudgetPrepBtn').classList.toggle('active', tab === 'budgetprep');
 
+  if (tab === 'performance') perfInit();
   if (tab === 'budgetprep' && typeof bpInit === 'function') bpInit();
 }
 
@@ -361,6 +364,257 @@ function iaBillBHtml(bill) {
       <td style="width:50%;text-align:center;padding-top:30px;border-top:1px solid #333">District Account Officer</td>
     </tr></table>`;
   return iaPageShell('Detail of Inspection Allowance — Bill B', body);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PERFORMANCE CERTIFICATE — "AEO Monthly Performance Certificate"
+//  Two fixed templates (indicator text/targets never change):
+//   - OPEN   : 16-row detailed format (%age Achieved + per-row Entitlement)
+//   - CLOSED : 16-row simplified format (Performance + Remarks only)
+//  Only Name / Markaz / Month / Cell No. / final entitled amount vary.
+// ═══════════════════════════════════════════════════════════════════
+
+const PERF_OPEN_ROWS = [
+  { ind: 'AEO Visits',                                            tgt: '100',                                                        ach: '',                          amt: 10000, rmk: '' },
+  { ind: 'LND (E,M,U)',                                           tgt: '80% per Quarter',                                            ach: 'Not Conducted By PMIU',     amt: 1000,  rmk: 'Not Applicable' },
+  { ind: 'Student Attendance ECE-8',                              tgt: '90',                                                          ach: '',                          amt: 1000,  rmk: '' },
+  { ind: 'Teacher Presence',                                      tgt: '85',                                                          ach: '',                          amt: 1000,  rmk: '' },
+  { ind: 'Functioning of facilities (BW, DW, Electricity, Furniture)', tgt: '80',                                                     ach: '',                          amt: 1000,  rmk: '' },
+  { ind: 'Student Retention',                                     tgt: '85',                                                          ach: '',                          amt: 1000,  rmk: '' },
+  { ind: 'Litnum Material',                                       tgt: '80',                                                          ach: '',                          amt: 1000,  rmk: '' },
+  { ind: 'On time resolution of Hotline Complaint',                tgt: '90',                                                         ach: '',                          amt: 1000,  rmk: '' },
+  { ind: 'Classroom Observation',                                 tgt: '90',                                                          ach: '',                          amt: 1000,  rmk: '' },
+  { ind: 'Co-curricular activities',                              tgt: 'As directed by department',                                  ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
+  { ind: 'School records',                                        tgt: 'Properly maintained Students, Teachers, NSB and FTF',        ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
+  { ind: 'School based action plan',                              tgt: 'Ensure SBAP is prepared and present in school',              ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
+  { ind: 'School Council',                                        tgt: 'Ensure 1 SC meeting per month',                              ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
+  { ind: 'Attend monthly meeting',                                tgt: 'As directed by higher authorities',                          ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
+  { ind: 'Visit ADP schemes under construction',                  tgt: 'Visit of ADP scheme and give status to department when required', ach: 'Yes',                  amt: 1000,  rmk: 'Achieved' },
+  { ind: 'Update SIS Data',                                       tgt: 'Ensure all schools of markaz have updated data on SIS',      ach: 'Yes',                       amt: 1000,  rmk: 'Achieved' },
+];
+const PERF_OPEN_DEFAULT_TOTAL = PERF_OPEN_ROWS.reduce((s, r) => s + r.amt, 0); // 25000
+
+const PERF_CLOSED_ROWS = [
+  { ind: 'Aeo Visits',                            tgt: 'Once in a Month' },
+  { ind: 'Teacher Training',                      tgt: 'Ensure That Teachers Attend Trainings' },
+  { ind: 'Cot Analysis Report',                   tgt: 'Submit Analysis Report to Immediate Officer' },
+  { ind: 'Ht Orientation',                        tgt: 'Ht Meeting of Markaz and Submit Attendance' },
+  { ind: 'Sbap Report',                           tgt: 'Develop and Submit Sbap Report' },
+  { ind: 'Awareness Campaign',                    tgt: 'Smc 1 Session Regarding Importance of Schooling and Hygiene' },
+  { ind: 'Ece Support and Guidance',              tgt: 'Up Gradation of Ece Room and Material' },
+  { ind: 'Oosc Survey',                           tgt: 'Once a Year' },
+  { ind: 'Ece Support for Enrollment Drive',      tgt: 'Smc, Ht and Community Plan for Upcoming Enrollment Drive' },
+  { ind: 'Ece Awareness Campaign',                tgt: 'Creating Awareness of the Importance of Ece in Community' },
+  { ind: 'Sis Orientation',                       tgt: 'Collect Feedback from Ht and Submit to Immediate Officer' },
+  { ind: 'Dengue Awareness Campaign',             tgt: 'Creating Awareness Regarding Anti-dengue Activities in Schools Like Seminars' },
+  { ind: 'Visit Adp Schemes Under Construction',  tgt: 'Visit of Adp Scheme and Give Status to Department When Required' },
+  { ind: 'Observance of Govt. Sops in Private Schools', tgt: 'Observe Govt. Sops Followed by Private Schools' },
+  { ind: 'Update Sis Data',                       tgt: 'Ensure All Schools of Markaz Have Updated Data on Sis' },
+  { ind: 'Online Complaint Resolution',           tgt: 'In-time Resolution of Complaints on Dashboard' },
+];
+const PERF_CLOSED_DEFAULT_TOTAL = 25000;
+
+const PERF_KPI_NOTICE = 'It is to certify that verifiable KPIs developed and issued by SED vide No. SO (SE-III) 5-226/200 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection';
+
+let perfState = { months: [], status: 'open' };
+
+// ─── Init / month picker (mirrors "My Bill" prepared-months gating) ──
+function perfInit() {
+  const yearSel = document.getElementById('perf_year');
+  const yNow = new Date().getFullYear();
+  yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1].map(y => `<option value="${y}" ${y === yNow ? 'selected' : ''}>${y}</option>`).join('');
+  document.getElementById('perf_amount').value = PERF_OPEN_DEFAULT_TOTAL;
+  perfLoadMonthOptions();
+}
+
+async function perfLoadMonthOptions() {
+  const year = Number(document.getElementById('perf_year').value);
+  const monthSel = document.getElementById('perf_month');
+  const warn = document.getElementById('perf_monthWarn');
+  const btn = document.getElementById('perf_downloadBtn');
+  monthSel.innerHTML = `<option>Loading…</option>`;
+  btn.disabled = true;
+
+  // Reuse the same prepared-months source as "My Bill"
+  const res = await apiCall('getMyInspectionAllowanceMonths', { year });
+  if (!res || !res.success) { monthSel.innerHTML = ''; warn.style.display = 'block'; return; }
+
+  perfState.months = (res.months || []).filter(m => m.prepared);
+  if (!perfState.months.length) {
+    monthSel.innerHTML = '';
+    warn.style.display = 'block';
+    return;
+  }
+  warn.style.display = 'none';
+  monthSel.innerHTML = perfState.months.map(m => `<option value="${m.month}">${IA_MONTH_NAMES[m.month - 1]}</option>`).join('');
+  perfOnMonthChange();
+}
+
+function perfOnMonthChange() {
+  const monthSel = document.getElementById('perf_month');
+  const btn = document.getElementById('perf_downloadBtn');
+  btn.disabled = !monthSel.value;
+}
+
+function perfOnStatusChange() {
+  const status = document.querySelector('input[name="perf_status"]:checked').value;
+  perfState.status = status;
+  document.getElementById('perf_amount').value = status === 'open' ? PERF_OPEN_DEFAULT_TOTAL : PERF_CLOSED_DEFAULT_TOTAL;
+}
+
+// ─── Generate + download ──────────────────────────────────────────
+async function perfDownloadCertificate() {
+  if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
+  const year = Number(document.getElementById('perf_year').value);
+  const month = Number(document.getElementById('perf_month').value);
+  if (!month) { showToast('Select a prepared month.', false); return; }
+  const status = document.querySelector('input[name="perf_status"]:checked').value;
+  const amount = Number(document.getElementById('perf_amount').value) || 0;
+
+  const btn = document.getElementById('perf_downloadBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
+  try {
+    const data = { user: iaState.profile, year, month, amount };
+    const pdfBytes = status === 'open' ? await perfBuildOpenPdfBytes(data) : await perfBuildClosedPdfBytes(data);
+    iaDownloadPdf(pdfBytes, `Performance_Certificate_${status}_${iaState.profile.personal_no}_${IA_MONTH_NAMES[month - 1]}_${year}.pdf`);
+    showToast('Certificate downloaded.', true);
+  } catch (err) {
+    showToast('Error generating certificate: ' + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
+  }
+}
+
+// ─── Shared header block for both formats ─────────────────────────
+function perfHeaderHtml(officeLine, u, monthLabel) {
+  return `
+    <div style="text-align:center;font-size:11.5px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${officeLine}</div>
+    <div style="text-align:center;font-size:13.5px;font-weight:700;text-transform:uppercase;margin-bottom:12px">AEO Monthly Performance Certificate</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:12px">
+      <tr>
+        <td style="padding:2px 4px;font-weight:700;width:12%">AEO Name:</td><td style="padding:2px 4px;width:38%">${u.name || ''}</td>
+        <td style="padding:2px 4px;font-weight:700;width:12%">Cell No:</td><td style="padding:2px 4px;width:38%">${u.cell_no || u.cnic || ''}</td>
+      </tr>
+      <tr>
+        <td style="padding:2px 4px;font-weight:700">Markaz:</td><td style="padding:2px 4px">${u.markaz_name || ''}</td>
+        <td style="padding:2px 4px;font-weight:700">Month:</td><td style="padding:2px 4px">${monthLabel}</td>
+      </tr>
+    </table>`;
+}
+
+function perfFooterHtml(amount, markazName) {
+  return `
+    <p style="font-size:11px;margin:14px 0 34px;line-height:1.5">${PERF_KPI_NOTICE} worth <b>PKR ${Number(amount).toLocaleString()}</b></p>
+    <table style="width:100%;font-size:11.5px"><tr>
+      <td style="width:50%;text-align:center">
+        <div style="border-top:1px solid #333;padding-top:4px">Assistant Education Officer</div>
+        <div>${markazName || ''}</div>
+      </td>
+      <td style="width:50%;text-align:center">
+        <div style="border-top:1px solid #333;padding-top:4px">Deputy District Education Officer</div>
+        <div>Tehsil Karor</div>
+      </td>
+    </tr></table>`;
+}
+
+// ─── OPEN format (7-column detailed table, landscape) ──────────────
+function perfOpenHtml(data) {
+  const u = data.user;
+  const monthLabel = `${IA_MONTH_NAMES[data.month - 1]} ${data.year}`;
+  const rows = PERF_OPEN_ROWS.map((r, i) => `
+    <tr>
+      <td style="border:1px solid #444;padding:4px 5px;text-align:center">${i + 1}</td>
+      <td style="border:1px solid #444;padding:4px 5px">${r.ind}</td>
+      <td style="border:1px solid #444;padding:4px 5px;text-align:center">${r.tgt}</td>
+      <td style="border:1px solid #444;padding:4px 5px;text-align:center">${r.ach}</td>
+      <td style="border:1px solid #444;padding:4px 5px;text-align:right">${r.amt.toLocaleString()}/-</td>
+      <td style="border:1px solid #444;padding:4px 5px">${r.rmk}</td>
+      <td style="border:1px solid #444;padding:4px 5px"></td>
+    </tr>`).join('');
+
+  const body = `
+    ${perfHeaderHtml('Office of the Deputy District Education Officer (M-EE) Tehsil Karor', u, monthLabel)}
+    <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px">
+      <thead>
+        <tr style="background:#f2f2f2">
+          <th style="border:1px solid #444;padding:4px 5px;width:3%">Sr.</th>
+          <th style="border:1px solid #444;padding:4px 5px;width:20%">Indicators</th>
+          <th style="border:1px solid #444;padding:4px 5px;width:14%">Targets</th>
+          <th style="border:1px solid #444;padding:4px 5px;width:12%">%age Target Achieved by AEO</th>
+          <th style="border:1px solid #444;padding:4px 5px;width:12%">Entitlement of Allowance rupees</th>
+          <th style="border:1px solid #444;padding:4px 5px;width:16%">Remarks of Immediate Officer</th>
+          <th style="border:1px solid #444;padding:4px 5px;width:10%">Initials of DDO</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${perfFooterHtml(data.amount, u.markaz_name)}`;
+  return `<div style="width:1123px;min-height:794px;padding:34px 40px;font-family:'Calibri','Arial',sans-serif;color:#111;box-sizing:border-box">${body}</div>`;
+}
+
+async function perfBuildOpenPdfBytes(data) {
+  return perfRenderToPdf(perfOpenHtml(data), 'l'); // landscape — 7 columns
+}
+
+// ─── CLOSED format (5-column simplified table, portrait) ───────────
+function perfClosedHtml(data) {
+  const u = data.user;
+  const monthLabel = `${IA_MONTH_NAMES[data.month - 1]} ${data.year}`;
+  const rows = PERF_CLOSED_ROWS.map((r, i) => `
+    <tr>
+      <td style="border:1px solid #444;padding:4px 6px;text-align:center">${i + 1}</td>
+      <td style="border:1px solid #444;padding:4px 6px">${r.ind}</td>
+      <td style="border:1px solid #444;padding:4px 6px">${r.tgt}</td>
+      <td style="border:1px solid #444;padding:4px 6px;text-align:center">Acheived</td>
+      <td style="border:1px solid #444;padding:4px 6px"></td>
+    </tr>`).join('');
+
+  const body = `
+    ${perfHeaderHtml('Office of the Dy. District Education Officer (M-EE) Tehsil Karor', u, monthLabel)}
+    <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:6px">
+      <thead>
+        <tr style="background:#f2f2f2">
+          <th style="border:1px solid #444;padding:4px 6px;width:5%">Sr.</th>
+          <th style="border:1px solid #444;padding:4px 6px;width:22%">Indicators</th>
+          <th style="border:1px solid #444;padding:4px 6px;width:38%">Targets</th>
+          <th style="border:1px solid #444;padding:4px 6px;width:15%">Performance</th>
+          <th style="border:1px solid #444;padding:4px 6px;width:20%">Remarks of Immediate Officer</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${perfFooterHtml(data.amount, u.markaz_name)}`;
+  return `<div style="width:794px;min-height:1123px;padding:40px 46px;font-family:'Calibri','Arial',sans-serif;color:#111;box-sizing:border-box">${body}</div>`;
+}
+
+async function perfBuildClosedPdfBytes(data) {
+  return perfRenderToPdf(perfClosedHtml(data), 'p'); // portrait — 5 columns
+}
+
+// ─── Shared single-page HTML → PDF renderer ─────────────────────────
+async function perfRenderToPdf(html, orientation) {
+  const target = document.getElementById('iaPdfRenderTarget');
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF(orientation, 'pt', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+
+  // The render target has a fixed 794px (portrait) width in its base CSS —
+  // widen it for landscape content so html2canvas doesn't clip the table.
+  const prevWidth = target.style.width;
+  target.style.width = orientation === 'l' ? '1123px' : '794px';
+  target.innerHTML = html;
+  await new Promise(r => setTimeout(r, 120));
+  const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+  const imgData = canvas.toDataURL('image/jpeg', 0.92);
+  const ratio = pageWidth / canvas.width;
+  const scaledHeight = canvas.height * ratio;
+  pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(scaledHeight, pageHeight));
+  target.innerHTML = '';
+  target.style.width = prevWidth || '794px';
+  return pdf.output('arraybuffer');
 }
 
 // ─── Number → words (Pakistani/Indian numbering: Lakh, Crore) ──────
