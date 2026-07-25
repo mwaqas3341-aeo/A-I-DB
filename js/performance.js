@@ -1,16 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════
 //  PERFORMANCE REPORT — "AEO Monthly Performance Certificate"
 //  Updated for Letter-size, single-page layout with split-header.
-//  Includes precise fractional rounding logic to prevent total drift.
-//  Includes Fixed Table Layout for constrained column widths & text wrap.
+//  Includes exact Letter aspect-ratio container and column wrapping.
 // ═══════════════════════════════════════════════════════════════════
 
 const PERF_MAX_MONTHS = 4;
 const PERF_MIN_MONTHS = 1;
 
-// kind: 'percent' → user enters achieved %, credited if achieved >= targetPct
-//       'yesno'   → user ticks Achieved/Not Achieved
-//       'fixed'   → not editable, always credited (matches template default)
 const PERF_OPEN_ROWS = [
   { ind: 'AEO Visits',                                                    tgtLabel: '100',                                                        kind: 'percent', targetPct: 100, weight: 0.40 },
   { ind: 'LND (E,M,U)',                                                   tgtLabel: '80% per Quarter',                                            kind: 'fixed',   fixedAch: 'Not Conducted By PMIU', fixedRmk: 'Not Applicable', weight: 0.04 },
@@ -311,7 +307,7 @@ function perfFooterHtml(amount, u, sigUrl) {
     </table>`;
 }
 
-// ─── OPEN format — Table-layout: fixed + word-wrap applied ──────────
+// ─── OPEN format — Constrained Layout ───────────────────────────────
 function perfOpenHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -319,7 +315,7 @@ function perfOpenHtml(data) {
   const rows = PERF_OPEN_ROWS.map((r, i) => {
     const stored = cfg.achieved[i];
     const credited = perfIsCredited(r, stored);
-    const amt = perfRowAmount(r);
+    const amt = perfRowAmount(r); 
 
     let achCell = '', rmkCell = '';
     if (r.kind === 'fixed') { 
@@ -336,42 +332,41 @@ function perfOpenHtml(data) {
       }
     }
 
-    // vertical-align: middle keeps the text balanced when it wraps to multiple lines
     return `<tr>
-      <td style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle">${i + 1}</td>
-      <td style="border:1px solid #000;padding:3px 4px;vertical-align:middle">${r.ind}</td>
-      <td style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle">${r.tgtLabel}</td>
-      <td style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle">${achCell}</td>
-      <td style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle">${amt.toLocaleString()}/-</td>
-      <td style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle">${rmkCell}</td>
-      <td style="border:1px solid #000;padding:3px 4px;vertical-align:middle"></td>
+      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${i + 1}</td>
+      <td style="border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:left">${r.ind}</td>
+      <td style="border:1px solid #000;padding:2px 4px;vertical-align:middle;text-align:left">${r.tgtLabel}</td>
+      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${achCell}</td>
+      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${amt.toLocaleString()}/-</td>
+      <td style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle">${rmkCell}</td>
+      <td style="border:1px solid #000;padding:2px 4px;vertical-align:middle"></td>
     </tr>`;
   }).join('');
 
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
-    <!-- Added table-layout: fixed; and word-wrap: break-word; to strictly enforce column widths -->
-    <table style="width:100%;border-collapse:collapse;font-size:8.7pt;font-weight:700;margin-bottom:0;line-height:1.2;table-layout:fixed;word-wrap:break-word;">
+    <table style="width:100%;border-collapse:collapse;font-size:8.2pt;font-weight:700;margin-bottom:0;line-height:1.15;table-layout:fixed;overflow-wrap:break-word;">
       <thead>
         <tr>
-          <!-- Custom narrow width for Sr (5%), rebalanced other columns to equal exactly 100% -->
-          <th style="border:1px solid #000;padding:4px;width:5%">Sr.</th>
-          <th style="border:1px solid #000;padding:4px;width:18%">Indicators</th>
-          <th style="border:1px solid #000;padding:4px;width:23%">Targets %age</th>
-          <th style="border:1px solid #000;padding:4px;width:14%">Target Achieved by AEO</th>
-          <th style="border:1px solid #000;padding:4px;width:14%">Entitlement of Allowance rupees</th>
-          <th style="border:1px solid #000;padding:4px;width:16%">Remarks of Immediate Officer</th>
-          <th style="border:1px solid #000;padding:4px;width:10%">Initials of DDO</th>
+          <!-- Tweaked widths to give text-heavy columns more horizontal room -->
+          <th style="border:1px solid #000;padding:3px;width:4%">Sr.</th>
+          <th style="border:1px solid #000;padding:3px;width:18%">Indicators</th>
+          <th style="border:1px solid #000;padding:3px;width:26%">Targets %age</th>
+          <th style="border:1px solid #000;padding:3px;width:13%">Target Achieved by AEO</th>
+          <th style="border:1px solid #000;padding:3px;width:14%">Entitlement of Allowance rupees</th>
+          <th style="border:1px solid #000;padding:3px;width:16%">Remarks of Immediate Officer</th>
+          <th style="border:1px solid #000;padding:3px;width:9%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
   
-  return `<div style="width:816px;padding:44px 52px 36px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box">${body}</div>`;
+  // Bound to minimum pixel height of 11-inch letter paper to prevent vertical scaling issues
+  return `<div style="width:816px;min-height:1056px;padding:36px 48px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
-// ─── CLOSED format — Table-layout: fixed + word-wrap applied ────────
+// ─── CLOSED format — Constrained Layout ─────────────────────────────
 function perfClosedHtml(data) {
   const u = data.user;
   const cfg = data.cfg;
@@ -381,8 +376,8 @@ function perfClosedHtml(data) {
     const credited = perfIsCredited(r, stored);
     return `<tr>
       <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:middle">${i + 1}</td>
-      <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle">${r.ind}</td>
-      <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle">${r.tgtLabel}</td>
+      <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle;text-align:left">${r.ind}</td>
+      <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle;text-align:left">${r.tgtLabel}</td>
       <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:middle">${credited ? 'Achieved' : 'Not Achieved'}</td>
       <td style="border:1px solid #000;padding:3px 5px;vertical-align:middle"></td>
     </tr>`;
@@ -390,22 +385,22 @@ function perfClosedHtml(data) {
 
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
-    <!-- Added table-layout: fixed; and word-wrap: break-word; to strictly enforce column widths -->
-    <table style="width:100%;border-collapse:collapse;font-size:8.7pt;font-weight:700;margin-bottom:0;line-height:1.2;table-layout:fixed;word-wrap:break-word;">
+    <table style="width:100%;border-collapse:collapse;font-size:8.2pt;font-weight:700;margin-bottom:0;line-height:1.15;table-layout:fixed;overflow-wrap:break-word;">
       <thead>
         <tr>
-          <!-- Custom narrow width for Sr (6%), rebalanced other columns to equal exactly 100% -->
-          <th style="border:1px solid #000;padding:4px;width:6%">Sr.</th>
-          <th style="border:1px solid #000;padding:4px;width:22%">Indicators</th>
-          <th style="border:1px solid #000;padding:4px;width:36%">Targets</th>
-          <th style="border:1px solid #000;padding:4px;width:16%">Performance</th>
-          <th style="border:1px solid #000;padding:4px;width:20%">Remarks of Immediate Officer</th>
+          <!-- Tweaked widths to give Targets and Indicators max space -->
+          <th style="border:1px solid #000;padding:3px;width:5%">Sr.</th>
+          <th style="border:1px solid #000;padding:3px;width:20%">Indicators</th>
+          <th style="border:1px solid #000;padding:3px;width:38%">Targets</th>
+          <th style="border:1px solid #000;padding:3px;width:15%">Performance</th>
+          <th style="border:1px solid #000;padding:3px;width:22%">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
-  return `<div style="width:816px;padding:44px 52px 36px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box">${body}</div>`;
+    
+  return `<div style="width:816px;min-height:1056px;padding:36px 48px;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
 // ─── PDF Engine configured to 'letter' output ───────────────────────
