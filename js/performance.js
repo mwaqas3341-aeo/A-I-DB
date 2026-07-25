@@ -8,11 +8,11 @@ const PERF_MAX_MONTHS = 4;
 const PERF_MIN_MONTHS = 1;
 
 // Optimised font sizes for A4 (595pt wide, 841.89pt tall)
-const PERF_HEAD_PT     = 8.8;
-const PERF_BODY_PT     = 7.8;
-const PERF_LINE_HEIGHT = 1.12;
+const PERF_HEAD_PT     = 8.5;
+const PERF_BODY_PT     = 7.5;
+const PERF_LINE_HEIGHT = 1.1;
 
-// Explicitly set text color to black for headers, and tight padding
+// Explicit black text, tight padding, and box-sizing to include borders
 const PERF_TH_STYLE = `border:1px solid #000;padding:2px 3px;background:#f2f2f2;color:#000000;font-size:${PERF_HEAD_PT}pt;font-weight:700;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;box-sizing:border-box;`;
 const PERF_TD_STYLE = `border:1px solid #000;padding:1px 3px;color:#000000;font-size:${PERF_BODY_PT}pt;font-weight:400;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;box-sizing:border-box;`;
 
@@ -158,15 +158,15 @@ function perfConfigTableHtml(month, cfg) {
   const rows = isOpen ? PERF_OPEN_ROWS : PERF_CLOSED_ROWS;
   const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg, isOpen)).join('');
 
-  const th = 'border:1px solid var(--b0);background:var(--s2);padding:5px 4px;font-size:.7rem;font-weight:700;text-align:left;vertical-align:middle;color:#000000;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
+  const th = 'border:1px solid var(--b0);background:var(--s2);padding:4px 3px;font-size:.7rem;font-weight:700;text-align:left;vertical-align:middle;color:#000000;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
   const heads = isOpen
     ? `<th style="${th}width:4%">Sr.</th>
        <th style="${th}width:15%">Indicators</th>
-       <th style="${th}width:20%">Targets %age</th>
-       <th style="${th}width:20%">Target Achieved by AEO</th>
-       <th style="${th}width:14%;text-align:right">Entitlement</th>
-       <th style="${th}width:15%">Remarks of Immediate Officer</th>
-       <th style="${th}width:12%">Initials of DDO</th>`
+       <th style="${th}width:18%">Targets %age</th>
+       <th style="${th}width:12%">Target Achieved by AEO</th>
+       <th style="${th}width:12%;text-align:right">Entitlement</th>
+       <th style="${th}width:25%">Remarks of Immediate Officer</th>
+       <th style="${th}width:14%">Initials of DDO</th>`
     : `<th style="${th}width:5%">Sr.</th>
        <th style="${th}width:18%">Indicators</th>
        <th style="${th}width:32%">Targets</th>
@@ -184,18 +184,18 @@ function perfIndicatorRowHtml(month, row, idx, cfg, isOpen) {
   const credited = perfIsCredited(row, stored);
   const entitlement = perfRowAmount(row);
   const { rmkCell } = perfRowDisplayCells(row, stored, credited);
-  const td = 'border:1px solid var(--b0);padding:4px;vertical-align:middle;color:#000000;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
+  const td = 'border:1px solid var(--b0);padding:3px;vertical-align:middle;color:#000000;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
 
   let achievedCell;
   if (row.kind === 'fixed') {
     achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
   } else if (row.kind === 'percent') {
     const val = stored ?? row.targetPct;
-    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:52px;height:26px;border:1px solid var(--b0);border-radius:5px;padding:0 4px;font-size:.7rem"
+    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:48px;height:24px;border:1px solid var(--b0);border-radius:5px;padding:0 3px;font-size:.65rem"
       oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
   } else {
     const val = stored ?? true;
-    achievedCell = `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap">
+    achievedCell = `<label style="display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap">
       <input type="checkbox" ${val ? 'checked' : ''} onchange="perfUpdateAchieved(${month}, ${idx}, this.checked)"> Achieved
     </label>`;
   }
@@ -316,38 +316,38 @@ async function perfDownloadCertificate() {
 function perfHeaderHtml(officeLine, u, monthLabel) {
   // Reduced margins and tighter spacing to squeeze more width
   return `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; font-size:9.5pt;">
-      <table style="width:35%; border-collapse:collapse; font-weight:700; font-size:9pt;">
-        <tr><td style="padding:2px 0; width:60px">AEO Name:</td><td style="padding:2px 0; border-bottom:1px solid #333">${u.name || ''}</td></tr>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:9pt;">
+      <table style="width:35%; border-collapse:collapse; font-weight:700; font-size:8.5pt;">
+        <tr><td style="padding:2px 0; width:55px">AEO Name:</td><td style="padding:2px 0; border-bottom:1px solid #333">${u.name || ''}</td></tr>
         <tr><td style="padding:2px 0">Markaz:</td><td style="padding:2px 0; border-bottom:1px solid #333">${u.markaz_name || ''}</td></tr>
         <tr><td style="padding:2px 0">Month:</td><td style="padding:2px 0; border-bottom:1px solid #333">${monthLabel}</td></tr>
         <tr><td style="padding:2px 0">Cell No:</td><td style="padding:2px 0; border-bottom:1px solid #333">${u.cell_no || u.cnic || ''}</td></tr>
       </table>
       <div style="width:63%; text-align:center;">
-        <div style="font-size:11.5pt; font-weight:700; line-height:1.15; margin-bottom:4px; word-wrap:break-word; overflow-wrap:break-word;">${officeLine}</div>
-        <div style="font-size:10.5pt; font-weight:700; text-decoration:underline; text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
+        <div style="font-size:11pt; font-weight:700; line-height:1.1; margin-bottom:3px; word-wrap:break-word; overflow-wrap:break-word;">${officeLine}</div>
+        <div style="font-size:10pt; font-weight:700; text-decoration:underline; text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
       </div>
     </div>`;
 }
 
 function perfFooterHtml(amount, u, sigUrl) {
   return `
-    <p style="font-size:8.5pt;font-weight:700;margin:4px 0 12px;line-height:1.25;word-wrap:break-word;overflow-wrap:break-word;">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
+    <p style="font-size:8.5pt;font-weight:700;margin:3px 0 10px;line-height:1.2;word-wrap:break-word;overflow-wrap:break-word;">${PERF_KPI_NOTICE} worth PKR ${Number(amount).toLocaleString()}</p>
     <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700">
       <tr>
-        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 10px">
-          <div style="height:30px;display:flex;align-items:flex-end;justify-content:center">
-            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:28px;max-width:150px;filter:grayscale(1) contrast(1.4) brightness(.85)">` : ''}
+        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px">
+          <div style="height:28px;display:flex;align-items:flex-end;justify-content:center">
+            ${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:26px;max-width:140px;filter:grayscale(1) contrast(1.4) brightness(.85)">` : ''}
           </div>
           <div style="border-top:1px solid #000;padding-top:2px">Assistant Education Officer</div>
-          <div style="font-weight:400;font-size:7.5pt">${u.markaz_name || ''}</div>
+          <div style="font-weight:400;font-size:7pt">${u.markaz_name || ''}</div>
         </td>
-        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 10px">
-          <div style="height:30px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center">
+        <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px">
+          <div style="height:28px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center">
             <span style="font-weight:400;font-size:6.5pt;color:#555">Signature &amp; Office Stamp</span>
           </div>
           <div style="border-top:1px solid #000;padding-top:2px">Deputy District Education Officer</div>
-          <div style="font-weight:400;font-size:7.5pt">Tehsil Karor</div>
+          <div style="font-weight:400;font-size:7pt">Tehsil Karor</div>
         </td>
       </tr>
     </table>`;
@@ -375,26 +375,26 @@ function perfOpenHtml(data) {
     </tr>`;
   }).join('');
 
-  // A4 container: 595pt wide, 841.89pt high, with 20pt left/right margins
+  // A4 container: 595pt wide, 841.89pt high, with 16pt left/right margins
   const body = `
     ${perfHeaderHtml('OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR', u, monthLabel)}
     <table style="width:100%;border-collapse:collapse;font-size:${PERF_BODY_PT}pt;margin-bottom:0;line-height:${PERF_LINE_HEIGHT};table-layout:fixed;">
       <thead>
         <tr>
-          <th style="${PERF_TH_STYLE}width:5%">Sr.</th>
-          <th style="${PERF_TH_STYLE}width:16%">Indicators</th>
-          <th style="${PERF_TH_STYLE}width:20%">Targets %age</th>
-          <th style="${PERF_TH_STYLE}width:14%">Target Achieved by AEO</th>
-          <th style="${PERF_TH_STYLE}width:15%">Entitlement of Allowance rupees</th>
-          <th style="${PERF_TH_STYLE}width:20%">Remarks of Immediate Officer</th>
-          <th style="${PERF_TH_STYLE}width:10%">Initials of DDO</th>
+          <th style="${PERF_TH_STYLE}width:4%">Sr.</th>
+          <th style="${PERF_TH_STYLE}width:15%">Indicators</th>
+          <th style="${PERF_TH_STYLE}width:18%">Targets %age</th>
+          <th style="${PERF_TH_STYLE}width:12%">Target Achieved by AEO</th>
+          <th style="${PERF_TH_STYLE}width:12%">Entitlement of Allowance rupees</th>
+          <th style="${PERF_TH_STYLE}width:25%">Remarks of Immediate Officer</th>
+          <th style="${PERF_TH_STYLE}width:14%">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400">${rows}</tbody>
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
   
-  return `<div style="width:595pt;min-height:841.89pt;padding:20pt 24pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:595pt;min-height:841.89pt;padding:16pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
 // ─── CLOSED format — A4 Fixed Column Widths ─────────────────────────
@@ -430,13 +430,13 @@ function perfClosedHtml(data) {
     </table>
     ${perfFooterHtml(data.amount, u, data.sigUrl)}`;
     
-  return `<div style="width:595pt;min-height:841.89pt;padding:20pt 24pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
+  return `<div style="width:595pt;min-height:841.89pt;padding:16pt 20pt;font-family:'Arial Narrow','Arial',sans-serif;color:#000;box-sizing:border-box;background:#fff">${body}</div>`;
 }
 
 // ─── PDF Engine for A4 output ────────────────────────────────────────
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById('iaPdfRenderTarget');
-  // Force render target to match A4 width (595pt)
+  // Force render target to match A4 width (595pt) - but don't set html2canvas width
   target.style.width = '595pt';
   const { jsPDF } = window.jspdf;
   
@@ -450,8 +450,8 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
     const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
-      backgroundColor: '#ffffff',
-      width: 595 // enforce A4 width in pixels for the canvas
+      backgroundColor: '#ffffff'
+      // DO NOT set width – let it capture the full element width
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
 
