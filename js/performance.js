@@ -7,6 +7,17 @@ const PERFMINMONTHS = 1;
 
 const PERFLETTER_WIDTH_PT = 612;
 const PERFLETTER_HEIGHT_PT = 792;
+// The shared #iaPdfRenderTarget div is also used by the Inspection
+// Allowance (A4, 794px) and Budget Prep builders, and its inline HTML
+// width is a plain "794px". Overriding it with a "pt" string relies on
+// the WebView correctly converting pt->px at 96dpi; some embedded
+// WebViews get that conversion wrong, which silently narrows the
+// render target and clips the right-hand columns (Initials of DDO,
+// the AEO Name/Markaz/Month/Cell No label column) exactly as seen in
+// the generated certificate. Driving both the container and the page
+// shell off a single px constant removes that ambiguity.
+const PERFLETTER_WIDTH_PX = Math.round((PERFLETTER_WIDTH_PT * 96) / 72); // 816
+const PERFLETTER_HEIGHT_PX = Math.round((PERFLETTER_HEIGHT_PT * 96) / 72); // 1056
 const PERFHEAD_PT = 9.0;
 const PERFBODY_PT = 8.0;
 const PERFLINEHEIGHT = 1.15;
@@ -209,7 +220,7 @@ function perfOpenHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PT}pt;min-height:${PERFLETTER_HEIGHT_PT}pt;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;">
       ${body}
     </div>`;
 }
@@ -250,7 +261,7 @@ function perfClosedHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PT}pt;min-height:${PERFLETTER_HEIGHT_PT}pt;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;">
       ${body}
     </div>`;
 }
@@ -271,7 +282,10 @@ async function perfGetSignatureUrl() {
 
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById("iaPdfRenderTarget");
-  target.style.width = `${PERFLETTER_WIDTH_PT}pt`;
+  // Fixed px width (see PERFLETTER_WIDTH_PX comment above) -- this div
+  // is shared with the 794px-wide Inspection Allowance/Budget Prep
+  // builders, so it's re-set on every call rather than assumed.
+  target.style.width = `${PERFLETTER_WIDTH_PX}px`;
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF("p", "pt", "letter");
@@ -281,14 +295,33 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
     await new Promise((r) => setTimeout(r, 300));
+    // Force layout to settle on the new width/content before measuring
+    // it below -- without this read, some WebViews can still report a
+    // stale scrollWidth from the previous page's HTML.
+    void target.offsetHeight;
 
-    // CRITICAL: no `width` option here -- letting html2canvas capture
-    // the element's own full width is what keeps the Remarks/Initials
-    // columns from being clipped.
+    // Previously this call passed no width/windowWidth, on the theory
+    // that letting html2canvas "capture the element's own full width"
+    // avoided clipping. In practice html2canvas falls back to the
+    // real device/WebView viewport width for its internal render
+    // window when no windowWidth is given -- on a phone that's far
+    // narrower than this 816px-wide certificate, so the right-hand
+    // columns (Initials of DDO, and the AEO Name/Markaz/Month/Cell No
+    // labels) were being laid out against a too-narrow window and
+    // clipped exactly as seen in the generated PDF. Pinning width and
+    // windowWidth to the target's own measured size forces html2canvas
+    // to lay out and capture at the certificate's real size regardless
+    // of the device screen it's generated on.
+    const captureWidth = target.scrollWidth;
+    const captureHeight = target.scrollHeight;
     const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
       backgroundColor: "#ffffff",
+      width: captureWidth,
+      height: captureHeight,
+      windowWidth: captureWidth,
+      windowHeight: captureHeight,
     });
 
     const imgData = canvas.toDataURL("image/jpeg", 0.92);
