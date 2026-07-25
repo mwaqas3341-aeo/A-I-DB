@@ -128,8 +128,6 @@ function perfRenderConfigPanels() {
 
   wrap.innerHTML = months.map(month => {
     const cfg = perfState.config[month];
-    const rows = cfg.status === 'open' ? PERF_OPEN_ROWS : PERF_CLOSED_ROWS;
-    const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg)).join('');
     const total = perfComputeMonthTotal(month);
 
     return `
@@ -145,7 +143,7 @@ function perfRenderConfigPanels() {
             </label>
           </div>
         </div>
-        <div style="border-top:1px solid var(--b0)">${rowsHtml}</div>
+        ${perfConfigTableHtml(month, cfg)}
         <div style="text-align:right;margin-top:8px;padding-top:8px;border-top:1px dashed var(--b0);font-weight:700;font-size:.88rem">
           Month Total: <span style="color:#0d9488" id="perfMonthTotal_${month}">PKR ${total.toLocaleString()}</span>
         </div>
@@ -156,36 +154,84 @@ function perfRenderConfigPanels() {
   perfUpdateGrandTotal();
 }
 
-function perfIndicatorRowHtml(month, row, idx, cfg) {
-  let achievedCell;
-  let entitlement = perfRowAmount(row);
+// ─── Prep-view table — mirrors the certificate's own column layout ──
+function perfConfigTableHtml(month, cfg) {
+  const isOpen = cfg.status === 'open';
+  const rows = isOpen ? PERF_OPEN_ROWS : PERF_CLOSED_ROWS;
+  const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg, isOpen)).join('');
 
+  const th = 'border:1px solid var(--b0);background:var(--s2);padding:6px 5px;font-size:.72rem;font-weight:700;text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
+  const heads = isOpen
+    ? `<th style="${th}width:4%">Sr.</th>
+       <th style="${th}width:15%">Indicators</th>
+       <th style="${th}width:20%">Targets %age</th>
+       <th style="${th}width:20%">Target Achieved by AEO</th>
+       <th style="${th}width:14%;text-align:right">Entitlement</th>
+       <th style="${th}width:15%">Remarks</th>
+       <th style="${th}width:12%">Initials of DDO</th>`
+    : `<th style="${th}width:5%">Sr.</th>
+       <th style="${th}width:18%">Indicators</th>
+       <th style="${th}width:32%">Targets</th>
+       <th style="${th}width:22%">Performance</th>
+       <th style="${th}width:23%">Remarks</th>`;
+
+  return `<table style="width:100%;border-collapse:collapse;font-size:.72rem;table-layout:fixed">
+    <thead><tr>${heads}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>`;
+}
+
+function perfIndicatorRowHtml(month, row, idx, cfg, isOpen) {
+  const stored = cfg.achieved[idx];
+  const credited = perfIsCredited(row, stored);
+  const entitlement = perfRowAmount(row);
+  const { rmkCell } = perfRowDisplayCells(row, stored, credited);
+  const td = 'border:1px solid var(--b0);padding:5px;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;';
+
+  let achievedCell;
   if (row.kind === 'fixed') {
     achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
   } else if (row.kind === 'percent') {
-    const val = cfg.achieved[idx] ?? row.targetPct; 
-    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:64px;height:28px;border:1px solid var(--b0);border-radius:5px;padding:0 6px"
+    const val = stored ?? row.targetPct;
+    achievedCell = `<input type="number" min="0" max="100" value="${val}" style="width:56px;height:26px;border:1px solid var(--b0);border-radius:5px;padding:0 5px;font-size:.72rem"
       oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
-  } else { 
-    const val = cfg.achieved[idx] ?? true; 
-    achievedCell = `<label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+  } else {
+    const val = stored ?? true;
+    achievedCell = `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap">
       <input type="checkbox" ${val ? 'checked' : ''} onchange="perfUpdateAchieved(${month}, ${idx}, this.checked)"> Achieved
     </label>`;
   }
 
-  const credited = perfIsCredited(row, cfg.achieved[idx]);
-  return `<div style="padding:9px 4px;border-bottom:1px solid var(--s2)">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-      <div style="font-weight:600;font-size:.8rem;flex:1;word-wrap:break-word">${idx + 1}. ${row.ind}</div>
-      <div style="font-weight:700;font-size:.8rem;white-space:nowrap;color:${credited ? '#0d9488' : 'var(--t3)'}">PKR ${(credited ? entitlement : 0).toLocaleString()}</div>
-    </div>
-    <div style="font-size:.74rem;color:var(--t3);line-height:1.35;margin:3px 0 7px;word-wrap:break-word">${row.tgtLabel}</div>
-    <div style="font-size:.8rem">${achievedCell}</div>
-  </div>`;
+  if (isOpen) {
+    return `<tr>
+      <td style="${td}text-align:center">${idx + 1}</td>
+      <td style="${td}">${row.ind}</td>
+      <td style="${td}color:var(--t3)">${row.tgtLabel}</td>
+      <td style="${td}text-align:center">${achievedCell}</td>
+      <td style="${td}text-align:right;font-weight:600;color:${credited ? '#0d9488' : 'var(--t3)'}">PKR ${(credited ? entitlement : 0).toLocaleString()}</td>
+      <td style="${td}color:var(--t3)">${rmkCell}</td>
+      <td style="${td}"></td>
+    </tr>`;
+  }
+  return `<tr>
+    <td style="${td}text-align:center">${idx + 1}</td>
+    <td style="${td}">${row.ind}</td>
+    <td style="${td}color:var(--t3)">${row.tgtLabel}</td>
+    <td style="${td}text-align:center">${achievedCell}</td>
+    <td style="${td}"></td>
+  </tr>`;
 }
 
 function perfRowAmount(row) {
   return Math.round(row.weight * (iaState.rate || 25000));
+}
+
+// Shared with the PDF renderer (perfOpenHtml) so the prep-view and the
+// exported certificate never drift apart on what "Achieved"/"Remarks" show.
+function perfRowDisplayCells(row, storedVal, credited) {
+  if (row.kind === 'fixed') return { achCell: row.fixedAch, rmkCell: row.fixedRmk };
+  if (row.kind === 'percent') return { achCell: credited ? (storedVal ?? row.targetPct) : '', rmkCell: '' };
+  return { achCell: credited ? 'Yes' : '', rmkCell: credited ? 'Achieved' : '' };
 }
 
 function perfIsCredited(row, storedVal) {
@@ -318,22 +364,8 @@ function perfOpenHtml(data) {
   const rows = PERF_OPEN_ROWS.map((r, i) => {
     const stored = cfg.achieved[i];
     const credited = perfIsCredited(r, stored);
-    const amt = perfRowAmount(r); 
-
-    let achCell = '', rmkCell = '';
-    if (r.kind === 'fixed') { 
-      achCell = r.fixedAch; 
-      rmkCell = r.fixedRmk; 
-    } else if (r.kind === 'percent') { 
-      if (credited) {
-        achCell = (stored ?? r.targetPct); 
-      }
-    } else { 
-      if (credited) {
-        achCell = 'Yes'; 
-        rmkCell = 'Achieved'; 
-      }
-    }
+    const amt = perfRowAmount(r);
+    const { achCell, rmkCell } = perfRowDisplayCells(r, stored, credited);
 
     return `<tr>
       <td style="${PERF_TD_STYLE}text-align:center">${i + 1}</td>
