@@ -277,19 +277,20 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
 
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
-    await new Promise((r) => setTimeout(r, 300));
-    void target.offsetHeight;
+    await new Promise((r) => setTimeout(r, 250));
 
-    const captureWidth = target.scrollWidth;
-    const captureHeight = target.scrollHeight;
+    // NOTE: deliberately NOT passing width/height/windowWidth/windowHeight
+    // here. Those were being computed from target.scrollWidth/scrollHeight
+    // while the target was still visibility:hidden, and combined with an
+    // async onclone that flips visibility back on, that produced a
+    // mismatched capture window — the root cause of the blank/broken
+    // certificates. Letting html2canvas size itself off the (now-visible,
+    // inside the clone) element, exactly like iaBuildBillPdfBytes and
+    // bpRenderTargetIntoPdf already do successfully elsewhere in this repo.
     const canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
       backgroundColor: "#ffffff",
-      width: captureWidth,
-      height: captureHeight,
-      windowWidth: captureWidth,
-      windowHeight: captureHeight,
       onclone: function (clonedDoc) {
         const clonedTarget = clonedDoc.getElementById("iaPdfRenderTarget");
         if (clonedTarget) clonedTarget.style.visibility = "visible";
