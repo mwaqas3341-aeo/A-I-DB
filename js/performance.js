@@ -153,18 +153,18 @@ function perfHeaderHtml(officeTitle, u, monthLabel) {
 function perfFooterHtml(amount, u) {
   const tehsil = perfTitleCase(u?.tehsil);
   return `
-  <p style="font-size:8.5pt;font-weight:700;margin:6px 0 10px;line-height:1.25;color:#000;word-wrap:break-word;overflow-wrap:break-word;">${PERFKPINOTICE} worth PKR ${Number(amount || 0).toLocaleString()}.</p>
-  <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700;color:#000;" dir="ltr">
+  <p style="font-size:11pt;font-weight:700;margin:12px 0 16px;line-height:1.4;color:#000;text-align:justify;text-indent:2em;word-wrap:break-word;overflow-wrap:break-word;">${PERFKPINOTICE} worth PKR ${Number(amount || 0).toLocaleString()}.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14pt;font-weight:700;color:#000;" dir="ltr">
     <tr>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
-        <div style="height:32px;"></div>
-        <div style="padding-top:2px;font-weight:700;">Assistant Education Officer</div>
-        <div style="font-weight:700;font-size:7.5pt;">${perfTitleCase(u?.markaz_name)}</div>
+        <div style="height:26px;"></div>
+        <div style="font-weight:700;font-size:14pt;">Assistant Education Officer</div>
+        <div style="font-weight:700;font-size:14pt;">${perfTitleCase(u?.markaz_name)}</div>
       </td>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
-        <div style="height:32px;"></div>
-        <div style="padding-top:2px;font-weight:700;">Deputy District Education Officer</div>
-        <div style="font-weight:700;font-size:7.5pt;">${tehsil ? `Tehsil ${tehsil}` : ""}</div>
+        <div style="height:26px;"></div>
+        <div style="font-weight:700;font-size:14pt;">Deputy District Education Officer</div>
+        <div style="font-weight:700;font-size:14pt;">${tehsil ? `Tehsil ${tehsil}` : ""}</div>
       </td>
     </tr>
   </table>`;
@@ -195,19 +195,15 @@ function perfOpenHtml(data) {
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER", u, monthLabel)}
     <table style="width:100%;table-layout:fixed;border-collapse:collapse;border-spacing:0;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
-      <colgroup>
-        <col style="width:5%"><col style="width:20%"><col style="width:18%">
-        <col style="width:12%"><col style="width:14%"><col style="width:16%"><col style="width:15%">
-      </colgroup>
       <thead>
         <tr>
-          <th style="${PERFTHSTYLE}">Sr.</th>
-          <th style="${PERFTHSTYLE}">Indicators</th>
-          <th style="${PERFTHSTYLE}">Targets %age</th>
-          <th style="${PERFTHSTYLE}">Target Achieved by AEO</th>
-          <th style="${PERFTHSTYLE}">Entitlement of Allowance rupees</th>
-          <th style="${PERFTHSTYLE}">Remarks of Immediate Officer</th>
-          <th style="${PERFTHSTYLE}">Initials of DDO</th>
+          <th style="${PERFTHSTYLE}width:40px;">Sr.</th>
+          <th style="${PERFTHSTYLE}width:150px;">Indicators</th>
+          <th style="${PERFTHSTYLE}width:140px;">Targets %age</th>
+          <th style="${PERFTHSTYLE}width:95px;">Target Achieved by AEO</th>
+          <th style="${PERFTHSTYLE}width:108px;">Entitlement of Allowance rupees</th>
+          <th style="${PERFTHSTYLE}width:130px;">Remarks of Immediate Officer</th>
+          <th style="${PERFTHSTYLE}width:115px;">Initials of DDO</th>
         </tr>
       </thead>
       <tbody style="font-weight:400;">${rows}</tbody>
@@ -242,17 +238,13 @@ function perfClosedHtml(data) {
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER", u, monthLabel)}
     <table style="width:100%;table-layout:fixed;border-collapse:collapse;border-spacing:0;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
-      <colgroup>
-        <col style="width:5%"><col style="width:22%"><col style="width:28%">
-        <col style="width:20%"><col style="width:25%">
-      </colgroup>
       <thead>
         <tr>
-          <th style="${PERFTHSTYLE}">Sr.</th>
-          <th style="${PERFTHSTYLE}">Indicators</th>
-          <th style="${PERFTHSTYLE}">Targets</th>
-          <th style="${PERFTHSTYLE}">Performance</th>
-          <th style="${PERFTHSTYLE}">Remarks of Immediate Officer</th>
+          <th style="${PERFTHSTYLE}width:40px;">Sr.</th>
+          <th style="${PERFTHSTYLE}width:175px;">Indicators</th>
+          <th style="${PERFTHSTYLE}width:215px;">Targets</th>
+          <th style="${PERFTHSTYLE}width:155px;">Performance</th>
+          <th style="${PERFTHSTYLE}width:193px;">Remarks of Immediate Officer</th>
         </tr>
       </thead>
       <tbody style="font-weight:400;">${rows}</tbody>
