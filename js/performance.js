@@ -9,13 +9,13 @@ const PERFLETTER_WIDTH_PT = 612;
 const PERFLETTER_HEIGHT_PT = 792;
 const PERFLETTER_WIDTH_PX = Math.round((PERFLETTER_WIDTH_PT * 96) / 72); // 816
 const PERFLETTER_HEIGHT_PX = Math.round((PERFLETTER_HEIGHT_PT * 96) / 72); // 1056
-const PERFHEAD_PT = 7.5;
-const PERFBODY_PT = 9.5;
-const PERFLINEHEIGHT = 1.2;
+const PERFHEAD_PT = 7.0;
+const PERFBODY_PT = 9.0;
+const PERFLINEHEIGHT = 1.25;
 
 const PERFTHSTYLE = `
   border:1px solid #000;
-  padding:3px 4px;
+  padding:3px 3px;
   background:#f2f2f2;
   color:#000000;
   font-size:${PERFHEAD_PT}pt;
@@ -24,12 +24,13 @@ const PERFTHSTYLE = `
   white-space:normal;
   word-wrap:break-word;
   overflow-wrap:break-word;
+  word-break:break-word;
   box-sizing:border-box;
 `;
 
 const PERFTDSTYLE = `
   border:1px solid #000;
-  padding:2px 4px;
+  padding:3px 3px;
   color:#000000;
   font-size:${PERFBODY_PT}pt;
   font-weight:400;
@@ -37,6 +38,7 @@ const PERFTDSTYLE = `
   white-space:normal;
   word-wrap:break-word;
   overflow-wrap:break-word;
+  word-break:break-word;
   box-sizing:border-box;
 `;
 
@@ -192,10 +194,10 @@ function perfOpenHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER", u, monthLabel)}
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
+    <table style="width:100%;table-layout:fixed;border-collapse:collapse;border-spacing:0;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
       <colgroup>
-        <col style="width:6%"><col style="width:24%"><col style="width:22%">
-        <col style="width:12%"><col style="width:12%"><col style="width:14%"><col style="width:10%">
+        <col style="width:5%"><col style="width:20%"><col style="width:18%">
+        <col style="width:12%"><col style="width:14%"><col style="width:16%"><col style="width:15%">
       </colgroup>
       <thead>
         <tr>
@@ -214,7 +216,7 @@ function perfOpenHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:10pt 20pt 18pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;overflow:hidden;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:10pt 14pt 16pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
       ${body}
     </div>`;
 }
@@ -239,10 +241,10 @@ function perfClosedHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER", u, monthLabel)}
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
+    <table style="width:100%;table-layout:fixed;border-collapse:collapse;border-spacing:0;font-size:${PERFBODY_PT}pt;margin-top:8px;margin-bottom:0;line-height:${PERFLINEHEIGHT};color:#000;" dir="ltr">
       <colgroup>
-        <col style="width:6%"><col style="width:24%"><col style="width:35%">
-        <col style="width:18%"><col style="width:17%">
+        <col style="width:5%"><col style="width:22%"><col style="width:28%">
+        <col style="width:20%"><col style="width:25%">
       </colgroup>
       <thead>
         <tr>
@@ -259,7 +261,7 @@ function perfClosedHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:10pt 20pt 18pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;overflow:hidden;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;padding:10pt 14pt 16pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
       ${body}
     </div>`;
 }
