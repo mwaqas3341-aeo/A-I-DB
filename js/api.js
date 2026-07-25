@@ -217,6 +217,28 @@ function _buildUserSchoolFilter(user, opts) {
 }
 
 /**
+ * Shared "24 hours for non-admins, no limit for admins" revert policy.
+ * Returns an error string if the window has closed, or null if the
+ * revert is allowed. Takes the timestamp of the SPECIFIC action being
+ * undone (a staff_events row's created_at when we have one, or the
+ * staff row's own changes_made_at for the older status-revert path
+ * that isn't tied to an individual event id) — not "now", so a
+ * non-admin can't extend their own window by touching the record
+ * again after the fact.
+ */
+function _checkRevertWindow(user, actionTimestamp) {
+  const isAdminUser = user && String(user.role || '').toLowerCase() === 'admin';
+  if (isAdminUser) return null;
+  const changedAt = actionTimestamp ? new Date(actionTimestamp) : null;
+  const hoursSince = changedAt ? (Date.now() - changedAt.getTime()) / (1000 * 60 * 60) : Infinity;
+  if (hoursSince > 24) {
+    return 'This action can no longer be reverted — it was made more than 24 hours ago. ' +
+           'Please contact an admin, who can revert it at any time.';
+  }
+  return null;
+}
+
+/**
  * Reads staff_events (written by executeTransfer / executeMutualTransfer /
  * executePromotion) and shapes it into the { headers, rows } format the
  * Transfer_History / Promotions_History HR tabs expect. There was
@@ -281,6 +303,23 @@ async function _staffEventHistoryRows(eventTypes, reqUser) {
       _row:                   e.id,
       'PERSONAL NO.':          e.personal_no || '',   // aliases some HR-side code looks for
       'NAME OF TEACHER':       e.employee_name || '',
+      // BUGFIX (2026-07-24): rows here never carried District/Wing/
+      // Tehsil/MARKAZ NAME at all. The HR tab's jurisdiction dropdowns
+      // auto-preselect a non-admin user's own District/Wing/Tehsil/
+      // Markaz on every tab switch (see buildHrDistrictDropdown in
+      // hr_view.js) — including Transfer_History/Promotions_History —
+      // and the client-side filter in runHrClientFilter compares that
+      // against these row fields. With the fields missing, every row
+      // read as blank district/wing/etc., never matched the
+      // auto-selected value, and got filtered out — so these two tabs
+      // showed "No records found" for every non-admin user even though
+      // the data loaded fine. Using the employee's CURRENT jurisdiction
+      // (same source _buildUserSchoolFilter above already scopes by)
+      // fixes the filter and makes it actually useful on these tabs.
+      'District':              s.district || '',
+      'Wing':                  s.wing || '',
+      'Tehsil':                s.tehsil || '',
+      'MARKAZ NAME':           s.markaz_name || '',
     });
   }
 
@@ -1411,22 +1450,117 @@ async function apiCall(action, payload) {
     case 'revertToActiveStaff': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
+      const sourceSheetName = p.sourceSheetName || p.source_sheet_name || '';
+      const rowNum = p.rowNum || p.row_num || p._row;
+
+      // BUGFIX (2026-07-24): this case used to ALWAYS just flip status
+      // back to 'active' regardless of sourceSheetName — which is the
+      // right thing for undoing a Termination/Retirement/Resignation/
+      // Deceased action, but does nothing for Transfer_History or
+      // Promotions_History rows (those employees are already 'active';
+      // the thing that needs undoing is their school or designation/
+      // BPS). "Undo Transfer" and "Undo Promotion" called this same
+      // case but the school/designation was never actually restored.
+      // Now each sheet type restores what it's actually supposed to.
+
+      if (sourceSheetName === 'Transfer_History') {
+        if (!rowNum) return { success: false, error: 'Could not identify which transfer to undo (missing event id).' };
+        const { data: ev } = await _sb.from('staff_events').select('*').eq('id', rowNum).maybeSingle();
+        if (!ev) return { success: false, error: 'That transfer record could not be found — it may have already been reverted.' };
+
+        const winErr = _checkRevertWindow(user, ev.created_at);
+        if (winErr) return { success: false, error: winErr };
+
+        const d = ev.details || {};
+        const fromEmis = d.from_emis;
+        if (!fromEmis) return { success: false, error: 'This transfer has no recorded original school to revert to.' };
+        const { data: fromSchool } = await _sb.from('schools')
+          .select('district, wing, tehsil, markaz, school_name').eq('emis', fromEmis).maybeSingle();
+        if (!fromSchool) return { success: false, error: `The original school (EMIS ${fromEmis}) could not be found — it may have been removed from the schools list.` };
+
+        if (ev.event_type === 'mutual_transfer') {
+          const partnerPno = d.swapped_with_personal_no;
+          if (!partnerPno) return { success: false, error: 'This mutual transfer has no recorded swap partner to revert.' };
+          // to_emis on MY event is the partner's ORIGINAL school (that's
+          // how the swap was built), so no separate lookup of the
+          // partner's own event is needed to know where they should go.
+          const toEmis = d.to_emis;
+          const { data: toSchool } = await _sb.from('schools')
+            .select('district, wing, tehsil, markaz, school_name').eq('emis', toEmis).maybeSingle();
+          if (!toSchool) return { success: false, error: `The swap partner's original school (EMIS ${toEmis}) could not be found.` };
+
+          const { error: mtErr } = await _sb.rpc('staff_mutual_transfer_privileged', {
+            p_personal_no_a: pno, p_personal_no_b: partnerPno,
+            p_updates_a: _sanitizeEmpty({
+              school_emis_code: fromEmis, school_name: fromSchool.school_name, markaz_name: fromSchool.markaz,
+              tehsil: fromSchool.tehsil, district: fromSchool.district, wing: fromSchool.wing,
+              changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
+            }),
+            p_updates_b: _sanitizeEmpty({
+              school_emis_code: toEmis, school_name: toSchool.school_name, markaz_name: toSchool.markaz,
+              tehsil: toSchool.tehsil, district: toSchool.district, wing: toSchool.wing,
+              changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
+            }),
+          });
+          if (mtErr) return { success: false, error: `Could not undo mutual transfer: ${mtErr.message}` };
+
+          // Remove the partner's matching mutual_transfer event too, so
+          // their side disappears from Transfer_History as well. Matched
+          // by the JSONB details rather than notification_no/date, which
+          // can be blank/shared across unrelated transfers.
+          await _sb.from('staff_events').delete()
+            .eq('personal_no', partnerPno).eq('event_type', 'mutual_transfer')
+            .contains('details', { swapped_with_personal_no: pno });
+        } else {
+          const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
+            school_emis_code: fromEmis, school_name: fromSchool.school_name, markaz_name: fromSchool.markaz,
+            tehsil: fromSchool.tehsil, district: fromSchool.district, wing: fromSchool.wing,
+            changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
+          }));
+          if (!r.ok) return { success: false, error: r.message };
+        }
+
+        await _sb.from('staff_events').delete().eq('id', rowNum);
+        await _sb.from('staff_events').insert([{
+          personal_no: pno, employee_name: ev.employee_name || '', event_type: 'revert',
+          details: { reverted_event_type: ev.event_type, restored_to_emis: fromEmis },
+          created_by: user?.name || '',
+        }]);
+        return { success: true, message: 'Transfer undone successfully.' };
+      }
+
+      if (sourceSheetName === 'Promotions_History') {
+        if (!rowNum) return { success: false, error: 'Could not identify which promotion to undo (missing event id).' };
+        const { data: ev } = await _sb.from('staff_events').select('*').eq('id', rowNum).maybeSingle();
+        if (!ev) return { success: false, error: 'That promotion record could not be found — it may have already been reverted.' };
+
+        const winErr = _checkRevertWindow(user, ev.created_at);
+        if (winErr) return { success: false, error: winErr };
+
+        const d = ev.details || {};
+        const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
+          designation: d.old_designation || '', bps: d.old_bps || '',
+          changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
+        }));
+        if (!r.ok) return { success: false, error: r.message };
+
+        await _sb.from('staff_events').delete().eq('id', rowNum);
+        await _sb.from('staff_events').insert([{
+          personal_no: pno, employee_name: ev.employee_name || '', event_type: 'revert',
+          details: { reverted_event_type: 'promotion', restored_designation: d.old_designation || '', restored_bps: d.old_bps || '' },
+          created_by: user?.name || '',
+        }]);
+        return { success: true, message: 'Promotion undone successfully.' };
+      }
+
+      // ── Status-change reverts (Termination / Retirement / Resignation
+      // / Deceased → back to Active). Unchanged apart from routing
+      // through the shared _checkRevertWindow helper above.
       const { data: s } = await _sb.from('staff').select('name_of_teacher, status, changes_made_at').eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
-      // Non-admins can only revert within 24 hours of the action that
-      // needs undoing — admins have no time restriction at all.
-      if (!user || String(user.role || '').toLowerCase() !== 'admin') {
-        const changedAt = s.changes_made_at ? new Date(s.changes_made_at) : null;
-        const hoursSince = changedAt ? (Date.now() - changedAt.getTime()) / (1000 * 60 * 60) : Infinity;
-        if (hoursSince > 24) {
-          return {
-            success: false,
-            error: 'This action can no longer be reverted — it was made more than 24 hours ago. ' +
-                   'Please contact an admin, who can revert it at any time.',
-          };
-        }
-      }
+      const winErr = _checkRevertWindow(user, s.changes_made_at);
+      if (winErr) return { success: false, error: winErr };
 
       const r = await _staffPrivilegedUpdate(pno, {
         status: 'active',
