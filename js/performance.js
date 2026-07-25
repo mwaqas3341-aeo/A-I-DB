@@ -7,15 +7,6 @@ const PERFMINMONTHS = 1;
 
 const PERFLETTER_WIDTH_PT = 612;
 const PERFLETTER_HEIGHT_PT = 792;
-// The shared #iaPdfRenderTarget div is also used by the Inspection
-// Allowance (A4, 794px) and Budget Prep builders, and its inline HTML
-// width is a plain "794px". Overriding it with a "pt" string relies on
-// the WebView correctly converting pt->px at 96dpi; some embedded
-// WebViews get that conversion wrong, which silently narrows the
-// render target and clips the right-hand columns (Initials of DDO,
-// the AEO Name/Markaz/Month/Cell No label column) exactly as seen in
-// the generated certificate. Driving both the container and the page
-// shell off a single px constant removes that ambiguity.
 const PERFLETTER_WIDTH_PX = Math.round((PERFLETTER_WIDTH_PT * 96) / 72); // 816
 const PERFLETTER_HEIGHT_PX = Math.round((PERFLETTER_HEIGHT_PT * 96) / 72); // 1056
 const PERFHEAD_PT = 9.0;
@@ -68,10 +59,6 @@ const PERFOPENROWS = [
   { ind: "Update SIS Data", tgtLabel: "Ensure all schools of markaz have updated data on SIS", kind: "yesno", weight: 0.04 },
 ];
 
-// NOTE: weight is 1/16 per row so the 16 rows sum to 1.0 (100% of rate).
-// The previous version of this file had weight: 0.10 on each of the 16
-// rows, which summed to 1.6 -- a Closed-month certificate would have
-// claimed 160% of the inspection allowance rate.
 const PERFCLOSEDROWS = [
   { ind: "Aeo Visits", tgtLabel: "Once in a Month" },
   { ind: "Teacher Training", tgtLabel: "Ensure That Teachers Attend Trainings" },
@@ -92,7 +79,7 @@ const PERFCLOSEDROWS = [
 ].map(r => ({ ...r, kind: "yesno", weight: 1 / 16 }));
 
 const PERFKPINOTICE =
-  "It is to certify that verifiable KPIs developed and issued by SED vide No. SO(SE-III)5-226/20020 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection Allowance as admissible under rules.";
+  "It is to certify that verifiable KPIs developed and issued by SED vide No. SO(SE-III)5-226/2020 dated 03-08-2020 has been achieved by the above named AEO. His performance is mentioned above against each indicator. He is entitled to get Inspection Allowance as admissible under rules.";
 
 const perfState = {
   selected: new Set(),
@@ -114,12 +101,6 @@ function perfIsCredited(row, storedVal) {
 }
 
 function perfRowAmount(row) {
-  // iaState/IA_MONTH_NAMES are plain top-level `let`/`const` globals
-  // declared in inspection-allowance.js -- NOT properties of `window`
-  // (only `var`/function declarations attach to window). Referencing
-  // them via `window.iaState` silently resolves to undefined, which
-  // is why every row previously fell back to the 25000 default rate
-  // regardless of the actual configured rate.
   return Math.round((row.weight || 0) * (iaState.rate || 25000));
 }
 
@@ -159,13 +140,13 @@ function perfFooterHtml(amount, u, sigUrl) {
   <table style="width:100%;border-collapse:collapse;font-size:8.5pt;font-weight:700;color:#000;" dir="ltr">
     <tr>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
-        <div style="height:30px;display:flex;align-items:flex-end;justify-content:center;">${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:28px;max-width:140px;filter:grayscale(1) contrast(1.4) brightness(.85);" />` : ""}</div>
+        <div style="height:30px;line-height:30px;text-align:center;">${sigUrl ? `<img src="${sigUrl}" crossorigin="anonymous" style="max-height:28px;max-width:140px;vertical-align:bottom;filter:grayscale(1) contrast(1.4) brightness(.85);" />` : ""}</div>
         <div style="border-top:1px solid #000;padding-top:2px;">Assistant Education Officer</div>
         <div style="font-weight:400;font-size:7.5pt;">${perfSafe(u?.markaz_name)}</div>
       </td>
       <td style="width:50%;text-align:center;vertical-align:bottom;padding:0 8px;">
-        <div style="height:30px;border:1px dashed #555;border-radius:4px;display:flex;align-items:center;justify-content:center;">
-          <span style="font-weight:400;font-size:6.5pt;color:#555;">Signature &amp; Office Stamp</span>
+        <div style="height:30px;border:1px dashed #555;border-radius:4px;text-align:center;line-height:30px;">
+          <span style="font-weight:400;font-size:6.5pt;color:#555;vertical-align:middle;">Signature &amp; Office Stamp</span>
         </div>
         <div style="border-top:1px solid #000;padding-top:2px;">Deputy District Education Officer</div>
         <div style="font-weight:400;font-size:7.5pt;">Tehsil Karor</div>
@@ -216,7 +197,7 @@ function perfOpenHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;overflow:hidden;">
       ${body}
     </div>`;
 }
@@ -257,7 +238,7 @@ function perfClosedHtml(data) {
   `;
 
   return `
-    <div style="width:${PERFLETTER_WIDTH_PX}px;min-height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;">
+    <div style="width:${PERFLETTER_WIDTH_PX}px;height:${PERFLETTER_HEIGHT_PX}px;padding:28pt 30pt;font-family:Arial,Arial Narrow,sans-serif;color:#000000;box-sizing:border-box;background:#fff;direction:ltr;text-align:left;overflow:hidden;">
       ${body}
     </div>`;
 }
@@ -266,9 +247,6 @@ async function perfGetSignatureUrl() {
   return new Promise((resolve) => {
     try {
       if (typeof getGoogleConnectionStatus !== "function") return resolve("");
-      // Field is `signature_url` (see dispatch-google.js) -- the
-      // previous version read `signatureurl`, which is always
-      // undefined, so no AEO signature was ever printed.
       getGoogleConnectionStatus((status) => resolve(status?.signature_url || ""));
     } catch {
       resolve("");
@@ -278,17 +256,7 @@ async function perfGetSignatureUrl() {
 
 async function perfBuildCertificatePdfBytes(pagesHtml) {
   const target = document.getElementById("iaPdfRenderTarget");
-  // Fixed px width (see PERFLETTER_WIDTH_PX comment above) -- this div
-  // is shared with the 794px-wide Inspection Allowance/Budget Prep
-  // builders, so it's re-set on every call rather than assumed.
   target.style.width = `${PERFLETTER_WIDTH_PX}px`;
-  // Some Android WebViews derive default text/table directionality
-  // from the device's system locale (common on Urdu-locale phones)
-  // rather than defaulting to ltr. That silently mirrors table
-  // columns -- the Sr./Indicators columns rendering on the right and
-  // the header AEO Name/Markaz labels swapping with their values is
-  // exactly that mirroring, not a layout bug in the markup itself.
-  // Force it explicitly so the certificate can't inherit that.
   target.setAttribute("dir", "ltr");
   target.style.direction = "ltr";
 
@@ -300,23 +268,8 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
   for (let i = 0; i < pagesHtml.length; i++) {
     target.innerHTML = pagesHtml[i];
     await new Promise((r) => setTimeout(r, 300));
-    // Force layout to settle on the new width/content before measuring
-    // it below -- without this read, some WebViews can still report a
-    // stale scrollWidth from the previous page's HTML.
     void target.offsetHeight;
 
-    // Previously this call passed no width/windowWidth, on the theory
-    // that letting html2canvas "capture the element's own full width"
-    // avoided clipping. In practice html2canvas falls back to the
-    // real device/WebView viewport width for its internal render
-    // window when no windowWidth is given -- on a phone that's far
-    // narrower than this 816px-wide certificate, so the right-hand
-    // columns (Initials of DDO, and the AEO Name/Markaz/Month/Cell No
-    // labels) were being laid out against a too-narrow window and
-    // clipped exactly as seen in the generated PDF. Pinning width and
-    // windowWidth to the target's own measured size forces html2canvas
-    // to lay out and capture at the certificate's real size regardless
-    // of the device screen it's generated on.
     const captureWidth = target.scrollWidth;
     const captureHeight = target.scrollHeight;
     const canvas = await html2canvas(target, {
@@ -346,13 +299,6 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
   target.innerHTML = "";
   return pdf.output("arraybuffer");
 }
-
-// ═══════════════════════════════════════════════════════════════════
-//  PREP-VIEW UI — pick months, choose Open/Closed, fill indicators.
-//  index.html calls perfInit() (on tab switch), perfLoadMonths()
-//  (year <select> onchange), and perfDownloadCertificate() (button).
-//  This layer was missing from the last commit, which broke the tab.
-// ═══════════════════════════════════════════════════════════════════
 
 function perfInit() {
   const yearSel = document.getElementById("perf_year");
@@ -482,9 +428,6 @@ function perfRenderConfigPanels() {
   perfUpdateGrandTotal();
 }
 
-// On-screen prep table -- mirrors the certificate's own column layout
-// (same header set, same width ratios) so what you edit looks like
-// what will print, just sized for screen instead of 8-9pt print.
 function perfConfigTableHtml(month, cfg) {
   const isOpen = cfg.status === "open";
   const rows = isOpen ? PERFOPENROWS : PERFCLOSEDROWS;
