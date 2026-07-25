@@ -140,21 +140,17 @@ function perfRowDisplayCells(row, storedVal, credited) {
 }
 
 function perfHeaderHtml(officeLine, u, monthLabel) {
+  const th = "border:1px solid #000;padding:5px 8px;font-weight:700;text-align:left;vertical-align:middle;";
+  const td = "border:1px solid #000;padding:5px 8px;text-align:left;vertical-align:middle;";
   return `
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;font-size:9.5pt;color:#000;" dir="ltr">
-    <div style="width:36%;text-align:left;">
-      <table style="width:100%;border-collapse:collapse;font-weight:700;font-size:9pt;color:#000;" dir="ltr">
-        <tr><td style="padding:2px 0;width:62px;text-align:left;">AEO Name</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.name)}</td></tr>
-        <tr><td style="padding:2px 0;text-align:left;">Markaz</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.markaz_name)}</td></tr>
-        <tr><td style="padding:2px 0;text-align:left;">Month</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(monthLabel)}</td></tr>
-        <tr><td style="padding:2px 0;text-align:left;">Cell No</td><td style="padding:2px 0;border-bottom:1px solid #000;text-align:left;">${perfSafe(u?.cell_no || u?.cnic || "")}</td></tr>
-      </table>
-    </div>
-    <div style="width:62%;text-align:center;color:#000;">
-      <div style="font-size:11.5pt;font-weight:700;line-height:1.15;margin-bottom:4px;word-wrap:break-word;overflow-wrap:break-word;">${officeLine}</div>
-      <div style="font-size:10.5pt;font-weight:700;text-decoration:underline;text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</div>
-    </div>
-  </div>`;
+  <table dir="ltr" style="width:100%;border-collapse:collapse;margin-bottom:0;font-size:9.5pt;color:#000;table-layout:fixed;">
+    <tr><td colspan="2" style="border:1px solid #000;padding:6px 8px;text-align:center;font-weight:700;font-size:11.5pt;line-height:1.15;word-wrap:break-word;overflow-wrap:break-word;">${officeLine}</td></tr>
+    <tr><td colspan="2" style="border:1px solid #000;padding:5px 8px;text-align:center;font-weight:700;font-size:10.5pt;text-decoration:underline;text-transform:uppercase;">AEO MONTHLY PERFORMANCE CERTIFICATE</td></tr>
+    <tr><td style="${th}width:18%;">AEO Name:</td><td style="${td}">${perfSafe(u?.name)}</td></tr>
+    <tr><td style="${th}">Markaz:</td><td style="${td}">${perfSafe(u?.markaz_name)}</td></tr>
+    <tr><td style="${th}">Month:</td><td style="${td}">${perfSafe(monthLabel)}</td></tr>
+    <tr><td style="${th}">Cell No:</td><td style="${td}">${perfSafe(u?.cell_no || u?.cnic || "")}</td></tr>
+  </table>`;
 }
 
 function perfFooterHtml(amount, u, sigUrl) {
@@ -202,7 +198,7 @@ function perfOpenHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DEPUTY DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:10px;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
       <thead>
         <tr>
           <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
@@ -245,7 +241,7 @@ function perfClosedHtml(data) {
 
   const body = `
     ${perfHeaderHtml("OFFICE OF THE DY. DISTRICT EDUCATION OFFICER (M-EE) TEHSIL KAROR", u, monthLabel)}
-    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
+    <table style="width:100%;border-collapse:collapse;font-size:${PERFBODY_PT}pt;margin-top:10px;margin-bottom:0;line-height:${PERFLINEHEIGHT};table-layout:fixed;color:#000;" dir="ltr">
       <thead>
         <tr>
           <th style="${PERFTHSTYLE}width:6%;">Sr.</th>
