@@ -308,6 +308,21 @@ function iaResolveBillFields(bill) {
     district: u.district || 'Layyah',
     wing: u.wing || '',
     period: claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(', '),
+    // "Period of Bill / Claim" (Adjustment Form) and "Month" (Bill F header)
+    // print each month name space-separated with NO commas on the real
+    // form — e.g. "May 2026 June 2026 July 2026 August 2026".
+    periodDisplay: claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(' '),
+    // The "Inspection Allowance {months},,," line on Bill F is a single
+    // fixed 4-slot field: each of the up-to-4 selected months goes in its
+    // own slot, comma-joined with NO spaces, and slots left empty when
+    // fewer than 4 months are selected still print their separating comma.
+    // 1 month  -> "May 2026,,,"                         (1 value + 3 empty)
+    // 4 months -> "May 2026,June 2026,July 2026,August 2026" (0 empty)
+    monthsCsvPadded: (() => {
+      const labels = claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`);
+      while (labels.length < IA_MAX_SELECTED) labels.push('');
+      return labels.join(',');
+    })(),
     months: claims.map((c) => ({ label: `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`, ...c })),
     grantNo: '15',
     functionalMajor: '40000 = Social Services',
@@ -451,7 +466,7 @@ function iaAdjustmentFormHtml(bill) {
     ${iaFieldRow([
       [['DDO Code / Cost Centre', f.ddeoCode], ['Description of Cost Centre', f.costCentreDescription]],
       [['Personal Number', f.personalNo], ['Name', f.name]],
-      [['Markaz', f.markaz], ['Period of Bill / Claim', f.period]],
+      [['Markaz', f.markaz], ['Period of Bill / Claim', f.periodDisplay]],
     ])}
     ${iaAllowanceTable(f.totalGross, true)}
     <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:10px">
@@ -467,27 +482,110 @@ function iaAdjustmentFormHtml(bill) {
     </table>
     <p style="font-size:11px;margin-bottom:40px">Certified that sufficient budget is available to meet the above expenditure for the current financial year.</p>
     <table style="width:100%;font-size:11px"><tr>
-      <td style="width:50%;text-align:center;padding-top:30px;border-top:1px solid #333">Assistant Education Officer<br>${f.markaz}</td>
-      <td style="width:50%;text-align:center;padding-top:30px;border-top:1px solid #333">District Account Officer<br>${f.district}</td>
+      <td style="width:50%;text-align:center;padding-top:20px;font-weight:700">Assistant Education Officer<br>${f.markaz}</td>
+      <td style="width:50%;text-align:center;padding-top:20px;font-weight:700">District Account Officer<br>${f.district}</td>
     </tr></table>`;
   return iaPageShell('Payment of Arrears Pay &amp; Allowances Through Adjustments', f.officeHeader, body);
 }
 
 // ═══ PAGE 2 — Bill F (STR-18) ═══════════════════════════════════════
-// Single continuous 8-column table (colgroup below) so every row on this
-// page — header block, line items, totals — shares the same vertical
-// borders, matching the real Bill F form exactly. The 8 columns collapse
-// via colspan into: a wide "Item" area (cols 1-5, used whole or split into
-// label/value/label/value for the Name/Post Held/Markaz row) + Code (col 6)
-// + Rate (col 7) + Amount (col 8).
-const IA_BILLF_COLGROUP = `<colgroup>
-  <col style="width:10%"><col style="width:10%"><col style="width:20%"><col style="width:10%"><col style="width:9%">
-  <col style="width:13%"><col style="width:14%"><col style="width:14%">
-</colgroup>`;
+
+// Bill F is rebuilt entirely with flexbox rows instead of a native
+// <table> with rowspan/colspan. html2canvas has known trouble with
+// spanning table cells specifically (the same class of bug that dropped
+// whole columns on the Performance Certificate table) — the rowspan="4"
+// cell here was rendering as an oversized blank box instead of a clean
+// bordered cell. Flexbox with explicit fixed-width, non-spanning cells
+// avoids that entirely; the "rowspan" visual effect (GRANT NO block
+// spanning 4 rows) is reproduced by putting 4 stacked flex rows in a
+// column next to it — flexbox's default stretch behavior makes the left
+// block automatically match that stack's total height, no rowspan needed.
+const IA_BF_W = {
+  full: 700,
+  label: 413, // the wide "Items" description area (was colspan=5)
+  code: 91,   // the Code column (was col 6)
+  rate: 98,   // the Rate column (was col 7)
+  amount: 98, // the Amount column (was col 8)
+  col1: 70, col2_3: 210, col4: 70, col5: 63, col6: 91, col7_8: 196,
+};
+
+function iaBfCell(w, html, opts = {}) {
+  const align = opts.center ? 'center' : opts.right ? 'flex-end' : 'flex-start';
+  const textAlign = opts.center ? 'center' : opts.right ? 'right' : 'left';
+  return `<div style="
+    flex:0 0 ${w}px;width:${w}px;max-width:${w}px;box-sizing:border-box;
+    border:1px solid #333;padding:${opts.pad || '2px 6px'};
+    display:flex;align-items:center;justify-content:${align};text-align:${textAlign};
+    font-weight:${opts.bold ? 700 : 400};font-size:${opts.fontSize || '10.5px'};
+    text-decoration:${opts.underline ? 'underline' : opts.dotted ? 'none' : 'none'};
+    border-bottom:${opts.dotted ? '1px dotted #333' : '1px solid #333'};
+    font-style:${opts.italic ? 'italic' : 'normal'};
+    white-space:normal;word-wrap:break-word;overflow-wrap:break-word;
+  ">${html}</div>`;
+}
+function iaBfRow(cellsHtml) {
+  return `<div style="display:flex;width:${IA_BF_W.full}px;">${cellsHtml.join('')}</div>`;
+}
+// The standard 4-cell line-item row shape (label | code | rate | amount)
+// that the vast majority of Bill F's rows share.
+function iaBfLineRow(label, code, rate, amount, opts = {}) {
+  return iaBfRow([
+    iaBfCell(IA_BF_W.label, label, { bold: opts.bold, underline: opts.underline, fontSize: opts.fontSize }),
+    iaBfCell(IA_BF_W.code, code ?? '', { center: true, bold: opts.bold }),
+    iaBfCell(IA_BF_W.rate, rate ?? '', { right: true, bold: opts.bold }),
+    iaBfCell(IA_BF_W.amount, amount ?? '', { right: true, bold: opts.bold }),
+  ]);
+}
+function iaBfFullRow(html, opts = {}) {
+  return iaBfRow([iaBfCell(IA_BF_W.full, html, opts)]);
+}
 
 function iaBillFHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
   const b = (v) => (v || v === 0 ? Number(v).toLocaleString() : '');
+
+  // Top block: GRANT NO / Functional / Classification (left, spans 4 rows'
+  // worth of height via flex-stretch) next to DDO Code / Personal No. /
+  // Name / Month (right, 4 stacked rows) — replaces the old rowspan cell.
+  const topBlock = `
+    <div style="display:flex;width:${IA_BF_W.full}px;">
+      <div style="flex:0 0 ${IA_BF_W.label}px;width:${IA_BF_W.label}px;box-sizing:border-box;border:1px solid #333;padding:4px 6px;font-size:10.5px">
+        GRANT NO.15<br><br>
+        Functional&nbsp;&nbsp;&nbsp;&nbsp;Major&nbsp;&nbsp;&nbsp;&nbsp;40000 = Social Services<br><br>
+        Classification&nbsp;&nbsp;&nbsp;&nbsp;Minor&nbsp;&nbsp;&nbsp;&nbsp;41000 = Education<br><br>
+        of Expend&nbsp;&nbsp;&nbsp;&nbsp;Detailed
+      </div>
+      <div style="flex:0 0 ${IA_BF_W.code + IA_BF_W.rate + IA_BF_W.amount}px;width:${IA_BF_W.code + IA_BF_W.rate + IA_BF_W.amount}px;display:flex;flex-direction:column">
+        ${[['DDO Code', f.ddeoCode], ['Personal No.', f.personalNo], ['Name', f.name], ['Month', f.periodDisplay]].map(([lbl, val]) => `
+          <div style="display:flex">
+            ${iaBfCell(IA_BF_W.code, lbl, { bold: true })}
+            ${iaBfCell(IA_BF_W.rate + IA_BF_W.amount, val, { bold: true, fontSize: '13px' })}
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  const nameRow = iaBfRow([
+    iaBfCell(IA_BF_W.col1, 'Name:', { bold: true }),
+    iaBfCell(IA_BF_W.col2_3, f.name, { bold: true }),
+    iaBfCell(IA_BF_W.col4, 'Post Held', { bold: true }),
+    iaBfCell(IA_BF_W.col5, f.postHeld, { bold: true }),
+    iaBfCell(IA_BF_W.col6, 'Markaz:', { bold: true }),
+    iaBfCell(IA_BF_W.col7_8, f.markaz, { bold: true }),
+  ]);
+
+  const colHeaderRow = iaBfRow([
+    iaBfCell(IA_BF_W.label, ''),
+    iaBfCell(IA_BF_W.code, 'Object<br>Classification<br>Code', { center: true, bold: true, fontSize: '9.5px' }),
+    iaBfCell(IA_BF_W.rate, 'Monthly<br>Rate', { center: true, bold: true, fontSize: '9.5px' }),
+    iaBfCell(IA_BF_W.amount, 'Amount.', { center: true, bold: true, fontSize: '9.5px' }),
+  ]);
+
+  const regularAllowanceRows = [
+    ['House Rent Allowance', 'A01202'], ['Dearness Allowance', 'A01205'],
+    ['Special Additonal Allowance', 'A01209'], ['Medical Allowance', 'A01274'],
+    ['Charge Allowance', 'A01238'], ['Special/Relief Allowance 15%', 'A0120A'],
+    ['SSB Allowance', 'A04115'], ['CONVEYANCE ALLOWANCE 2011', 'AO1203'],
+  ].map(([label, code]) => iaBfLineRow(label, code, '', '')).join('');
 
   const body = `
     <div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
@@ -500,182 +598,48 @@ function iaBillFHtml(bill) {
       <td style="width:40%;font-size:10.5px;direction:rtl;text-align:right;vertical-align:top">یہ بل ٹوکن رجسٹر پر سیریل نمبر..........................پر درج ہے۔</td>
     </tr></table>
 
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px">
-      ${IA_BILLF_COLGROUP}
-      <tbody>
-        <tr>
-          <td rowspan="4" colspan="5" style="padding:4px 6px;border:1px solid #333;vertical-align:top">
-            GRANT NO.15<br><br>
-            Functional&nbsp;&nbsp;&nbsp;&nbsp;Major&nbsp;&nbsp;&nbsp;&nbsp;40000 = Social Services<br><br>
-            Classification&nbsp;&nbsp;&nbsp;&nbsp;Minor&nbsp;&nbsp;&nbsp;&nbsp;41000 = Education<br><br>
-            of Expend&nbsp;&nbsp;&nbsp;&nbsp;Detailed
-          </td>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">DDO Code</td>
-          <td colspan="2" style="padding:4px 6px;border:1px solid #333;font-weight:700;font-size:13px">${f.ddeoCode}</td>
-        </tr>
-        <tr>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">Personal No.</td>
-          <td colspan="2" style="padding:4px 6px;border:1px solid #333;font-weight:700;font-size:13px">${f.personalNo}</td>
-        </tr>
-        <tr>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">Name</td>
-          <td colspan="2" style="padding:4px 6px;border:1px solid #333;font-weight:700;font-size:13px">${f.name}</td>
-        </tr>
-        <tr>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">Month</td>
-          <td colspan="2" style="padding:4px 6px;border:1px solid #333;font-weight:700;font-size:13px">${f.period}</td>
-        </tr>
+    <div style="font-size:10.5px">
+      ${topBlock}
+      ${nameRow}
+      ${colHeaderRow}
+      ${iaBfLineRow('', 'A01151', '', '')}
+      ${iaBfFullRow('the payment as detailed below:-')}
+      ${iaBfFullRow('BASIC SALARY', { bold: true, underline: true })}
+      ${iaBfLineRow('My Substantive/ Officiating Pay', '', '', '')}
+      ${iaBfLineRow('Special Pay &nbsp; <i style="font-size:9px">It is certified that the Inspection Allowance of...................................................has not been recieved by undersigned.</i>', 'A01153', '', '')}
+      ${iaBfLineRow('Technical Pay', 'A01104', '', '')}
+      ${iaBfLineRow('TOTAL BASIC SALARY', 'A011', '0', '0', { bold: true })}
 
-        <tr>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">Name:</td>
-          <td colspan="2" style="padding:4px 6px;border:1px solid #333;font-weight:700">${f.name}</td>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">Post Held</td>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">${f.postHeld}</td>
-          <td style="padding:4px 6px;border:1px solid #333;font-weight:700">Markaz:</td>
-          <td colspan="2" style="padding:4px 6px;border:1px solid #333;font-weight:700">${f.markaz}</td>
-        </tr>
+      ${iaBfFullRow('REGULAR ALLOWANCES:', { bold: true, underline: true })}
+      ${regularAllowanceRows}
+      ${iaBfLineRow(`Inspection Allowance&nbsp; ${f.monthsCsvPadded}`, 'AO1297', b(f.totalGross), b(f.totalGross), { bold: true })}
+      ${iaBfLineRow('TOTAL REGULAR ALLOWANCES', 'A012', b(f.totalGross), b(f.totalGross), { bold: true })}
 
-        <tr style="font-weight:700">
-          <td colspan="5" style="border:1px solid #333"></td>
-          <td style="padding:3px 6px;border:1px solid #333;text-align:center;font-size:9.5px">Object<br>Classification<br>Code</td>
-          <td style="padding:3px 6px;border:1px solid #333;text-align:center;font-size:9.5px">Monthly<br>Rate</td>
-          <td style="padding:3px 6px;border:1px solid #333;text-align:center;font-size:9.5px">Amount.</td>
-        </tr>
+      ${iaBfFullRow('OTHER ALLOWANCES:', { bold: true, underline: true })}
+      ${iaBfLineRow('Leave Salary', 'A01278', '', '')}
+      ${iaBfLineRow('Total Other Allowance', 'A01299', '', '', { bold: true })}
 
-        <tr>
-          <td colspan="5" style="border:1px solid #333"></td>
-          <td style="border:1px solid #333;text-align:center">A01151</td>
-          <td style="border:1px solid #333"></td>
-          <td style="border:1px solid #333"></td>
-        </tr>
-        <tr><td colspan="8" style="padding:4px 6px;border:1px solid #333">the payment as detailed below:-</td></tr>
-        <tr><td colspan="8" style="padding:2px 6px;border:1px solid #333;font-weight:700;text-decoration:underline">BASIC SALARY</td></tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">My Substantive/ Officiating Pay</td>
-          <td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">
-            Special Pay &nbsp; <i style="font-size:9px">It is certified that the Inspection Allowance of ${IA_MONTH_NAMES[bill.claims[0]?.month - 1] || ''} ${bill.claims[0]?.year || ''} has not been recieved by undersigned.</i>
-          </td>
-          <td style="border:1px solid #333;text-align:center">A01153</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Technical Pay</td>
-          <td style="border:1px solid #333;text-align:center">A01104</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr style="font-weight:700">
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">TOTAL BASIC SALARY</td>
-          <td style="border:1px solid #333;text-align:center">A011</td>
-          <td style="border:1px solid #333;text-align:right">0</td>
-          <td style="border:1px solid #333;text-align:right">0</td>
-        </tr>
+      ${iaBfLineRow('Gross Claim Establishment Charges<br><span style="font-weight:400;font-size:9.5px">(Pay + Regular Allow + Other Allow)</span>', '0<br>0000', b(f.totalGross), b(f.totalGross), { bold: true, underline: true, fontSize: '10.5px' })}
 
-        <tr><td colspan="8" style="padding:2px 6px;border:1px solid #333;font-weight:700;text-decoration:underline">REGULAR ALLOWANCES:</td></tr>
-        ${[
-          ['House Rent Allowance', 'A01202'], ['Dearness Allowance', 'A01205'],
-          ['Special Additonal Allowance', 'A01209'], ['Medical Allowance', 'A01274'],
-          ['Charge Allowance', 'A01238'], ['Special/Relief Allowance 15%', 'A0120A'],
-          ['SSB Allowance', 'A04115'], ['CONVEYANCE ALLOWANCE 2011', 'AO1203'],
-        ].map(([label, code]) => `
-          <tr>
-            <td colspan="5" style="padding:2px 6px;border:1px solid #333">${label}</td>
-            <td style="border:1px solid #333;text-align:center">${code}</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-          </tr>`
-        ).join('')}
-        <tr style="font-weight:700">
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Inspection Allowance&nbsp; ${f.period},,,</td>
-          <td style="border:1px solid #333;text-align:center">AO1297</td>
-          <td style="border:1px solid #333;text-align:right">${b(f.totalGross)}</td>
-          <td style="border:1px solid #333;text-align:right">${b(f.totalGross)}</td>
-        </tr>
-        <tr style="font-weight:700">
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">TOTAL REGULAR ALLOWANCES</td>
-          <td style="border:1px solid #333;text-align:center">A012</td>
-          <td style="border:1px solid #333;text-align:right">${b(f.totalGross)}</td>
-          <td style="border:1px solid #333;text-align:right">${b(f.totalGross)}</td>
-        </tr>
+      ${iaBfFullRow('LESS FUND DEDUCTION:', { bold: true, underline: true })}
+      ${iaBfLineRow('G.P.Fund Account No----------------------', '11502', '', '')}
+      ${iaBfLineRow('G.P.F', 'G06103', '', '')}
+      ${iaBfLineRow('Benevolent Fund', 'G06201', '', '')}
+      ${iaBfLineRow('Group Insurance Fund', 'G06408', '', '')}
+      ${iaBfLineRow('Net Claim:', '', '', '', { bold: true })}
 
-        <tr><td colspan="8" style="padding:2px 6px;border:1px solid #333;font-weight:700;text-decoration:underline">OTHER ALLOWANCES:</td></tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Leave Salary</td>
-          <td style="border:1px solid #333;text-align:center">A01278</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr style="font-weight:700">
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Total Other Allowance</td>
-          <td style="border:1px solid #333;text-align:center">A01299</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
+      ${iaBfFullRow('DEDUCTIONS:', { bold: true, underline: true })}
+      ${iaBfLineRow('Income Tax', '0<br>102', '', '')}
+      ${iaBfFullRow('Deductions on account of Advance and Recoveries', { italic: true, fontSize: '9.5px' })}
+      ${iaBfLineRow('Advance of Pay:', '14101', '', '')}
+      ${iaBfLineRow(iaNumberToWordsPKR(f.totalGross), '', '', b(f.totalDeduction), { dotted: true })}
 
-        <tr style="font-weight:700">
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333;text-decoration:underline">Gross Claim Establishment Charges<br>
-            <span style="font-weight:400;text-decoration:none;font-size:9.5px">(Pay + Regular Allow + Other Allow)</span></td>
-          <td style="border:1px solid #333;text-align:center;font-size:9px">0<br>0000</td>
-          <td style="border:1px solid #333;text-align:right">${b(f.totalGross)}</td>
-          <td style="border:1px solid #333;text-align:right">${b(f.totalGross)}</td>
-        </tr>
-
-        <tr><td colspan="8" style="padding:2px 6px;border:1px solid #333;font-weight:700;text-decoration:underline">LESS FUND DEDUCTION:</td></tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">G.P.Fund Account No----------------------</td>
-          <td style="border:1px solid #333;text-align:center">11502</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">G.P.F</td>
-          <td style="border:1px solid #333;text-align:center">G06103</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Benevolent Fund</td>
-          <td style="border:1px solid #333;text-align:center">G06201</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Group Insurance Fund</td>
-          <td style="border:1px solid #333;text-align:center">G06408</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr style="font-weight:700">
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Net Claim:</td>
-          <td style="border:1px solid #333"></td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-
-        <tr><td colspan="8" style="padding:2px 6px;border:1px solid #333;font-weight:700;text-decoration:underline">DEDUCTIONS:</td></tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Income Tax</td>
-          <td style="border:1px solid #333;text-align:center;font-size:9px">0<br>102</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr><td colspan="8" style="padding:2px 6px;border:1px solid #333;font-style:italic;font-size:9.5px">Deductions on account of Advance and Recoveries</td></tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333">Advance of Pay:</td>
-          <td style="border:1px solid #333;text-align:center">14101</td><td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-        </tr>
-        <tr>
-          <td colspan="5" style="padding:2px 6px;border:1px solid #333;border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.totalGross)}</td>
-          <td style="border:1px solid #333"></td><td style="border:1px solid #333"></td>
-          <td style="border:1px solid #333;text-align:right;font-weight:700">${b(f.totalDeduction)}</td>
-        </tr>
-
-        <tr style="font-weight:700;font-size:12px">
-          <td colspan="5" style="padding:5px 6px;border:1px solid #333">Net Amount Payable:-</td>
-          <td style="border:1px solid #333"></td>
-          <td style="border:1px solid #333;text-align:right">${b(f.totalGross)}</td>
-          <td style="border:1px solid #333;text-align:right">${b(f.netTotal)}</td>
-        </tr>
-        <tr>
-          <td colspan="8" style="padding:4px 6px;border:1px solid #333">Rupees:&nbsp; <span style="border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.netTotal)}</span></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p style="font-size:11px;text-align:right;margin:10px 6px 26px">Siganture and Stamp of Officer</p>
-
-    <div style="font-size:11px;font-weight:700;margin-bottom:6px">Certified that:-</div>
-    <div style="font-size:10px;line-height:1.6;margin-bottom:20px">
-      <p>(a) I have neither been provided with accommodation by the Government nor I share any such accommodation with another allottee without necessary permission of the Estate Officer.</p>
-      <p>(b) My wife/husband is in the service of the Federal/Provincial Government/Autonomous body.</p>
-      <p>(c) My wife/husband who is in the service of Federal/Provincial Government/Autonomous body is in receipt of house rent allowance.</p>
-      <p>(d) I am not residing within my work premises.</p>
-      <p>(e) I am not maintaining a Motor Cycle/Car No. ………………………….. which is registered in my own name or in the name of my spouse who is not drawing Motor Cycle/Car Allowance for the same.</p>
+      ${iaBfLineRow('Net Amount Payable:-', '', b(f.totalGross), b(f.netTotal), { bold: true, fontSize: '12px' })}
+      ${iaBfFullRow(`Rupees:&nbsp; <span style="border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.netTotal)}</span>`)}
     </div>
-    <table style="width:100%;font-size:11px;margin-top:10px"><tr>
-      <td style="width:100%;text-align:right;padding-top:30px;border-top:1px solid #333">Siganture and Stamp of Officer</td>
+
+    <table style="width:100%;font-size:11px;margin-top:16px"><tr>
+      <td style="width:100%;text-align:right;padding-top:20px;font-weight:700">Siganture and Stamp of Officer</td>
     </tr></table>`;
   return iaPageShell(f.officeHeader, '', body);
 }
@@ -712,6 +676,17 @@ function iaBillBHtml(bill) {
   }).join('');
 
   const body = `
+    <div style="font-size:11px;font-weight:700;margin-bottom:6px">Certified that:-</div>
+    <div style="font-size:10px;line-height:1.6;margin-bottom:16px">
+      <p>(a) I have neither been provided with accommodation by the Government nor I share any such accommodation with another allottee without necessary permission of the Estate Officer.</p>
+      <p>(b) My wife/husband is in the service of the Federal/Provincial Government/Autonomous body.</p>
+      <p>(c) My wife/husband who is in the service of Federal/Provincial Government/Autonomous body is in receipt of house rent allowance.</p>
+      <p>(d) I am not residing within my work premises.</p>
+      <p>(e) I am not maintaining a Motor Cycle/Car No. ………………………….. which is registered in my own name or in the name of my spouse who is not drawing Motor Cycle/Car Allowance for the same.</p>
+    </div>
+    <p style="font-size:11px;font-weight:700;text-align:right;margin-bottom:20px">Siganture and Stamp of Officer</p>
+
+    <div style="text-align:center;font-size:14px;font-weight:700;margin-bottom:14px">DETAIL INSPECTION ALLOWANCE</div>
     <p style="font-size:12px;margin-bottom:14px"><b>${f.name}</b> &nbsp; ${f.markaz}</p>
     <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:14px">
       <thead><tr style="background:#f2f2f2">
@@ -727,17 +702,17 @@ function iaBillBHtml(bill) {
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
       <tr style="font-weight:700">
         <td style="padding:6px 8px;border:1px solid #333" colspan="2">NET CLAIM</td>
-        <td style="padding:6px 8px;text-align:right;border:1px solid #333">${f.totalGross.toLocaleString()}</td>
+        <td style="padding:6px 8px;text-align:right;border:1px solid #333">${f.netTotal.toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right;border:1px solid #333">0</td>
         <td style="padding:6px 8px;text-align:right;border:1px solid #333">${f.netTotal.toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right;border:1px solid #333">${f.netTotal.toLocaleString()}</td>
       </tr>
     </table>
-    <p style="font-size:11px;margin-bottom:50px"><b>Net Amount (In words):</b> ${iaNumberToWordsPKR(f.netTotal)}</p>
+    <p style="font-size:11px;text-align:right;margin-bottom:50px"><b>Net Amount (In words):</b> ${iaNumberToWordsPKR(f.netTotal)}</p>
     <table style="width:100%;font-size:11px"><tr>
-      <td style="width:100%;text-align:right;padding-top:30px;border-top:1px solid #333">Signature and Stamp of Officer</td>
+      <td style="width:100%;text-align:right;padding-top:20px;font-weight:700">Signature and Stamp of Officer</td>
     </tr></table>`;
-  return iaPageShell('Detail Inspection Allowance', '', body);
+  return iaPageShell('', '', body);
 }
 
 
