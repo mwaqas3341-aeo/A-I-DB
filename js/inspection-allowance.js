@@ -249,10 +249,17 @@ async function iaBuildBillPdfBytes(bill) {
       scrollY: 0,
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    const ratio = pageWidth / canvas.width;
-    const scaledHeight = canvas.height * ratio;
+    // Scale to fit the page on BOTH axes (never just width) so content
+    // that runs slightly taller than the nominal 1123px page never gets
+    // stretched/cropped into a squished, misaligned image. Whichever axis
+    // is the tighter constraint sets the scale; the image is centered
+    // horizontally and drawn from the top of the page.
+    const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+    const imgWidth = canvas.width * scale;
+    const imgHeight = canvas.height * scale;
+    const offsetX = (pageWidth - imgWidth) / 2;
     if (i > 0) pdf.addPage();
-    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(scaledHeight, pageHeight));
+    pdf.addImage(imgData, 'JPEG', offsetX, 0, imgWidth, imgHeight);
   }
   target.innerHTML = '';
   return pdf.output('arraybuffer');
@@ -509,16 +516,27 @@ const IA_BF_W = {
   col1: 70, col2_3: 210, col4: 70, col5: 63, col6: 91, col7_8: 196,
 };
 
+// Border policy (verified against the real target PDF, page by page):
+// the STR-18 form is almost entirely PLAIN TEXT with no cell borders at
+// all — labels and values just sit on their own line. Only a handful of
+// bold "total" rows are printed inside an actual ruled box (TOTAL BASIC
+// SALARY, TOTAL REGULAR ALLOWANCES, Gross Claim Establishment Charges,
+// Net Amount Payable:-). Borders are therefore OPT-IN per cell via
+// opts.box, never on by default — the old unconditional `border:1px
+// solid #333` on every cell is exactly what was drawing a box around
+// every single row instead of just those four.
 function iaBfCell(w, html, opts = {}) {
   const align = opts.center ? 'center' : opts.right ? 'flex-end' : 'flex-start';
   const textAlign = opts.center ? 'center' : opts.right ? 'right' : 'left';
+  const border = opts.box ? '1px solid #333' : 'none';
+  const borderBottom = opts.box ? '1px solid #333' : (opts.dotted ? '1px dotted #333' : 'none');
   return `<div style="
     flex:0 0 ${w}px;width:${w}px;max-width:${w}px;box-sizing:border-box;
-    border:1px solid #333;padding:${opts.pad || '2px 6px'};
+    border:${border};padding:${opts.pad || '2px 6px'};
     display:flex;align-items:center;justify-content:${align};text-align:${textAlign};
     font-weight:${opts.bold ? 700 : 400};font-size:${opts.fontSize || '10.5px'};
-    text-decoration:${opts.underline ? 'underline' : opts.dotted ? 'none' : 'none'};
-    border-bottom:${opts.dotted ? '1px dotted #333' : '1px solid #333'};
+    text-decoration:${opts.underline ? 'underline' : 'none'};
+    border-bottom:${borderBottom};
     font-style:${opts.italic ? 'italic' : 'normal'};
     white-space:normal;word-wrap:break-word;overflow-wrap:break-word;
   ">${html}</div>`;
@@ -527,13 +545,14 @@ function iaBfRow(cellsHtml) {
   return `<div style="display:flex;width:${IA_BF_W.full}px;">${cellsHtml.join('')}</div>`;
 }
 // The standard 4-cell line-item row shape (label | code | rate | amount)
-// that the vast majority of Bill F's rows share.
+// that the vast majority of Bill F's rows share. Pass opts.box:true only
+// for the handful of rows that the real form actually boxes.
 function iaBfLineRow(label, code, rate, amount, opts = {}) {
   return iaBfRow([
-    iaBfCell(IA_BF_W.label, label, { bold: opts.bold, underline: opts.underline, fontSize: opts.fontSize }),
-    iaBfCell(IA_BF_W.code, code ?? '', { center: true, bold: opts.bold }),
-    iaBfCell(IA_BF_W.rate, rate ?? '', { right: true, bold: opts.bold }),
-    iaBfCell(IA_BF_W.amount, amount ?? '', { right: true, bold: opts.bold }),
+    iaBfCell(IA_BF_W.label, label, { bold: opts.bold, underline: opts.underline, fontSize: opts.fontSize, box: opts.box }),
+    iaBfCell(IA_BF_W.code, code ?? '', { center: true, bold: opts.bold, box: opts.box }),
+    iaBfCell(IA_BF_W.rate, rate ?? '', { right: true, bold: opts.bold, box: opts.box }),
+    iaBfCell(IA_BF_W.amount, amount ?? '', { right: true, bold: opts.bold, box: opts.box }),
   ]);
 }
 function iaBfFullRow(html, opts = {}) {
@@ -544,26 +563,31 @@ function iaBillFHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
   const b = (v) => (v || v === 0 ? Number(v).toLocaleString() : '');
 
-  // Top block: GRANT NO / Functional / Classification (left, spans 4 rows'
-  // worth of height via flex-stretch) next to DDO Code / Personal No. /
-  // Name / Month (right, 4 stacked rows) — replaces the old rowspan cell.
+  // Top block: GRANT NO / Functional / Classification (left) next to DDO
+  // Code / Personal No. / Name / Month (right, 4 stacked rows). On the
+  // real form this whole block is ONE outer box with a single vertical
+  // divider between the two halves; the right half then has horizontal
+  // dividers between its 4 rows but NO vertical divider between each
+  // label and its value (label + value just sit on the same line).
+  const topBlockRightW = IA_BF_W.code + IA_BF_W.rate + IA_BF_W.amount;
+  const topBlockRows = [['DDO Code', f.ddeoCode], ['Personal No.', f.personalNo], ['Name', f.name], ['Month', f.periodDisplay]];
   const topBlock = `
-    <div style="display:flex;width:${IA_BF_W.full}px;">
-      <div style="flex:0 0 ${IA_BF_W.label}px;width:${IA_BF_W.label}px;box-sizing:border-box;border:1px solid #333;padding:4px 6px;font-size:10.5px">
+    <div style="display:flex;width:${IA_BF_W.full}px;border:1px solid #333;box-sizing:border-box">
+      <div style="flex:0 0 ${IA_BF_W.label}px;width:${IA_BF_W.label}px;box-sizing:border-box;border-right:1px solid #333;padding:4px 6px;font-size:10.5px">
         GRANT NO.15<br><br>
         Functional&nbsp;&nbsp;&nbsp;&nbsp;Major&nbsp;&nbsp;&nbsp;&nbsp;40000 = Social Services<br><br>
         Classification&nbsp;&nbsp;&nbsp;&nbsp;Minor&nbsp;&nbsp;&nbsp;&nbsp;41000 = Education<br><br>
         of Expend&nbsp;&nbsp;&nbsp;&nbsp;Detailed
       </div>
-      <div style="flex:0 0 ${IA_BF_W.code + IA_BF_W.rate + IA_BF_W.amount}px;width:${IA_BF_W.code + IA_BF_W.rate + IA_BF_W.amount}px;display:flex;flex-direction:column">
-        ${[['DDO Code', f.ddeoCode], ['Personal No.', f.personalNo], ['Name', f.name], ['Month', f.periodDisplay]].map(([lbl, val]) => `
-          <div style="display:flex">
-            ${iaBfCell(IA_BF_W.code, lbl, { bold: true })}
-            ${iaBfCell(IA_BF_W.rate + IA_BF_W.amount, val, { bold: true, fontSize: '13px' })}
+      <div style="flex:0 0 ${topBlockRightW}px;width:${topBlockRightW}px;display:flex;flex-direction:column">
+        ${topBlockRows.map(([lbl, val], i) => `
+          <div style="display:flex;align-items:center;padding:3px 8px;font-weight:700;font-size:13px;box-sizing:border-box;${i < topBlockRows.length - 1 ? 'border-bottom:1px solid #333;' : ''}">
+            <span style="flex:0 0 92px;width:92px;font-size:10.5px">${lbl}</span><span>${val}</span>
           </div>`).join('')}
       </div>
     </div>`;
 
+  // Plain (unboxed) row — matches target, which has no border here at all.
   const nameRow = iaBfRow([
     iaBfCell(IA_BF_W.col1, 'Name:', { bold: true }),
     iaBfCell(IA_BF_W.col2_3, f.name, { bold: true }),
@@ -573,6 +597,8 @@ function iaBillFHtml(bill) {
     iaBfCell(IA_BF_W.col7_8, f.markaz, { bold: true }),
   ]);
 
+  // Also plain/unboxed on the real form — just column labels above the
+  // figures, no ruled box around them.
   const colHeaderRow = iaBfRow([
     iaBfCell(IA_BF_W.label, ''),
     iaBfCell(IA_BF_W.code, 'Object<br>Classification<br>Code', { center: true, bold: true, fontSize: '9.5px' }),
@@ -608,18 +634,18 @@ function iaBillFHtml(bill) {
       ${iaBfLineRow('My Substantive/ Officiating Pay', '', '', '')}
       ${iaBfLineRow('Special Pay &nbsp; <i style="font-size:9px">It is certified that the Inspection Allowance of...................................................has not been recieved by undersigned.</i>', 'A01153', '', '')}
       ${iaBfLineRow('Technical Pay', 'A01104', '', '')}
-      ${iaBfLineRow('TOTAL BASIC SALARY', 'A011', '0', '0', { bold: true })}
+      ${iaBfLineRow('TOTAL BASIC SALARY', 'A011', '0', '0', { bold: true, box: true })}
 
       ${iaBfFullRow('REGULAR ALLOWANCES:', { bold: true, underline: true })}
       ${regularAllowanceRows}
       ${iaBfLineRow(`Inspection Allowance&nbsp; ${f.monthsCsvPadded}`, 'AO1297', b(f.totalGross), b(f.totalGross), { bold: true })}
-      ${iaBfLineRow('TOTAL REGULAR ALLOWANCES', 'A012', b(f.totalGross), b(f.totalGross), { bold: true })}
+      ${iaBfLineRow('TOTAL REGULAR ALLOWANCES', 'A012', b(f.totalGross), b(f.totalGross), { bold: true, box: true })}
 
       ${iaBfFullRow('OTHER ALLOWANCES:', { bold: true, underline: true })}
       ${iaBfLineRow('Leave Salary', 'A01278', '', '')}
       ${iaBfLineRow('Total Other Allowance', 'A01299', '', '', { bold: true })}
 
-      ${iaBfLineRow('Gross Claim Establishment Charges<br><span style="font-weight:400;font-size:9.5px">(Pay + Regular Allow + Other Allow)</span>', '0<br>0000', b(f.totalGross), b(f.totalGross), { bold: true, underline: true, fontSize: '10.5px' })}
+      ${iaBfLineRow('Gross Claim Establishment Charges<br><span style="font-weight:400;font-size:9.5px">(Pay + Regular Allow + Other Allow)</span>', '0<br>0000', b(f.totalGross), b(f.totalGross), { bold: true, underline: true, fontSize: '10.5px', box: true })}
 
       ${iaBfFullRow('LESS FUND DEDUCTION:', { bold: true, underline: true })}
       ${iaBfLineRow('G.P.Fund Account No----------------------', '11502', '', '')}
@@ -632,9 +658,14 @@ function iaBillFHtml(bill) {
       ${iaBfLineRow('Income Tax', '0<br>102', '', '')}
       ${iaBfFullRow('Deductions on account of Advance and Recoveries', { italic: true, fontSize: '9.5px' })}
       ${iaBfLineRow('Advance of Pay:', '14101', '', '')}
-      ${iaBfLineRow(iaNumberToWordsPKR(f.totalGross), '', '', b(f.totalDeduction), { dotted: true })}
+      ${iaBfRow([
+        iaBfCell(IA_BF_W.label, iaNumberToWordsPKR(f.totalGross), { dotted: true }),
+        iaBfCell(IA_BF_W.code, ''),
+        iaBfCell(IA_BF_W.rate, ''),
+        iaBfCell(IA_BF_W.amount, b(f.totalDeduction), { right: true }),
+      ])}
 
-      ${iaBfLineRow('Net Amount Payable:-', '', b(f.totalGross), b(f.netTotal), { bold: true, fontSize: '12px' })}
+      ${iaBfLineRow('Net Amount Payable:-', '', b(f.totalGross), b(f.netTotal), { bold: true, fontSize: '12px', box: true })}
       ${iaBfFullRow(`Rupees:&nbsp; <span style="border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.netTotal)}</span>`)}
     </div>
 
@@ -656,22 +687,22 @@ function iaBillBHtml(bill) {
   const rows = claimRows.map((c, i) => {
     if (!c) {
       return `<tr>
-        <td style="padding:5px 8px;border:1px solid #999">${i + 1}</td>
-        <td style="padding:5px 8px;border:1px solid #999"></td>
-        <td style="padding:5px 8px;border:1px solid #999;text-align:right">0</td>
-        <td style="padding:5px 8px;border:1px solid #999;text-align:right">0</td>
-        <td style="padding:5px 8px;border:1px solid #999;text-align:right">0</td>
-        <td style="padding:5px 8px;border:1px solid #999;text-align:right">0</td>
+        <td style="padding:5px 8px;border:1px solid #333">${i + 1}</td>
+        <td style="padding:5px 8px;border:1px solid #333"></td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
       </tr>`;
     }
     const due = Number(c.due) || 0;
     return `<tr>
-      <td style="padding:5px 8px;border:1px solid #999">${i + 1}</td>
-      <td style="padding:5px 8px;border:1px solid #999">${IA_MONTH_NAMES[c.month - 1]} ${c.year}</td>
-      <td style="padding:5px 8px;border:1px solid #999;text-align:right">${due.toLocaleString()}</td>
-      <td style="padding:5px 8px;border:1px solid #999;text-align:right">0</td>
-      <td style="padding:5px 8px;border:1px solid #999;text-align:right">${due.toLocaleString()}</td>
-      <td style="padding:5px 8px;border:1px solid #999;text-align:right">${due.toLocaleString()}</td>
+      <td style="padding:5px 8px;border:1px solid #333">${i + 1}</td>
+      <td style="padding:5px 8px;border:1px solid #333">${IA_MONTH_NAMES[c.month - 1]} ${c.year}</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right">${due.toLocaleString()}</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right">${due.toLocaleString()}</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right">${due.toLocaleString()}</td>
     </tr>`;
   }).join('');
 
@@ -687,19 +718,23 @@ function iaBillBHtml(bill) {
     <p style="font-size:11px;font-weight:700;text-align:right;margin-bottom:20px">Siganture and Stamp of Officer</p>
 
     <div style="text-align:center;font-size:14px;font-weight:700;margin-bottom:14px">DETAIL INSPECTION ALLOWANCE</div>
-    <p style="font-size:12px;margin-bottom:14px"><b>${f.name}</b> &nbsp; ${f.markaz}</p>
-    <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:14px">
-      <thead><tr style="background:#f2f2f2">
-        <th style="padding:6px 8px;border:1px solid #999;width:30px">Sr.#</th>
-        <th style="padding:6px 8px;border:1px solid #999">Period</th>
-        <th style="padding:6px 8px;border:1px solid #999">Due</th>
-        <th style="padding:6px 8px;border:1px solid #999">Drawn</th>
-        <th style="padding:6px 8px;border:1px solid #999">Difference</th>
-        <th style="padding:6px 8px;border:1px solid #999">Total</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
+    <table style="width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #333;font-size:11.5px;margin-bottom:14px">
+      <colgroup>
+        <col style="width:8%"><col style="width:34%"><col style="width:14.5%">
+        <col style="width:14.5%"><col style="width:14.5%"><col style="width:14.5%">
+      </colgroup>
+      <tr style="font-weight:700;font-size:13px">
+        <td style="padding:8px;border:1px solid #333;text-align:center" colspan="2">${f.name}</td>
+        <td style="padding:8px;border:1px solid #333;text-align:center" colspan="4">${f.markaz}</td>
+      </tr>
+      <tr style="font-weight:700;background:#f2f2f2">
+        <td style="padding:6px 8px;border:1px solid #333;text-align:center" colspan="2">Period</td>
+        <td style="padding:6px 8px;border:1px solid #333;text-align:center">Due</td>
+        <td style="padding:6px 8px;border:1px solid #333;text-align:center">Drawn</td>
+        <td style="padding:6px 8px;border:1px solid #333;text-align:center">Difference</td>
+        <td style="padding:6px 8px;border:1px solid #333;text-align:center">Total</td>
+      </tr>
+      ${rows}
       <tr style="font-weight:700">
         <td style="padding:6px 8px;border:1px solid #333" colspan="2">NET CLAIM</td>
         <td style="padding:6px 8px;text-align:right;border:1px solid #333">${f.netTotal.toLocaleString()}</td>
