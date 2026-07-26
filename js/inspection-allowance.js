@@ -302,25 +302,61 @@ function iaFieldRow(pairs) {
 
 // Fixed allowance line-items — only Inspection Allowance is populated for this bill type,
 // mirroring the source Adjustment Form / Bill F templates (rest of the standard
-// pay-element rows are printed at zero, matching the government format).
+// pay-element rows are printed at zero, matching the government format). Wage Type
+// and G/L Object codes are copied verbatim from the real "Payment of Arrears Pay &
+// Allowances Through Adjustments" form so the printed page is an exact replica.
 const IA_ALLOWANCE_LINES = [
-  'Basic Pay', 'Personal Pay', 'House Rent Allowance', 'Conveyance Allowance', 'Medical Allowance',
-  'Personal Allowance', 'Social Security Ben - 30%', 'Health Sector Reforms Allowance',
-  'Health Professional Allowance', 'Non-Practicing Allowance', 'Mess Allowance', 'Dress Allowance',
-  'Qualification Allowance', 'M.Phil / Ph.D Allowance', 'INSPECTION ALLOWANCE',
+  ['Basic Pay',                        '5801',      'A01101/A01151'],
+  ['Personal Pay (Max Scale)',         '5808',      'A01102/A01152'],
+  ['House Rent Allowance',             '5002',      'A01202'],
+  ['Conveyance Allowance',             '5011',      'A01203'],
+  ['Medical Allowance',                '5012',      'A01217'],
+  ['Personal Allowance',               '5048',      'A0121N'],
+  ['S.S.B Allowance 30%',              '5290',      'A01270/A04115'],
+  ['H.S.R.A Allowance Health',         '6144',      'A01270'],
+  ['Health Professional Allowance',    '5048',      'A01218'],
+  ['Practice Compensatory Allowance',  '5920',      'A01252'],
+  ['Non-practice Allowance',           '5210/5045', 'A01270'],
+  ['Mess Allowance',                   '5095',      'A01251'],
+  ['Dress Allowance',                  '5026',      'A01208'],
+  ['Qualification Allowance',          '5053',      'A01216'],
+  ['M. Phil / Ph.D Allowance',         '6077',      'A01226'],
+  ['INSPECTION ALLOWANCE',             '',          'A01297'],
 ];
 
 function iaAllowanceTable(inspectionAmount) {
-  const rows = IA_ALLOWANCE_LINES.map(label => {
+  const rows = IA_ALLOWANCE_LINES.map(([label, wageType, glObject], i) => {
     const amt = label === 'INSPECTION ALLOWANCE' ? inspectionAmount : 0;
-    return `<tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">${label}</td>
+    return `<tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">${i + 1}</td>
+             <td style="padding:2px 6px;border-bottom:1px solid #ddd">${label}</td>
+             <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:center">${wageType}</td>
+             <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:center">${glObject}</td>
              <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">${amt.toLocaleString()}</td></tr>`;
   }).join('');
-  return `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
-    <thead><tr><th style="text-align:left;padding:3px 6px;border-bottom:2px solid #333">Pay / Allowance</th>
-      <th style="text-align:right;padding:3px 6px;border-bottom:2px solid #333">Amount (PKR)</th></tr></thead>
+  return `<table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
+    <thead><tr>
+      <th style="text-align:left;padding:3px 6px;border-bottom:2px solid #333;width:22px">Sr.#</th>
+      <th style="text-align:left;padding:3px 6px;border-bottom:2px solid #333">Items</th>
+      <th style="text-align:center;padding:3px 6px;border-bottom:2px solid #333">Wage Type</th>
+      <th style="text-align:center;padding:3px 6px;border-bottom:2px solid #333">G/L Object</th>
+      <th style="text-align:right;padding:3px 6px;border-bottom:2px solid #333">Amount</th>
+    </tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
+
+// Deduction line-items shown on the Adjustment Form — same order/codes as the
+// real form. Every row prints 0 except "Inspection allowance" (second-to-last
+// row, right before Adj ROP), which carries the actual per-month deduction
+// total pulled from the inspection_allowance_deductions table (same source
+// getMyInspectionAllowanceMonths / Budget Preparation uses — see iaResolveBillFields).
+const IA_DEDUCTION_LINES = [
+  ['G.P Fund',                '6075', 'G06103'],
+  ['B.F (Provincial)',        '6001', 'G06201/6201/6214'],
+  ['B.F (District)',          '6206', 'G06215'],
+  ['GROUP INSURANCE (PROV)',  '6006', 'G06408'],
+  ['GROUP INSURANCE (DISTT)', '6207', 'G06411'],
+  ['Building Rent 5%',        '6008', 'C02701'],
+];
 
 function iaAdjustmentFormHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
@@ -336,19 +372,39 @@ function iaAdjustmentFormHtml(bill) {
       <tr><td style="padding:4px 6px;font-weight:700">Total Pay &amp; Allowances</td>
           <td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalGross.toLocaleString()}</td></tr>
     </table>
-    <div style="font-size:12px;font-weight:700;margin:10px 0 4px">Deductions</div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
-      ${['GP Fund', 'Benevolent Fund (Provincial)', 'Benevolent Fund (District)', 'Group Insurance (Provincial)', 'Group Insurance (District)', 'Building Rent 5%', 'Adj. ROP'].map(l =>
-        `<tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">${l}</td><td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">0</td></tr>`
-      ).join('')}
-      <tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">Inspection Allowance Deduction</td>
-          <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">${f.totalDeduction.toLocaleString()}</td></tr>
+    <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
+      <thead><tr>
+        <th style="text-align:left;padding:3px 6px;border-bottom:2px solid #333;width:22px">Sr.#</th>
+        <th style="text-align:left;padding:3px 6px;border-bottom:2px solid #333">Deductions</th>
+        <th style="text-align:center;padding:3px 6px;border-bottom:2px solid #333">Wage Type</th>
+        <th style="text-align:center;padding:3px 6px;border-bottom:2px solid #333">G/L Object</th>
+        <th style="text-align:right;padding:3px 6px;border-bottom:2px solid #333">Amount</th>
+      </tr></thead>
+      <tbody>
+        ${IA_DEDUCTION_LINES.map(([label, wageType, glObject], i) => `
+          <tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">${i + 1}</td>
+              <td style="padding:2px 6px;border-bottom:1px solid #ddd">${label}</td>
+              <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:center">${wageType}</td>
+              <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:center">${glObject}</td>
+              <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">0</td></tr>`
+        ).join('')}
+        <tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">${IA_DEDUCTION_LINES.length + 1}</td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd">Inspection allowance</td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd"></td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd"></td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">${f.totalDeduction.toLocaleString()}</td></tr>
+        <tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">${IA_DEDUCTION_LINES.length + 2}</td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd">Adj ROP</td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd">6126</td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd"></td>
+            <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">0</td></tr>
+      </tbody>
     </table>
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:24px">
       <tr><td style="padding:4px 6px;font-weight:700">Total Deductions</td><td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalDeduction.toLocaleString()}</td></tr>
-      <tr><td style="padding:4px 6px;font-weight:700;font-size:13px">Net Total</td><td style="padding:4px 6px;text-align:right;font-weight:700;font-size:13px">${f.netTotal.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700;font-size:13px">Net Total</td><td style="padding:4px 6px;text-align:right;font-weight:700;font-size:13px">( ${f.netTotal.toLocaleString()}.00 )</td></tr>
     </table>
-    <p style="font-size:11px;margin-bottom:40px">Certified that the amount claimed above is correct and has not been drawn previously.</p>
+    <p style="font-size:11px;margin-bottom:40px">Certified that sufficient budget is available to meet the above expenditure for the current financial year.</p>
     <table style="width:100%;font-size:11px"><tr>
       <td style="width:50%;text-align:center;padding-top:30px;border-top:1px solid #333">Assistant Education Officer</td>
       <td style="width:50%;text-align:center;padding-top:30px;border-top:1px solid #333">District Account Officer</td>
@@ -370,10 +426,14 @@ function iaBillFHtml(bill) {
     ])}
     ${iaAllowanceTable(f.totalGross)}
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
-      <tr><td style="padding:4px 6px;font-weight:700">Gross Claim</td><td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalGross.toLocaleString()}</td></tr>
-      <tr><td style="padding:4px 6px">Less: Fund Deduction</td><td style="padding:4px 6px;text-align:right">0</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700">TOTAL BASIC SALARY</td><td style="padding:4px 6px;text-align:right;font-weight:700">0</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700">TOTAL REGULAR ALLOWANCES</td><td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalGross.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700;border-top:1px solid #999">Gross Claim (Pay + Regular Allow + Other Allow)</td>
+          <td style="padding:4px 6px;text-align:right;font-weight:700;border-top:1px solid #999">${f.totalGross.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px">Less: Fund Deduction (G.P.F / Benevolent Fund / Group Insurance)</td><td style="padding:4px 6px;text-align:right">0</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700">Net Claim</td><td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalGross.toLocaleString()}</td></tr>
       <tr><td style="padding:4px 6px">Income Tax</td><td style="padding:4px 6px;text-align:right">0</td></tr>
-      <tr><td style="padding:4px 6px">Advance Recoveries / Inspection Allowance Deduction</td><td style="padding:4px 6px;text-align:right">${f.totalDeduction.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px">Advance / Recoveries (Inspection Allowance Deduction)</td><td style="padding:4px 6px;text-align:right">${f.totalDeduction.toLocaleString()}</td></tr>
       <tr><td style="padding:6px;font-weight:700;font-size:13px;border-top:1px solid #333">Net Amount Payable</td>
           <td style="padding:6px;text-align:right;font-weight:700;font-size:13px;border-top:1px solid #333">${f.netTotal.toLocaleString()}</td></tr>
     </table>
