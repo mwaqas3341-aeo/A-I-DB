@@ -160,10 +160,34 @@ async function iaDownloadBill() {
   try {
     const claims = [...iaState.selected].sort((a, b) => a - b).map(m => {
       const row = iaState.months.find(x => x.month === m);
-      return { year: iaState.year, month: m, allowance_rate: iaState.rate, deduction: row.deduction, due: row.due };
+      // FIX: don't stamp every claim with today's live global rate
+      // (iaState.rate). If the admin changes the rate after this month's
+      // budget was already prepared, that would silently inflate/deflate
+      // the printed Gross figure while Deductions/Net Total still reflect
+      // the rate that was actually in force for that month — the bill
+      // would stop reconciling (Gross - Deductions != Net Total).
+      // Instead, reconstruct the rate that was ACTUALLY applied to this
+      // specific month from its own recorded numbers: due = rate -
+      // deduction, so rate = due + deduction. This is "the rate updated
+      // according to the bill's budget deductions" — it always reconciles,
+      // no matter what the current global default rate is later changed to.
+      const deduction = Number(row.deduction) || 0;
+      const due = Number(row.due) || 0;
+      const allowance_rate = due + deduction;
+      return { year: iaState.year, month: m, allowance_rate, deduction, due };
     });
-    const netTotal = claims.reduce((s, c) => s + c.due, 0);
+    const netTotal = claims.reduce((s, c) => s + Number(c.due), 0);
     const bill = { user: iaState.profile, claims, net_total: netTotal };
+    // Resolve every field the bill needs — per-user profile data (personal
+    // no., DDO/DDEO code, DDEO office detail, name, markaz, tehsil, post
+    // held) plus the derived totals (gross/deduction/net) and the month
+    // list — ONCE, here, right after the Adjustment Form's underlying data
+    // (user + claims) is assembled. Bill F and Bill B are then built from
+    // this SAME resolved object instead of each re-deriving their own
+    // copies of period/totals/labels, so all three pages are always
+    // guaranteed to agree with each other and with whichever AEO is
+    // currently logged in.
+    bill.fields = iaResolveBillFields(bill);
 
     const pdfBytes = await iaBuildBillPdfBytes(bill);
     iaDownloadPdf(pdfBytes, `Inspection_Allowance_${iaState.profile.personal_no}_${iaState.year}_${Date.now()}.pdf`);
@@ -223,6 +247,50 @@ function iaPageShell(title, bodyHtml) {
     </div>`;
 }
 
+// ─── Resolve ALL bill fields ONCE, from the Adjustment Form's inputs ──
+// (bill.user = the currently logged-in AEO's own profile, bill.claims =
+// their chosen months). Bill F and Bill B are built from this SAME object,
+// so every page always shows the same personal no., DDO/DDEO code, DDEO
+// office detail, name, markaz, tehsil, month list and totals for whichever
+// user is downloading — nothing is re-derived or hardcoded per page.
+function iaResolveBillFields(bill) {
+  const u = bill.user || {};
+  const claims = bill.claims || [];
+
+  const tehsil = u.tehsil || '';
+  // "Description of Cost Centre" on the real form (e.g. "DDEO (M) Tehsil
+  // Karor") — use the profile's own dy_office_detail if the TR/admin has
+  // set it, otherwise derive a sensible default from the tehsil so the
+  // field is never blank.
+  const costCentreDescription = u.dy_office_detail || (tehsil ? `DDEO (M) Tehsil ${tehsil}` : '—');
+
+  const totalGross = claims.reduce((s, c) => s + Number(c.allowance_rate || 0), 0);
+  const totalDeduction = claims.reduce((s, c) => s + Number(c.deduction || 0), 0);
+  const netTotal = claims.reduce((s, c) => s + Number(c.due || 0), 0);
+
+  return {
+    ddeoCode: u.ddeo_code || '—',
+    costCentreDescription,
+    personalNo: u.personal_no || '—',
+    name: u.name || '—',
+    designation: u.designation || '—',
+    postHeld: u.designation || '—',
+    markaz: u.markaz_name || '—',
+    tehsil: tehsil || '—',
+    wing: u.wing || '',
+    district: u.district || '',
+    period: claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(', '),
+    months: claims.map((c) => ({ label: `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`, ...c })),
+    grantNo: '15',
+    functionalMajor: '40000 = Social Services',
+    classificationMinor: '41000 = Education',
+    objectClassification: 'A01297 — Inspection Allowance',
+    totalGross,
+    totalDeduction,
+    netTotal,
+  };
+}
+
 function iaFieldRow(pairs) {
   return `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px">
     ${pairs.map(row => `<tr>${row.map(([lbl, val]) => `
@@ -255,21 +323,18 @@ function iaAllowanceTable(inspectionAmount) {
 }
 
 function iaAdjustmentFormHtml(bill) {
-  const u = bill.user;
-  const claim = bill.claims[0]; // Adjustment Form is per period; primary claim shown
-  const totalDeduction = bill.claims.reduce((s, c) => s + Number(c.deduction), 0);
-  const period = bill.claims.map(c => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(', ');
+  const f = bill.fields || iaResolveBillFields(bill);
 
   const body = `
     ${iaFieldRow([
-      [['DDO Code / Cost Centre', u.ddeo_code], ['Personal No.', u.personal_no]],
-      [['Name', u.name], ['Designation', u.designation]],
-      [['Markaz', u.markaz_name], ['Period of Bill', period]],
+      [['DDO Code / Cost Centre', f.ddeoCode], ['Description of Cost Centre', f.costCentreDescription]],
+      [['Personal Number', f.personalNo], ['Name', f.name]],
+      [['Markaz', f.markaz], ['Period of Bill / Claim', f.period]],
     ])}
-    ${iaAllowanceTable(iaState.rate * bill.claims.length)}
+    ${iaAllowanceTable(f.totalGross)}
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
       <tr><td style="padding:4px 6px;font-weight:700">Total Pay &amp; Allowances</td>
-          <td style="padding:4px 6px;text-align:right;font-weight:700">${(iaState.rate * bill.claims.length).toLocaleString()}</td></tr>
+          <td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalGross.toLocaleString()}</td></tr>
     </table>
     <div style="font-size:12px;font-weight:700;margin:10px 0 4px">Deductions</div>
     <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px">
@@ -277,11 +342,11 @@ function iaAdjustmentFormHtml(bill) {
         `<tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">${l}</td><td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">0</td></tr>`
       ).join('')}
       <tr><td style="padding:2px 6px;border-bottom:1px solid #ddd">Inspection Allowance Deduction</td>
-          <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">${totalDeduction.toLocaleString()}</td></tr>
+          <td style="padding:2px 6px;border-bottom:1px solid #ddd;text-align:right">${f.totalDeduction.toLocaleString()}</td></tr>
     </table>
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:24px">
-      <tr><td style="padding:4px 6px;font-weight:700">Total Deductions</td><td style="padding:4px 6px;text-align:right;font-weight:700">${totalDeduction.toLocaleString()}</td></tr>
-      <tr><td style="padding:4px 6px;font-weight:700;font-size:13px">Net Total</td><td style="padding:4px 6px;text-align:right;font-weight:700;font-size:13px">${bill.net_total.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700">Total Deductions</td><td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalDeduction.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700;font-size:13px">Net Total</td><td style="padding:4px 6px;text-align:right;font-weight:700;font-size:13px">${f.netTotal.toLocaleString()}</td></tr>
     </table>
     <p style="font-size:11px;margin-bottom:40px">Certified that the amount claimed above is correct and has not been drawn previously.</p>
     <table style="width:100%;font-size:11px"><tr>
@@ -292,28 +357,27 @@ function iaAdjustmentFormHtml(bill) {
 }
 
 function iaBillFHtml(bill) {
-  const u = bill.user;
-  const totalGross = iaState.rate * bill.claims.length;
-  const totalDeduction = bill.claims.reduce((s, c) => s + Number(c.deduction), 0);
-  const period = bill.claims.map(c => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(', ');
+  const f = bill.fields || iaResolveBillFields(bill);
 
   const body = `
     <div style="text-align:center;font-size:11px;margin-bottom:10px">Form No. STR-18 — Pay Bill of Gazetted Officer</div>
     ${iaFieldRow([
-      [['DDO Code', u.ddeo_code], ['Personal No.', u.personal_no]],
-      [['Name', u.name], ['Month/Period', period]],
-      [['Markaz', u.markaz_name], ['Object Classification', 'A011 — Inspection Allowance']],
+      [['Grant No.', f.grantNo], ['DDO Code', f.ddeoCode]],
+      [['Functional Major', f.functionalMajor], ['Personal No.', f.personalNo]],
+      [['Classification Minor', f.classificationMinor], ['Name', f.name]],
+      [['Post Held', f.postHeld], ['Markaz', f.markaz]],
+      [['Month / Period', f.period], ['Object Classification', f.objectClassification]],
     ])}
-    ${iaAllowanceTable(totalGross)}
+    ${iaAllowanceTable(f.totalGross)}
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
-      <tr><td style="padding:4px 6px;font-weight:700">Gross Claim</td><td style="padding:4px 6px;text-align:right;font-weight:700">${totalGross.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px;font-weight:700">Gross Claim</td><td style="padding:4px 6px;text-align:right;font-weight:700">${f.totalGross.toLocaleString()}</td></tr>
       <tr><td style="padding:4px 6px">Less: Fund Deduction</td><td style="padding:4px 6px;text-align:right">0</td></tr>
       <tr><td style="padding:4px 6px">Income Tax</td><td style="padding:4px 6px;text-align:right">0</td></tr>
-      <tr><td style="padding:4px 6px">Advance Recoveries / Inspection Allowance Deduction</td><td style="padding:4px 6px;text-align:right">${totalDeduction.toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 6px">Advance Recoveries / Inspection Allowance Deduction</td><td style="padding:4px 6px;text-align:right">${f.totalDeduction.toLocaleString()}</td></tr>
       <tr><td style="padding:6px;font-weight:700;font-size:13px;border-top:1px solid #333">Net Amount Payable</td>
-          <td style="padding:6px;text-align:right;font-weight:700;font-size:13px;border-top:1px solid #333">${bill.net_total.toLocaleString()}</td></tr>
+          <td style="padding:6px;text-align:right;font-weight:700;font-size:13px;border-top:1px solid #333">${f.netTotal.toLocaleString()}</td></tr>
     </table>
-    <p style="font-size:11px;margin-bottom:6px"><b>Net Amount in Words:</b> ${iaNumberToWordsPKR(bill.net_total)}</p>
+    <p style="font-size:11px;margin-bottom:6px"><b>Net Amount in Words:</b> ${iaNumberToWordsPKR(f.netTotal)}</p>
 
     <div style="font-size:10.5px;margin:16px 0;line-height:1.55">
       <p>(a) Certified that the amount claimed above has not been drawn previously.</p>
@@ -330,7 +394,7 @@ function iaBillFHtml(bill) {
 }
 
 function iaBillBHtml(bill) {
-  const u = bill.user;
+  const f = bill.fields || iaResolveBillFields(bill);
   const rows = bill.claims.map(c => `
     <tr>
       <td style="padding:5px 8px;border:1px solid #999">${IA_MONTH_NAMES[c.month - 1]} ${c.year}</td>
@@ -342,8 +406,8 @@ function iaBillBHtml(bill) {
 
   const body = `
     ${iaFieldRow([
-      [['Personal No.', u.personal_no], ['Name', u.name]],
-      [['Designation', u.designation], ['Markaz', u.markaz_name]],
+      [['Personal No.', f.personalNo], ['Name', f.name]],
+      [['Post Held', f.postHeld], ['Markaz', f.markaz]],
     ])}
     <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin:14px 0">
       <thead><tr style="background:#f2f2f2">
@@ -356,9 +420,9 @@ function iaBillBHtml(bill) {
       <tbody>${rows}</tbody>
     </table>
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px">
-      <tr><td style="padding:6px;font-weight:700">Net Claim</td><td style="padding:6px;text-align:right;font-weight:700">${bill.net_total.toLocaleString()}</td></tr>
+      <tr><td style="padding:6px;font-weight:700">Net Claim</td><td style="padding:6px;text-align:right;font-weight:700">${f.netTotal.toLocaleString()}</td></tr>
     </table>
-    <p style="font-size:11px"><b>Net Amount in Words:</b> ${iaNumberToWordsPKR(bill.net_total)}</p>
+    <p style="font-size:11px"><b>Net Amount in Words:</b> ${iaNumberToWordsPKR(f.netTotal)}</p>
     <table style="width:100%;font-size:11px;margin-top:40px"><tr>
       <td style="width:50%;text-align:center;padding-top:30px;border-top:1px solid #333">Assistant Education Officer</td>
       <td style="width:50%;text-align:center;padding-top:30px;border-top:1px solid #333">District Account Officer</td>
