@@ -408,12 +408,16 @@ function iaBillFHtml(bill) {
     const bold = opts.bold ? 'font-weight:700;' : '';
     const underline = opts.underline ? 'text-decoration:underline;' : '';
     const fontSize = opts.fontSize || '11.5px';
-    const box = opts.box ? 'border:1px solid #333;' : '';
+    // Every row gets a border on every cell; `box` only makes emphasized
+    // (total/net) rows stand out with a thicker rule + light shading —
+    // it no longer controls whether a border is drawn at all.
+    const border = opts.box ? 'border:1.5px solid #333;' : 'border:1px solid #333;';
+    const bg = opts.box ? 'background:#f2f2f2;' : '';
     return `<tr>
-      <td style="width:${W_LABEL}px;padding:2px 6px;${box}${bold}${underline}font-size:${fontSize};text-align:left;">${label}</td>
-      <td style="width:${W_CODE}px;padding:2px 6px;${box}${bold}font-size:${fontSize};text-align:center;">${code}</td>
-      <td style="width:${W_RATE}px;padding:2px 6px;${box}${bold}font-size:${fontSize};text-align:right;">${rate}</td>
-      <td style="width:${W_AMT}px;padding:2px 6px;${box}${bold}font-size:${fontSize};text-align:right;">${amount}</td>
+      <td style="width:${W_LABEL}px;padding:2px 6px;${border}${bg}${bold}${underline}font-size:${fontSize};text-align:left;">${label}</td>
+      <td style="width:${W_CODE}px;padding:2px 6px;${border}${bg}${bold}font-size:${fontSize};text-align:center;">${code}</td>
+      <td style="width:${W_RATE}px;padding:2px 6px;${border}${bg}${bold}font-size:${fontSize};text-align:right;">${rate}</td>
+      <td style="width:${W_AMT}px;padding:2px 6px;${border}${bg}${bold}font-size:${fontSize};text-align:right;">${amount}</td>
     </tr>`;
   }
   function fullRow(html, opts = {}) {
@@ -422,26 +426,27 @@ function iaBillFHtml(bill) {
     const underline = opts.underline ? 'text-decoration:underline;' : '';
     const italic = opts.italic ? 'font-style:italic;' : '';
     const fontSize = opts.fontSize || '11.5px';
-    const border = opts.box ? 'border:1px solid #333;' : '';
-    return `<tr><td colspan="4" style="padding:2px 6px;text-align:${align};${bold}${underline}${italic}font-size:${fontSize};${border}">${html}</td></tr>`;
+    const border = opts.box ? 'border:1.5px solid #333;' : 'border:1px solid #333;';
+    const bg = opts.box ? 'background:#f2f2f2;' : '';
+    return `<tr><td colspan="4" style="padding:2px 6px;text-align:${align};${bold}${underline}${italic}font-size:${fontSize};${border}${bg}">${html}</td></tr>`;
   }
 
   // Top block: GRANT NO etc. (left) + DDO Code / Personal No. / Name / Month (right)
   const topBlock = `
     <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;border:1px solid #333;margin-bottom:4px;font-size:11.5px;">
       <tr>
-        <td style="width:${W_LABEL}px;padding:4px 6px;border-right:1px solid #333;vertical-align:top;">
+        <td style="width:${W_LABEL}px;padding:4px 6px;border:1px solid #333;vertical-align:top;">
           GRANT NO.15<br><br>
           Functional&nbsp;&nbsp;&nbsp;&nbsp;Major&nbsp;&nbsp;&nbsp;&nbsp;40000 = Social Services<br><br>
           Classification&nbsp;&nbsp;&nbsp;&nbsp;Minor&nbsp;&nbsp;&nbsp;&nbsp;41000 = Education<br><br>
           of Expend&nbsp;&nbsp;&nbsp;&nbsp;Detailed
         </td>
-        <td style="width:${W_CODE + W_RATE + W_AMT}px;padding:0;vertical-align:top;">
+        <td style="width:${W_CODE + W_RATE + W_AMT}px;padding:0;border:1px solid #333;vertical-align:top;">
           <table style="min-width:0;width:100%;border-collapse:collapse;">
-            ${[['DDO Code', f.ddeoCode], ['Personal No.', f.personalNo], ['Name', f.name], ['Month', f.periodDisplay]].map(([lbl, val], i) => `
-              <tr style="${i < 3 ? 'border-bottom:1px solid #333;' : ''}">
-                <td style="padding:3px 8px;font-weight:700;font-size:11.5px;width:80px;">${lbl}</td>
-                <td style="padding:3px 8px;font-weight:700;font-size:14px;">${val}</td>
+            ${[['DDO Code', f.ddeoCode], ['Personal No.', f.personalNo], ['Name', f.name], ['Month', f.periodDisplay]].map(([lbl, val]) => `
+              <tr>
+                <td style="padding:3px 8px;font-weight:700;font-size:11.5px;width:80px;border:1px solid #333;">${lbl}</td>
+                <td style="padding:3px 8px;font-weight:700;font-size:14px;border:1px solid #333;">${val}</td>
               </tr>
             `).join('')}
           </table>
@@ -449,27 +454,27 @@ function iaBillFHtml(bill) {
       </tr>
     </table>`;
 
-  // Name row (plain)
+  // Name row
   const nameRow = `
     <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:11.5px;margin-bottom:2px;">
       <tr>
-        <td style="width:72px;font-weight:700;">Name:</td>
-        <td style="width:216px;font-weight:700;">${f.name}</td>
-        <td style="width:72px;font-weight:700;">Post Held</td>
-        <td style="width:65px;font-weight:700;">${f.postHeld}</td>
-        <td style="width:93px;font-weight:700;">Markaz:</td>
-        <td style="width:201px;font-weight:700;">${f.markaz}</td>
+        <td style="width:72px;font-weight:700;border:1px solid #333;padding:2px 6px;">Name:</td>
+        <td style="width:216px;font-weight:700;border:1px solid #333;padding:2px 6px;">${f.name}</td>
+        <td style="width:72px;font-weight:700;border:1px solid #333;padding:2px 6px;">Post Held</td>
+        <td style="width:65px;font-weight:700;border:1px solid #333;padding:2px 6px;">${f.postHeld}</td>
+        <td style="width:93px;font-weight:700;border:1px solid #333;padding:2px 6px;">Markaz:</td>
+        <td style="width:201px;font-weight:700;border:1px solid #333;padding:2px 6px;">${f.markaz}</td>
       </tr>
     </table>`;
 
-  // Column headers (plain)
+  // Column headers
   const colHeaders = `
     <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;">
       <tr>
-        <td style="width:${W_LABEL}px;">&nbsp;</td>
-        <td style="width:${W_CODE}px;text-align:center;font-weight:700;">Object<br>Classification<br>Code</td>
-        <td style="width:${W_RATE}px;text-align:center;font-weight:700;">Monthly<br>Rate</td>
-        <td style="width:${W_AMT}px;text-align:center;font-weight:700;">Amount.</td>
+        <td style="width:${W_LABEL}px;border:1px solid #333;padding:2px 6px;">&nbsp;</td>
+        <td style="width:${W_CODE}px;text-align:center;font-weight:700;border:1px solid #333;padding:2px 6px;">Object<br>Classification<br>Code</td>
+        <td style="width:${W_RATE}px;text-align:center;font-weight:700;border:1px solid #333;padding:2px 6px;">Monthly<br>Rate</td>
+        <td style="width:${W_AMT}px;text-align:center;font-weight:700;border:1px solid #333;padding:2px 6px;">Amount.</td>
       </tr>
     </table>`;
 
