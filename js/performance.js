@@ -122,8 +122,47 @@ function perfIsCredited(row, storedVal) {
   return storedVal ?? true;
 }
 
-function perfRowAmount(row) {
-  return Math.round((row.weight || 0) * (iaState.rate || 25000));
+// FIX (Issue 2 — inflated totals like 25,008 / 250008 instead of 25,000):
+// The old perfRowAmount() rounded EVERY row's share individually
+// (Math.round(weight * rate)), then the totals summed those already-rounded
+// numbers. For 16 equal-weight rows at rate 25000, each row's exact share is
+// 1562.5, which Math.round() bumps up to 1563 — and 16 x 1563 = 25008, not
+// 25000. Multiply that same drift across multiple selected months and it
+// compounds further (which is how a display can end up showing something
+// like 250008). The fix: never round per-row and then add the rounded
+// numbers. Instead, apportion the whole (integer) rate across rows using
+// the "largest remainder" method, which guarantees the parts always sum to
+// EXACTLY the capped total — no drift is mathematically possible — and
+// every value is forced through Number()/Math.round so a stray string can
+// never sneak in and get concatenated instead of added.
+function perfDistributeAmounts(rows, rate) {
+  const capRate = Math.max(0, Math.round(Number(rate) || 25000));
+  const raw = rows.map((row) => (Number(row.weight) || 0) * capRate);
+  const floors = raw.map((v) => Math.floor(v));
+  const allocated = floors.reduce((a, b) => a + b, 0);
+  let remaining = capRate - allocated;
+  const order = raw
+    .map((v, i) => ({ i, rem: v - floors[i] }))
+    .sort((a, b) => b.rem - a.rem);
+  const amounts = floors.slice();
+  for (let k = 0; k < order.length && remaining > 0; k++, remaining--) {
+    amounts[order[k].i] += 1;
+  }
+  // Safety net: amounts must always be non-negative integers and must
+  // always sum to exactly capRate (never more) — this is the strict cap.
+  return amounts.map((v) => Math.max(0, Math.round(Number(v) || 0)));
+}
+
+function perfRowAmount(row, rows) {
+  // Back-compat single-row lookup: derive this row's apportioned share from
+  // the full distribution so it never drifts from the true total. Falls
+  // back to a plain rounded share only if a rows list isn't supplied.
+  if (Array.isArray(rows)) {
+    const rate = Number(iaState?.rate) || 25000;
+    const idx = rows.indexOf(row);
+    if (idx !== -1) return perfDistributeAmounts(rows, rate)[idx];
+  }
+  return Math.round((Number(row.weight) || 0) * (Number(iaState?.rate) || 25000));
 }
 
 function perfRowDisplayCells(row, storedVal, credited) {
@@ -204,10 +243,12 @@ function perfOpenHtml(data) {
     perfFlexCell(PERFOPEN_COLS[6], "Initials of DDO", { header: true, align: "center" }),
   ];
 
+  const rate = Number(iaState?.rate) || 25000;
+  const openAmounts = perfDistributeAmounts(PERFOPENROWS, rate);
   const rows = PERFOPENROWS.map((r, i) => {
     const stored = cfg.achieved?.[i];
     const credited = perfIsCredited(r, stored);
-    const amt = perfRowAmount(r);
+    const amt = openAmounts[i];
     const { achCell, rmkCell } = perfRowDisplayCells(r, stored, credited);
     return perfFlexRow(openTotalW, [
       perfFlexCell(PERFOPEN_COLS[0], i + 1, { align: "center" }),
@@ -345,7 +386,60 @@ async function perfBuildCertificatePdfBytes(pagesHtml) {
   return pdf.output("arraybuffer");
 }
 
+function perfInjectGateStyles() {
+  if (document.getElementById("perfGateStyleTag")) return;
+  const style = document.createElement("style");
+  style.id = "perfGateStyleTag";
+  style.textContent = `
+    @keyframes perfGatePulse {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(13,148,136,.15), 0 8px 20px rgba(13,148,136,.25); }
+      50%      { box-shadow: 0 0 0 7px rgba(13,148,136,.28), 0 12px 28px rgba(13,148,136,.42); }
+    }
+    @keyframes perfArrowNudge {
+      0%, 100% { transform: translateX(0); }
+      50%      { transform: translateX(-6px); }
+    }
+    .perf-status-gate {
+      animation: perfGatePulse 1.6s ease-in-out infinite;
+      border: 2px solid #0d9488;
+      background: linear-gradient(135deg,#ffffff,#ecfeff);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      width: 100%;
+    }
+    .perf-status-btn {
+      padding: 10px 24px;
+      border-radius: 10px;
+      border: none;
+      font-weight: 700;
+      font-size: .85rem;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(135deg,#cbd5e1,#94a3b8);
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .perf-status-btn:hover { transform: translateY(-1px); }
+    .perf-status-btn.active {
+      background: linear-gradient(135deg,#14b8a6,#0d9488 60%,#0f766e);
+      box-shadow: 0 4px 12px rgba(13,148,136,.4);
+    }
+    .perf-status-btn.pending {
+      background: linear-gradient(135deg,#14b8a6,#0d9488 60%,#0f766e);
+      box-shadow: 0 4px 14px rgba(13,148,136,.45);
+    }
+    .perf-workspace-locked {
+      pointer-events: none;
+      user-select: none;
+      filter: grayscale(.85) blur(1px);
+      opacity: .45;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 function perfInit() {
+  perfInjectGateStyles();
   const yearSel = document.getElementById("perf_year");
   const yNow = new Date().getFullYear();
   yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1]
@@ -428,7 +522,7 @@ function perfToggleMonth(month, checked) {
       return;
     }
     perfState.selected.add(month);
-    if (!perfState.config[month]) perfState.config[month] = { status: "open", achieved: {} };
+    if (!perfState.config[month]) perfState.config[month] = { status: null, achieved: {} };
   } else {
     perfState.selected.delete(month);
     delete perfState.config[month];
@@ -456,18 +550,22 @@ function perfUpdateAchieved(month, idx, value) {
 
 function perfComputeMonthTotal(month) {
   const cfg = perfState.config[month];
-  if (!cfg) return 0;
+  if (!cfg || !cfg.status) return 0;
   const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
-  const rawTotal = rows.reduce((sum, row, idx) => {
+  const rate = Number(iaState?.rate) || 25000;
+  const amounts = perfDistributeAmounts(rows, rate);
+  const total = rows.reduce((sum, row, idx) => {
     const credited = perfIsCredited(row, cfg.achieved[idx]);
-    return sum + (credited ? perfRowAmount(row) : 0);
+    return sum + (credited ? amounts[idx] : 0);
   }, 0);
-  return Math.round(rawTotal);
+  // Strict cap: whatever happens above, the month total can never exceed
+  // the configured rate (default 25000).
+  return Math.min(Math.round(Number(total) || 0), Math.round(rate));
 }
 
 function perfUpdateGrandTotal() {
-  const total = [...perfState.selected].reduce((s, m) => s + perfComputeMonthTotal(m), 0);
-  document.getElementById("perfGrandTotalDisplay").textContent = "PKR " + total.toLocaleString();
+  const total = [...perfState.selected].reduce((s, m) => Number(s) + Number(perfComputeMonthTotal(m) || 0), 0);
+  document.getElementById("perfGrandTotalDisplay").textContent = "PKR " + Number(total).toLocaleString();
 }
 
 function perfRenderConfigPanels() {
@@ -483,35 +581,59 @@ function perfRenderConfigPanels() {
 
   wrap.innerHTML = months.map((month) => {
     const cfg = perfState.config[month];
+    const answered = !!cfg.status;
     const total = perfComputeMonthTotal(month);
+
+    const statusButtons = (pending) => `
+      <button type="button" class="perf-status-btn ${cfg.status === "open" ? "active" : pending ? "pending" : ""}" onclick="perfSetStatus(${month},'open')">Open</button>
+      <button type="button" class="perf-status-btn ${cfg.status === "closed" ? "active" : pending ? "pending" : ""}" onclick="perfSetStatus(${month},'closed')">Closed</button>
+    `;
+
+    const statusBlock = answered
+      ? `<div style="display:flex;gap:10px;align-items:center;font-size:.85rem">${statusButtons(false)}</div>`
+      : "";
+
+    const gateBlock = answered
+      ? ""
+      : `<div class="perf-status-gate">
+           <div style="font-weight:800;font-size:.78rem;color:#0f766e;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">
+             ⚠ Required — select School Status to unlock this month
+           </div>
+           <div style="display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap">
+             ${statusButtons(true)}
+             <span style="font-size:1.4rem;color:#f59e0b;font-weight:800;animation:perfArrowNudge 1s ease-in-out infinite">⬅ Tap one</span>
+           </div>
+         </div>`;
+
+    const bodyBlock = answered
+      ? `${perfConfigTableHtml(month, cfg)}
+         <div style="text-align:right;margin-top:8px;padding-top:8px;border-top:1px dashed var(--b0);font-weight:700;font-size:.88rem">
+           Month Total: <span style="color:#0d9488" id="perfMonthTotal_${month}">PKR ${total.toLocaleString()}</span>
+         </div>`
+      : `<div class="perf-workspace-locked" style="padding:14px;text-align:center;color:var(--t3);font-size:.8rem;margin-top:12px;border:1px dashed var(--b0);border-radius:8px">
+           Indicator checklist is locked until you choose a School Status above.
+         </div>`;
+
     return `
       <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:16px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
           <div style="font-weight:700;font-size:.95rem">${IA_MONTH_NAMES[month - 1]}</div>
-          <div style="display:flex;gap:14px;align-items:center;font-size:.85rem">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-              <input type="radio" name="perf_status_${month}" ${cfg.status === "open" ? "checked" : ""} onchange="perfSetStatus(${month},'open')"> Open
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-              <input type="radio" name="perf_status_${month}" ${cfg.status === "closed" ? "checked" : ""} onchange="perfSetStatus(${month},'closed')"> Closed
-            </label>
-          </div>
+          ${statusBlock}
         </div>
-        ${perfConfigTableHtml(month, cfg)}
-        <div style="text-align:right;margin-top:8px;padding-top:8px;border-top:1px dashed var(--b0);font-weight:700;font-size:.88rem">
-          Month Total: <span style="color:#0d9488" id="perfMonthTotal_${month}">PKR ${total.toLocaleString()}</span>
-        </div>
+        ${gateBlock}
+        ${bodyBlock}
       </div>`;
   }).join("");
 
-  document.getElementById("perf_downloadBtn").disabled = months.length < PERFMINMONTHS;
+  const allAnswered = months.every((m) => !!perfState.config[m]?.status);
+  document.getElementById("perf_downloadBtn").disabled = months.length < PERFMINMONTHS || !allAnswered;
   perfUpdateGrandTotal();
 }
 
 function perfConfigTableHtml(month, cfg) {
   const isOpen = cfg.status === "open";
   const rows = isOpen ? PERFOPENROWS : PERFCLOSEDROWS;
-  const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg, isOpen)).join("");
+  const rowsHtml = rows.map((r, i) => perfIndicatorRowHtml(month, r, i, cfg, isOpen, rows)).join("");
 
   const th = "border:1px solid var(--b0);background:#e2e8f0;color:#1e293b;padding:6px 5px;font-size:.72rem;font-weight:700;text-align:left;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;";
   const heads = isOpen
@@ -534,10 +656,10 @@ function perfConfigTableHtml(month, cfg) {
   </table>`;
 }
 
-function perfIndicatorRowHtml(month, row, idx, cfg, isOpen) {
+function perfIndicatorRowHtml(month, row, idx, cfg, isOpen, rowsList) {
   const stored = cfg.achieved[idx];
   const credited = perfIsCredited(row, stored);
-  const entitlement = perfRowAmount(row);
+  const entitlement = perfRowAmount(row, rowsList || (isOpen ? PERFOPENROWS : PERFCLOSEDROWS));
   const { rmkCell } = perfRowDisplayCells(row, stored, credited);
   const td = "border:1px solid var(--b0);padding:5px;vertical-align:middle;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;";
 
