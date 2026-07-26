@@ -183,10 +183,10 @@ const IA_STYLE_RESET = `
     #iaPdfRenderTarget tr:hover, #iaPdfRenderTarget tbody tr:hover { background:transparent !important; }
   </style>`;
 
-function iaPageShell(title, officeHeader, bodyHtml) {
+function iaPageShell(title, officeHeader, bodyHtml, weight = 700) {
   return `
     ${IA_STYLE_RESET}
-    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;font-weight:800;box-sizing:border-box">
+    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;font-weight:${weight};box-sizing:border-box">
       <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
       ${officeHeader ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
       ${bodyHtml}
@@ -520,7 +520,7 @@ function iaBillFHtml(bill) {
     ${row4(iaNumberToWordsPKR(f.totalGross), '', '', b(f.totalDeduction), { box: false })}
     ${row4('Net Amount Payable:-', '', b(f.totalGross), b(f.netTotal), { bold: true, fontSize: '12px', box: true })}
   `;
-  const rupeesLine = fullRow(`Rupees:&nbsp; <span style="border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.netTotal)}</span>`);
+  const rupeesLine = fullRow(`Rupees:&nbsp; ${iaNumberToWordsPKR(f.netTotal)}`, { box: true, bold: true });
 
   // Assemble page 2 content
   const body = `
@@ -553,7 +553,7 @@ function iaBillFHtml(bill) {
     </tr></table>
   `;
 
-  return iaPageShell(f.officeHeader, '', body);
+  return iaPageShell(f.officeHeader, '', body, 800);
 }
 
 // ─── Bill B (Detail of Inspection Allowance) — Page 3 ──────────────
