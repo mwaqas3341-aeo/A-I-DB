@@ -4,52 +4,70 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Inspection Allowance Bill</title>
-
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <link rel="stylesheet" href="css/theme.css">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/portal-polish.css">
-
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <style>
-    body{ background:var(--s1); }
-    .iab-shell{ max-width:1000px; margin:0 auto; padding:24px 16px 60px; }
-    .iab-header{
-      background:linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
-      color:#fff; border-radius:var(--r2); padding:18px 22px; margin-bottom:20px;
-      display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;
+    body { background: var(--s1); }
+    .iab-shell { max-width: 1000px; margin: 0 auto; padding: 24px 16px 60px; }
+    .iab-header {
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+      color: #fff; border-radius: var(--r2); padding: 18px 22px; margin-bottom: 20px;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
     }
-    .iab-header h5{ margin:0; font-weight:700; }
-    .iab-header .iab-sub{ font-size:.8rem; opacity:.85; margin-top:2px; }
-    .iab-header a{ color:#fff; text-decoration:none; font-size:.85rem; }
-    .iab-header a:hover{ text-decoration:underline; }
-    #iabGate, #iabApp{ display:none; }
-    #iabToastStack{ position:fixed; top:16px; right:16px; z-index:9999; display:flex; flex-direction:column; gap:8px; }
-    .iab-toast{ background:#10180F; color:#fff; padding:10px 16px; border-radius:8px; font-size:.85rem; box-shadow:0 4px 14px rgba(0,0,0,.2); }
-    .iab-toast.err{ background:#7a1f1f; }
+    .iab-header h5 { margin: 0; font-weight: 700; }
+    .iab-header .iab-sub { font-size: .8rem; opacity: .85; margin-top: 2px; }
+    .iab-header a { color: #fff; text-decoration: none; font-size: .85rem; }
+    .iab-header a:hover { text-decoration: underline; }
+    #iabGate, #iabApp { display: none; }
+    #iabToastStack {
+      position: fixed; top: 16px; right: 16px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .iab-toast {
+      background: #10180F; color: #fff; padding: 10px 16px; border-radius: 8px;
+      font-size: .85rem; box-shadow: 0 4px 14px rgba(0,0,0,.2);
+    }
+    .iab-toast.err { background: #7a1f1f; }
 
-    /* ── Real, on-screen HTML replica of the printed document ──
-       These three containers hold the ACTUAL markup that gets rasterized
-       into the PDF — they are visible here, not an off-screen JS-only
-       render target, so the "exact replica" can be seen/verified before
-       downloading. Each is exactly A4 (794x1123px @96dpi), and is placed
-       inside a horizontally-scrollable, shadowed "paper" wrapper so it
-       previews at true size regardless of the viewer's screen width. */
-    .iab-paper-wrap{
-      overflow-x:auto; background:#e5e7eb; border-radius:10px; padding:24px 0;
-      margin-bottom:18px;
+    /* ── Paper preview containers ── */
+    .iab-paper-wrap {
+      overflow-x: auto; background: #e5e7eb; border-radius: 10px; padding: 24px 0;
+      margin-bottom: 18px;
     }
-    .iab-paper{
-      width:794px; min-height:1123px; margin:0 auto; background:#fff;
-      box-shadow:0 2px 14px rgba(0,0,0,.18);
+    .iab-paper {
+      width: 794px; min-height: 1123px; margin: 0 auto; background: #fff;
+      box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
-    .iab-page-label{
-      text-align:center; font-size:.75rem; font-weight:700; color:var(--t3);
-      text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px;
+    .iab-page-label {
+      text-align: center; font-size: .75rem; font-weight: 700; color: var(--t3);
+      text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;
+    }
+
+    /* ── Profile grid ── */
+    .ia-profile-item {
+      display: flex; flex-direction: column; padding: 6px 8px;
+      background: var(--s2); border-radius: 6px;
+    }
+    .ia-profile-item .lbl {
+      font-size: .7rem; font-weight: 600; color: var(--t3); text-transform: uppercase;
+    }
+    .ia-profile-item .val {
+      font-size: .9rem; font-weight: 600; color: var(--t1);
+    }
+
+    /* ── Months grid ── */
+    #iaMonthsGrid table th, #iaMonthsGrid table td {
+      padding: 8px; border-bottom: 1px solid var(--s2);
+    }
+    #iaMonthsGrid table th {
+      background: var(--s2); font-weight: 600; font-size: .8rem; text-transform: uppercase;
     }
   </style>
 </head>
@@ -60,10 +78,10 @@
   <div class="iab-shell">
 
     <!-- ══ AUTH GATE ══ -->
-    <div id="iabGate" style="text-align:center;padding:60px 16px">
-      <div class="spinner-border" style="color:var(--brand)" id="iabGateSpinner"></div>
-      <div id="iabGateMsg" style="margin-top:16px;color:var(--t2)">Checking your session…</div>
-      <a href="index.html" id="iabGateLoginLink" style="display:none;margin-top:14px;color:var(--brand);font-weight:600">
+    <div id="iabGate" style="text-align: center; padding: 60px 16px;">
+      <div class="spinner-border" style="color: var(--brand)" id="iabGateSpinner"></div>
+      <div id="iabGateMsg" style="margin-top: 16px; color: var(--t2);">Checking your session…</div>
+      <a href="index.html" id="iabGateLoginLink" style="display: none; margin-top: 14px; color: var(--brand); font-weight: 600;">
         <i class="bi bi-box-arrow-in-right"></i> Go to login
       </a>
     </div>
@@ -79,38 +97,39 @@
         <a href="index.html"><i class="bi bi-arrow-left-circle"></i> Back to dashboard</a>
       </div>
 
-      <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:var(--r2);padding:12px 16px;margin-bottom:16px;font-size:.8rem;color:#0f766e;line-height:1.7">
+      <!-- info box -->
+      <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: var(--r2); padding: 12px 16px; margin-bottom: 16px; font-size: .8rem; color: #0f766e; line-height: 1.7;">
         <strong>Inspection Allowance Bill</strong> — pick up to 4 prepared months for the chosen year. The pages below are a live preview
         built from the exact same layout that gets printed: nothing is hidden or generated only at download time.
       </div>
 
       <!-- Profile -->
-      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-bottom:16px">
-        <div class="section-title" style="margin:0 0 10px;font-size:.82rem"><i class="bi bi-person-badge"></i> Your Profile</div>
-        <div class="ia-profile-grid" id="iaProfileGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 16px"></div>
-        <div id="iaProfileIncompleteWarn" style="display:none;margin-top:12px;padding:10px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:.82rem;color:#92400e">
+      <div style="background: #fff; border: 1px solid var(--b0); border-radius: 10px; padding: 18px; margin-bottom: 16px;">
+        <div class="section-title" style="margin: 0 0 10px; font-size: .82rem;"><i class="bi bi-person-badge"></i> Your Profile</div>
+        <div class="ia-profile-grid" id="iaProfileGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px;"></div>
+        <div id="iaProfileIncompleteWarn" style="display: none; margin-top: 12px; padding: 10px 14px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; font-size: .82rem; color: #92400e;">
           <i class="bi bi-exclamation-triangle-fill"></i> Your profile is missing required fields (Page No. / DDEO Code / BPS Scale). Ask your admin to complete it before downloading.
         </div>
       </div>
 
       <!-- Year + Months -->
-      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <span class="flabel" style="margin:0">Year</span>
-          <select id="ia_year" onchange="iaLoadMonths()" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 10px"></select>
-          <span style="margin-left:auto;font-size:.85rem;color:var(--t3)">Rate: <b id="iaRateDisplay">—</b></span>
+      <div style="background: #fff; border: 1px solid var(--b0); border-radius: 10px; padding: 18px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+          <span class="flabel" style="margin: 0;">Year</span>
+          <select id="ia_year" onchange="iaLoadMonths()" style="height: 36px; border: 1px solid var(--b0); border-radius: 6px; padding: 0 10px;"></select>
+          <span style="margin-left: auto; font-size: .85rem; color: var(--t3);">Rate: <b id="iaRateDisplay">—</b></span>
         </div>
-        <div class="section-title" style="margin:0 0 8px;font-size:.82rem"><i class="bi bi-calendar3"></i> Months (choose up to 4 prepared months)</div>
+        <div class="section-title" style="margin: 0 0 8px; font-size: .82rem;"><i class="bi bi-calendar3"></i> Months (choose up to 4 prepared months)</div>
         <div id="iaMonthsGrid"></div>
       </div>
 
-      <!-- Live preview: the exact replica, as real HTML, not a hidden render target -->
-      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-bottom:16px">
-        <div class="section-title" style="margin:0 0 10px;font-size:.82rem"><i class="bi bi-file-earmark-text"></i> Preview</div>
-        <div id="iabPreviewEmpty" style="padding:30px;text-align:center;color:var(--t3);font-size:.85rem">
+      <!-- Live preview (the exact replica) -->
+      <div style="background: #fff; border: 1px solid var(--b0); border-radius: 10px; padding: 18px; margin-bottom: 16px;">
+        <div class="section-title" style="margin: 0 0 10px; font-size: .82rem;"><i class="bi bi-file-earmark-text"></i> Preview</div>
+        <div id="iabPreviewEmpty" style="padding: 30px; text-align: center; color: var(--t3); font-size: .85rem;">
           Select at least one prepared month above to see the bill preview here.
         </div>
-        <div id="iabPreviewPages" style="display:none">
+        <div id="iabPreviewPages" style="display: none;">
           <div class="iab-page-label">Page 1 — Adjustment Form</div>
           <div class="iab-paper-wrap"><div class="iab-paper" id="iabPage1"></div></div>
 
@@ -122,9 +141,10 @@
         </div>
       </div>
 
-      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div style="font-size:.95rem"><b>Net Total: <span id="iaNetTotalDisplay" style="color:#0d9488">PKR 0</span></b></div>
-        <button class="btn btn-primary" id="iaSubmitBtn" onclick="iabDownloadBill()" disabled style="background:#0d9488;border-color:#0d9488">
+      <!-- Download -->
+      <div style="background: #fff; border: 1px solid var(--b0); border-radius: 10px; padding: 18px; margin-top: 4px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div style="font-size: .95rem;"><b>Net Total: <span id="iaNetTotalDisplay" style="color: #0d9488;">PKR 0</span></b></div>
+        <button class="btn btn-primary" id="iaSubmitBtn" onclick="iabDownloadBill()" disabled style="background: #0d9488; border-color: #0d9488;">
           <i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)
         </button>
       </div>
@@ -132,12 +152,13 @@
     </div>
   </div>
 
+  <!-- ──────── scripts ──────── -->
   <script src="config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/inspection-allowance.js"></script>
 
   <script>
-    // ── Minimal toast (mirrors showToast(msg, true/false | type) used across the codebase) ──
+    // ── Minimal toast ──
     function showToast(msg, okOrType = true) {
       let ok = true;
       if (typeof okOrType === 'string') {
@@ -154,10 +175,7 @@
       setTimeout(() => el.remove(), 4000);
     }
 
-    // ── Render the live, on-screen preview using the SAME template functions
-    // (iaAdjustmentFormHtml / iaBillFHtml / iaBillBHtml / iaResolveBillFields)
-    // that produce the printed PDF — i.e. the preview IS the real document,
-    // not a separate JS-only mockup that only gets built at download time. ──
+    // ── Render preview using the same template functions ──
     function iabRenderPreview() {
       const empty = document.getElementById('iabPreviewEmpty');
       const pages = document.getElementById('iabPreviewPages');
@@ -177,10 +195,7 @@
       pages.style.display = 'block';
     }
 
-    // Assemble the bill object from the currently selected months — same
-    // reconstruction logic as iaDownloadBill() in inspection-allowance.js
-    // (rate is derived per-month from due+deduction so it always reconciles
-    // even if the global rate changes later).
+    // ── Build bill object from selection ──
     function iabBuildBillFromSelection() {
       const claims = [...iaState.selected].sort((a, b) => a - b).map(m => {
         const row = iaState.months.find(x => x.month === m);
@@ -195,9 +210,7 @@
       return bill;
     }
 
-    // Wrap the shared toggle/net-total functions so the preview re-renders
-    // every time the month selection or year changes, without touching the
-    // original functions in inspection-allowance.js.
+    // ── Wrap toggle & load functions to re-render preview ──
     const _iaToggleMonth = iaToggleMonth;
     iaToggleMonth = function (month, checked) {
       _iaToggleMonth(month, checked);
@@ -209,8 +222,7 @@
       iabRenderPreview();
     };
 
-    // ── Download: rasterize the SAME visible preview pages (#iabPage1/2/3)
-    // that are already on screen — no separate off-screen render target. ──
+    // ── Download: capture the visible preview pages ──
     async function iabDownloadBill() {
       if (!iaState.selected.size) { showToast('Select at least one prepared month.', false); return; }
       if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
@@ -219,16 +231,17 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
       try {
-        iabRenderPreview(); // make sure the on-screen pages reflect the latest selection
+        iabRenderPreview(); // ensure pages reflect latest selection
 
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('p', 'pt', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
+        const pageWidth = pdf.internal.pageSize.getWidth();   // 595.28 pt
+        const pageHeight = pdf.internal.pageSize.getHeight(); // 841.89 pt
         const pageIds = ['iabPage1', 'iabPage2', 'iabPage3'];
 
         for (let i = 0; i < pageIds.length; i++) {
           const el = document.getElementById(pageIds[i]);
+          // Force the element to its real width (794px) and capture full height
           const captureWidth = 794;
           const captureHeight = Math.max(el.scrollHeight, 1123);
           const canvas = await html2canvas(el, {
@@ -243,192 +256,11 @@
             y: 0,
             scrollX: 0,
             scrollY: 0,
+            logging: false,
           });
           const imgData = canvas.toDataURL('image/jpeg', 0.92);
-          const ratio = pageWidth / canvas.width;
-          const scaledHeight = canvas.height * ratio;
-          if (i > 0) pdf.addPage();
-          pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(scaledHeight, pageHeight));
-        }
-
-        const bytes = pdf.output('arraybuffer');
-        iaDownloadPdf(bytes, `Inspection_Allowance_${iaState.profile.personal_no}_${iaState.year}_${Date.now()}.pdf`);
-        showToast('Bill downloaded.', true);
-      } catch (err) {
-        showToast('Error generating bill: ' + err.message, false);
-      } finally {
-        btn.disabled = iaState.selected.size === 0;
-        btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)';
-      }
-    }
-
-    // ── Auth gate: same single-user pattern as performance-certificate.html —
-    // relies on the Supabase session already created by logging in on index.html. ──
-    async function iabBoot() {
-      const { data: sessionData } = await _sb.auth.getSession();
-      const session = sessionData?.session;
-
-      if (!session) {
-        document.getElementById('iabGateSpinner').style.display = 'none';
-        document.getElementById('iabGateMsg').textContent =
-          "You're not signed in. Please log in on the main portal first, then come back to this page.";
-        document.getElementById('iabGateLoginLink').style.display = 'inline-block';
-        return;
-      }
-
-      await iaLoadRate();
-      await iaLoadProfile();
-
-      document.getElementById('iabWhoami').textContent =
-        `${iaState.profile?.name || ''} · ${iaState.profile?.markaz_name || ''}${iaState.profile?.tehsil ? ' · Tehsil ' + iaState.profile.tehsil : ''}`;
-
-      const yearSel = document.getElementById('ia_year');
-      const yNow = new Date().getFullYear();
-      yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1].map(y => `<option value="${y}" ${y === yNow ? 'selected' : ''}>${y}</option>`).join('');
-      iaState.year = yNow;
-      iaState.selected = new Set();
-
-      document.getElementById('iabGate').style.display = 'none';
-      document.getElementById('iabApp').style.display = 'block';
-
-      await iaLoadMonths(); // (wrapped above — also triggers the first preview render)
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('iabGate').style.display = 'block';
-      iabBoot();
-    });
-  </script>
-</body>
-</html>
-      <!-- Live preview: the exact replica, as real HTML, not a hidden render target -->
-      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-bottom:16px">
-        <div class="section-title" style="margin:0 0 10px;font-size:.82rem"><i class="bi bi-file-earmark-text"></i> Preview</div>
-        <div id="iabPreviewEmpty" style="padding:30px;text-align:center;color:var(--t3);font-size:.85rem">
-          Select at least one prepared month above to see the bill preview here.
-        </div>
-        <div id="iabPreviewPages" style="display:none">
-          <div class="iab-page-label">Page 1 — Adjustment Form</div>
-          <div class="iab-paper-wrap"><div class="iab-paper" id="iabPage1"></div></div>
-
-          <div class="iab-page-label">Page 2 — Bill F (STR-18)</div>
-          <div class="iab-paper-wrap"><div class="iab-paper" id="iabPage2"></div></div>
-
-          <div class="iab-page-label">Page 3 — Bill B (Detail of Inspection Allowance)</div>
-          <div class="iab-paper-wrap"><div class="iab-paper" id="iabPage3"></div></div>
-        </div>
-      </div>
-
-      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div style="font-size:.95rem"><b>Net Total: <span id="iaNetTotalDisplay" style="color:#0d9488">PKR 0</span></b></div>
-        <button class="btn btn-primary" id="iaSubmitBtn" onclick="iabDownloadBill()" disabled style="background:#0d9488;border-color:#0d9488">
-          <i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)
-        </button>
-      </div>
-
-    </div>
-  </div>
-
-  <script src="config.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/inspection-allowance.js"></script>
-
-  <script>
-    // ── Minimal toast (mirrors showToast(msg, true/false | type) used across the codebase) ──
-    function showToast(msg, okOrType = true) {
-      let ok = true;
-      if (typeof okOrType === 'string') {
-        const t = okOrType.toLowerCase();
-        ok = !(t === 'error' || t === 'danger' || t === 'warning' || t === 'warn');
-      } else {
-        ok = !!okOrType;
-      }
-      const stack = document.getElementById('iabToastStack');
-      const el = document.createElement('div');
-      el.className = 'iab-toast' + (ok ? '' : ' err');
-      el.textContent = msg;
-      stack.appendChild(el);
-      setTimeout(() => el.remove(), 4000);
-    }
-
-    // ── Render the live, on-screen preview using the SAME template functions
-    // (iaAdjustmentFormHtml / iaBillFHtml / iaBillBHtml / iaResolveBillFields)
-    // that produce the printed PDF — i.e. the preview IS the real document,
-    // not a separate JS-only mockup that only gets built at download time. ──
-    function iabRenderPreview() {
-      const empty = document.getElementById('iabPreviewEmpty');
-      const pages = document.getElementById('iabPreviewPages');
-
-      if (!iaState.selected.size || !iaState.profile) {
-        empty.style.display = 'block';
-        pages.style.display = 'none';
-        return;
-      }
-
-      const bill = iabBuildBillFromSelection();
-      document.getElementById('iabPage1').innerHTML = iaAdjustmentFormHtml(bill);
-      document.getElementById('iabPage2').innerHTML = iaBillFHtml(bill);
-      document.getElementById('iabPage3').innerHTML = iaBillBHtml(bill);
-
-      empty.style.display = 'none';
-      pages.style.display = 'block';
-    }
-
-    // Assemble the bill object from the currently selected months — same
-    // reconstruction logic as iaDownloadBill() in inspection-allowance.js
-    // (rate is derived per-month from due+deduction so it always reconciles
-    // even if the global rate changes later).
-    function iabBuildBillFromSelection() {
-      const claims = [...iaState.selected].sort((a, b) => a - b).map(m => {
-        const row = iaState.months.find(x => x.month === m);
-        const deduction = Number(row.deduction) || 0;
-        const due = Number(row.due) || 0;
-        const allowance_rate = due + deduction;
-        return { year: iaState.year, month: m, allowance_rate, deduction, due };
-      });
-      const netTotal = claims.reduce((s, c) => s + Number(c.due), 0);
-      const bill = { user: iaState.profile, claims, net_total: netTotal };
-      bill.fields = iaResolveBillFields(bill);
-      return bill;
-    }
-
-    // Wrap the shared toggle/net-total functions so the preview re-renders
-    // every time the month selection or year changes, without touching the
-    // original functions in inspection-allowance.js.
-    const _iaToggleMonth = iaToggleMonth;
-    iaToggleMonth = function (month, checked) {
-      _iaToggleMonth(month, checked);
-      iabRenderPreview();
-    };
-    const _iaLoadMonths = iaLoadMonths;
-    iaLoadMonths = async function () {
-      await _iaLoadMonths();
-      iabRenderPreview();
-    };
-
-    // ── Download: rasterize the SAME visible preview pages (#iabPage1/2/3)
-    // that are already on screen — no separate off-screen render target. ──
-    async function iabDownloadBill() {
-      if (!iaState.selected.size) { showToast('Select at least one prepared month.', false); return; }
-      if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
-
-      const btn = document.getElementById('iaSubmitBtn');
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
-      try {
-        iabRenderPreview(); // make sure the on-screen pages reflect the latest selection
-
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF('p', 'pt', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const pageIds = ['iabPage1', 'iabPage2', 'iabPage3'];
-
-        for (let i = 0; i < pageIds.length; i++) {
-          const el = document.getElementById(pageIds[i]);
-          const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-          const imgData = canvas.toDataURL('image/jpeg', 0.92);
-          // Fit both axes — never stretch/crop into a squished page.
+          // Fit the image into the PDF page, preserving aspect ratio,
+          // and center it horizontally.
           const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
           const imgWidth = canvas.width * scale;
           const imgHeight = canvas.height * scale;
@@ -448,8 +280,7 @@
       }
     }
 
-    // ── Auth gate: same single-user pattern as performance-certificate.html —
-    // relies on the Supabase session already created by logging in on index.html. ──
+    // ── Auth gate ──
     async function iabBoot() {
       const { data: sessionData } = await _sb.auth.getSession();
       const session = sessionData?.session;
@@ -477,7 +308,7 @@
       document.getElementById('iabGate').style.display = 'none';
       document.getElementById('iabApp').style.display = 'block';
 
-      await iaLoadMonths(); // (wrapped above — also triggers the first preview render)
+      await iaLoadMonths(); // also triggers first preview render
     }
 
     document.addEventListener('DOMContentLoaded', () => {
