@@ -428,10 +428,13 @@
           const el = document.getElementById(pageIds[i]);
           const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
           const imgData = canvas.toDataURL('image/jpeg', 0.92);
-          const ratio = pageWidth / canvas.width;
-          const scaledHeight = canvas.height * ratio;
+          // Fit both axes — never stretch/crop into a squished page.
+          const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+          const imgWidth = canvas.width * scale;
+          const imgHeight = canvas.height * scale;
+          const offsetX = (pageWidth - imgWidth) / 2;
           if (i > 0) pdf.addPage();
-          pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(scaledHeight, pageHeight));
+          pdf.addImage(imgData, 'JPEG', offsetX, 0, imgWidth, imgHeight);
         }
 
         const bytes = pdf.output('arraybuffer');
