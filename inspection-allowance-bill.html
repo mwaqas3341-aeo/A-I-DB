@@ -229,6 +229,203 @@
 
         for (let i = 0; i < pageIds.length; i++) {
           const el = document.getElementById(pageIds[i]);
+          const captureWidth = 794;
+          const captureHeight = Math.max(el.scrollHeight, 1123);
+          const canvas = await html2canvas(el, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            windowWidth: captureWidth,
+            windowHeight: captureHeight,
+            width: captureWidth,
+            height: captureHeight,
+            x: 0,
+            y: 0,
+            scrollX: 0,
+            scrollY: 0,
+          });
+          const imgData = canvas.toDataURL('image/jpeg', 0.92);
+          const ratio = pageWidth / canvas.width;
+          const scaledHeight = canvas.height * ratio;
+          if (i > 0) pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, Math.min(scaledHeight, pageHeight));
+        }
+
+        const bytes = pdf.output('arraybuffer');
+        iaDownloadPdf(bytes, `Inspection_Allowance_${iaState.profile.personal_no}_${iaState.year}_${Date.now()}.pdf`);
+        showToast('Bill downloaded.', true);
+      } catch (err) {
+        showToast('Error generating bill: ' + err.message, false);
+      } finally {
+        btn.disabled = iaState.selected.size === 0;
+        btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)';
+      }
+    }
+
+    // ── Auth gate: same single-user pattern as performance-certificate.html —
+    // relies on the Supabase session already created by logging in on index.html. ──
+    async function iabBoot() {
+      const { data: sessionData } = await _sb.auth.getSession();
+      const session = sessionData?.session;
+
+      if (!session) {
+        document.getElementById('iabGateSpinner').style.display = 'none';
+        document.getElementById('iabGateMsg').textContent =
+          "You're not signed in. Please log in on the main portal first, then come back to this page.";
+        document.getElementById('iabGateLoginLink').style.display = 'inline-block';
+        return;
+      }
+
+      await iaLoadRate();
+      await iaLoadProfile();
+
+      document.getElementById('iabWhoami').textContent =
+        `${iaState.profile?.name || ''} · ${iaState.profile?.markaz_name || ''}${iaState.profile?.tehsil ? ' · Tehsil ' + iaState.profile.tehsil : ''}`;
+
+      const yearSel = document.getElementById('ia_year');
+      const yNow = new Date().getFullYear();
+      yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1].map(y => `<option value="${y}" ${y === yNow ? 'selected' : ''}>${y}</option>`).join('');
+      iaState.year = yNow;
+      iaState.selected = new Set();
+
+      document.getElementById('iabGate').style.display = 'none';
+      document.getElementById('iabApp').style.display = 'block';
+
+      await iaLoadMonths(); // (wrapped above — also triggers the first preview render)
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('iabGate').style.display = 'block';
+      iabBoot();
+    });
+  </script>
+</body>
+</html>
+      <!-- Live preview: the exact replica, as real HTML, not a hidden render target -->
+      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-bottom:16px">
+        <div class="section-title" style="margin:0 0 10px;font-size:.82rem"><i class="bi bi-file-earmark-text"></i> Preview</div>
+        <div id="iabPreviewEmpty" style="padding:30px;text-align:center;color:var(--t3);font-size:.85rem">
+          Select at least one prepared month above to see the bill preview here.
+        </div>
+        <div id="iabPreviewPages" style="display:none">
+          <div class="iab-page-label">Page 1 — Adjustment Form</div>
+          <div class="iab-paper-wrap"><div class="iab-paper" id="iabPage1"></div></div>
+
+          <div class="iab-page-label">Page 2 — Bill F (STR-18)</div>
+          <div class="iab-paper-wrap"><div class="iab-paper" id="iabPage2"></div></div>
+
+          <div class="iab-page-label">Page 3 — Bill B (Detail of Inspection Allowance)</div>
+          <div class="iab-paper-wrap"><div class="iab-paper" id="iabPage3"></div></div>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid var(--b0);border-radius:10px;padding:18px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div style="font-size:.95rem"><b>Net Total: <span id="iaNetTotalDisplay" style="color:#0d9488">PKR 0</span></b></div>
+        <button class="btn btn-primary" id="iaSubmitBtn" onclick="iabDownloadBill()" disabled style="background:#0d9488;border-color:#0d9488">
+          <i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/inspection-allowance.js"></script>
+
+  <script>
+    // ── Minimal toast (mirrors showToast(msg, true/false | type) used across the codebase) ──
+    function showToast(msg, okOrType = true) {
+      let ok = true;
+      if (typeof okOrType === 'string') {
+        const t = okOrType.toLowerCase();
+        ok = !(t === 'error' || t === 'danger' || t === 'warning' || t === 'warn');
+      } else {
+        ok = !!okOrType;
+      }
+      const stack = document.getElementById('iabToastStack');
+      const el = document.createElement('div');
+      el.className = 'iab-toast' + (ok ? '' : ' err');
+      el.textContent = msg;
+      stack.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    // ── Render the live, on-screen preview using the SAME template functions
+    // (iaAdjustmentFormHtml / iaBillFHtml / iaBillBHtml / iaResolveBillFields)
+    // that produce the printed PDF — i.e. the preview IS the real document,
+    // not a separate JS-only mockup that only gets built at download time. ──
+    function iabRenderPreview() {
+      const empty = document.getElementById('iabPreviewEmpty');
+      const pages = document.getElementById('iabPreviewPages');
+
+      if (!iaState.selected.size || !iaState.profile) {
+        empty.style.display = 'block';
+        pages.style.display = 'none';
+        return;
+      }
+
+      const bill = iabBuildBillFromSelection();
+      document.getElementById('iabPage1').innerHTML = iaAdjustmentFormHtml(bill);
+      document.getElementById('iabPage2').innerHTML = iaBillFHtml(bill);
+      document.getElementById('iabPage3').innerHTML = iaBillBHtml(bill);
+
+      empty.style.display = 'none';
+      pages.style.display = 'block';
+    }
+
+    // Assemble the bill object from the currently selected months — same
+    // reconstruction logic as iaDownloadBill() in inspection-allowance.js
+    // (rate is derived per-month from due+deduction so it always reconciles
+    // even if the global rate changes later).
+    function iabBuildBillFromSelection() {
+      const claims = [...iaState.selected].sort((a, b) => a - b).map(m => {
+        const row = iaState.months.find(x => x.month === m);
+        const deduction = Number(row.deduction) || 0;
+        const due = Number(row.due) || 0;
+        const allowance_rate = due + deduction;
+        return { year: iaState.year, month: m, allowance_rate, deduction, due };
+      });
+      const netTotal = claims.reduce((s, c) => s + Number(c.due), 0);
+      const bill = { user: iaState.profile, claims, net_total: netTotal };
+      bill.fields = iaResolveBillFields(bill);
+      return bill;
+    }
+
+    // Wrap the shared toggle/net-total functions so the preview re-renders
+    // every time the month selection or year changes, without touching the
+    // original functions in inspection-allowance.js.
+    const _iaToggleMonth = iaToggleMonth;
+    iaToggleMonth = function (month, checked) {
+      _iaToggleMonth(month, checked);
+      iabRenderPreview();
+    };
+    const _iaLoadMonths = iaLoadMonths;
+    iaLoadMonths = async function () {
+      await _iaLoadMonths();
+      iabRenderPreview();
+    };
+
+    // ── Download: rasterize the SAME visible preview pages (#iabPage1/2/3)
+    // that are already on screen — no separate off-screen render target. ──
+    async function iabDownloadBill() {
+      if (!iaState.selected.size) { showToast('Select at least one prepared month.', false); return; }
+      if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
+
+      const btn = document.getElementById('iaSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
+      try {
+        iabRenderPreview(); // make sure the on-screen pages reflect the latest selection
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'pt', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const pageIds = ['iabPage1', 'iabPage2', 'iabPage3'];
+
+        for (let i = 0; i < pageIds.length; i++) {
+          const el = document.getElementById(pageIds[i]);
           const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
           const imgData = canvas.toDataURL('image/jpeg', 0.92);
           const ratio = pageWidth / canvas.width;
