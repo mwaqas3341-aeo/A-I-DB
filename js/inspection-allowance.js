@@ -226,7 +226,28 @@ async function iaBuildBillPdfBytes(bill) {
   for (let i = 0; i < pages.length; i++) {
     target.innerHTML = pages[i];
     await new Promise(r => setTimeout(r, 120));
-    const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    // IMPORTANT: without windowWidth/windowHeight, html2canvas clones the
+    // page into an iframe sized to the CURRENT browser viewport — on a
+    // phone that's ~390-430px wide. Since the bill is a fixed 794px-wide
+    // document, anything past the phone's screen width was getting sliced
+    // off (Amount columns, totals, third field pair, etc). Pinning the
+    // capture window to the target's own real size makes it render at full
+    // width no matter how narrow the actual device screen is.
+    const captureWidth = 794;
+    const captureHeight = Math.max(target.scrollHeight, 1123);
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      windowWidth: captureWidth,
+      windowHeight: captureHeight,
+      width: captureWidth,
+      height: captureHeight,
+      x: 0,
+      y: 0,
+      scrollX: 0,
+      scrollY: 0,
+    });
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const ratio = pageWidth / canvas.width;
     const scaledHeight = canvas.height * ratio;
