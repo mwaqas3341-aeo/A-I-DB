@@ -162,7 +162,7 @@ function iaDownloadPdf(bytes, filename) {
 // ─── Page shell ────────────────────────────────────────────────────
 function iaPageShell(title, officeHeader, bodyHtml) {
   return `
-    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box">
+    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;font-weight:700;box-sizing:border-box">
       <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
       ${officeHeader ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
       ${bodyHtml}
@@ -461,7 +461,7 @@ function iaBillFHtml(bill) {
     ${row4('Leave Salary', 'A01278', '', '')}
     ${row4('Total Other Allowance', 'A01299', '', '', { bold: true })}
 
-    ${row4('Gross Claim Establishment Charges<br><span style="font-weight:400;font-size:9.5px">(Pay + Regular Allow + Other Allow)</span>', '0<br>0000', b(f.totalGross), b(f.totalGross), { bold: true, underline: true, fontSize: '10.5px', box: true })}
+    ${row4('Gross Claim Establishment Charges<br><span style="font-size:9.5px">(Pay + Regular Allow + Other Allow)</span>', '0<br>0000', b(f.totalGross), b(f.totalGross), { bold: true, underline: true, fontSize: '10.5px', box: true })}
 
     ${fullRow('LESS FUND DEDUCTION:', { bold: true, underline: true })}
     ${row4('G.P.Fund Account No----------------------', '11502', '', '')}
