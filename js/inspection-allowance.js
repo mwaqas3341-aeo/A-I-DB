@@ -186,7 +186,7 @@ const IA_STYLE_RESET = `
 function iaPageShell(title, officeHeader, bodyHtml) {
   return `
     ${IA_STYLE_RESET}
-    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;font-weight:700;box-sizing:border-box">
+    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;font-weight:800;box-sizing:border-box">
       <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
       ${officeHeader ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
       ${bodyHtml}
@@ -278,7 +278,7 @@ function iaAllowanceTable(inspectionAmount, showAdjustmentHeader) {
              <td style="padding:2px 6px;border:1px solid #333">${label}${label === 'INSPECTION ALLOWANCE' ? ':' : ''}</td>
              <td style="padding:2px 6px;border:1px solid #333;text-align:center">${wageType}</td>
              <td style="padding:2px 6px;border:1px solid #333;text-align:center">${glObject}</td>
-             <td style="padding:2px 6px;border:1px solid #333;text-align:right">${amt.toLocaleString()}</td></tr>`;
+             <td style="padding:2px 6px;border:1px solid #333;text-align:center">${amt.toLocaleString()}</td></tr>`;
   }).join('');
   // NOTE: th{} is styled globally and darkly for dashboard tables elsewhere
   // in this app (see css/styles.css "thead th"), so every <th> below must
@@ -293,7 +293,7 @@ function iaAllowanceTable(inspectionAmount, showAdjustmentHeader) {
         <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Items</th>
         <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">${showAdjustmentHeader ? 'Adjustment Wage Type' : 'Wage Type'}</th>
         <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
-        <th style="${TH}text-align:right;padding:3px 6px;border:1.5px solid #333">Amount</th>
+        <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">Amount</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody></table>`;
@@ -317,7 +317,7 @@ function iaDeductionTable(totalDeduction) {
       <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Deductions</th>
       <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">Wage Type</th>
       <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
-      <th style="${TH}text-align:right;padding:3px 6px;border:1.5px solid #333">Amount</th>
+      <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">Amount</th>
     </tr></thead>
     <tbody>
       ${IA_DEDUCTION_LINES.map(([label, wageType, glObject], i) => `
@@ -331,7 +331,7 @@ function iaDeductionTable(totalDeduction) {
           <td style="padding:2px 6px;border:1px solid #333">Inspection allowance</td>
           <td style="padding:2px 6px;border:1px solid #333"></td>
           <td style="padding:2px 6px;border:1px solid #333"></td>
-          <td style="padding:2px 6px;border:1px solid #333;text-align:right">${totalDeduction.toLocaleString()}</td></tr>
+          <td style="padding:2px 6px;border:1px solid #333;text-align:center">${totalDeduction.toLocaleString()}</td></tr>
       <tr><td style="padding:2px 6px;border:1px solid #333">${IA_DEDUCTION_LINES.length + 2}</td>
           <td style="padding:2px 6px;border:1px solid #333">Adj ROP</td>
           <td style="padding:2px 6px;border:1px solid #333">6126</td>
@@ -344,12 +344,29 @@ function iaDeductionTable(totalDeduction) {
 function iaAdjustmentFormHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
 
+  const headerBlock = `
+    <table style="min-width:0;width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px">
+      <colgroup><col style="width:20%"><col style="width:22%"><col style="width:23%"><col style="width:35%"></colgroup>
+      <tr>
+        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">DDO Code / Cost Centre</td>
+        <td style="padding:3px 6px;border:1px solid #333">${f.ddeoCode}</td>
+        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">Description of Cost Centre</td>
+        <td style="padding:3px 6px;border:1px solid #333">${f.costCentreDescription}</td>
+      </tr>
+      <tr>
+        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">Personal Number</td>
+        <td style="padding:3px 6px;border:1px solid #333">${f.personalNo}</td>
+        <td style="padding:3px 6px;border:1px solid #333">${f.name}</td>
+        <td style="padding:3px 6px;border:1px solid #333">${f.markaz}</td>
+      </tr>
+      <tr>
+        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">Period of Bill / Claim</td>
+        <td colspan="3" style="padding:3px 6px;border:1px solid #333">${f.periodDisplay}</td>
+      </tr>
+    </table>`;
+
   const body = `
-    ${iaFieldRow([
-      [['DDO Code / Cost Centre', f.ddeoCode], ['Description of Cost Centre', f.costCentreDescription]],
-      [['Personal Number', f.personalNo], ['Name', f.name]],
-      [['Markaz', f.markaz], ['Period of Bill / Claim', f.periodDisplay]],
-    ])}
+    ${headerBlock}
     ${iaAllowanceTable(f.totalGross, true)}
     <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:10px">
       ${IA_COLGROUP_TOTAL}
@@ -376,21 +393,21 @@ function iaBillFHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
   const b = (v) => (v || v === 0 ? Number(v).toLocaleString() : '');
 
-  // Column widths (total 660px — narrowed a little, with W_TOTAL used
-  // below everywhere a table needed the old hardcoded 700px, so the
-  // page's usable ~778px inner width now has real breathing room on
-  // the right instead of being nearly flush with it).
-  const W_LABEL = 388;  // wide description (formerly colspan 5)
-  const W_CODE  = 86;   // object classification code
-  const W_RATE  = 93;   // monthly rate
-  const W_AMT   = 93;   // amount
+  // Column widths (total ~720px — sized to leave a comfortable margin
+  // inside the ~778px usable page width. W_TOTAL is used everywhere a
+  // table in this function needs a width, so nameRow/topBlock/colHeaders
+  // and this table always stay in sync with each other.)
+  const W_LABEL = 423;  // wide description (formerly colspan 5)
+  const W_CODE  = 94;   // object classification code
+  const W_RATE  = 101;  // monthly rate
+  const W_AMT   = 101;  // amount
   const W_TOTAL = W_LABEL + W_CODE + W_RATE + W_AMT;
 
   // Helper to build a row with 4 cells
   function row4(label, code, rate, amount, opts = {}) {
     const bold = opts.bold ? 'font-weight:700;' : '';
     const underline = opts.underline ? 'text-decoration:underline;' : '';
-    const fontSize = opts.fontSize || '10.5px';
+    const fontSize = opts.fontSize || '11.5px';
     const box = opts.box ? 'border:1px solid #333;' : '';
     return `<tr>
       <td style="width:${W_LABEL}px;padding:2px 6px;${box}${bold}${underline}font-size:${fontSize};text-align:left;">${label}</td>
@@ -404,14 +421,14 @@ function iaBillFHtml(bill) {
     const bold = opts.bold ? 'font-weight:700;' : '';
     const underline = opts.underline ? 'text-decoration:underline;' : '';
     const italic = opts.italic ? 'font-style:italic;' : '';
-    const fontSize = opts.fontSize || '10.5px';
+    const fontSize = opts.fontSize || '11.5px';
     const border = opts.box ? 'border:1px solid #333;' : '';
     return `<tr><td colspan="4" style="padding:2px 6px;text-align:${align};${bold}${underline}${italic}font-size:${fontSize};${border}">${html}</td></tr>`;
   }
 
   // Top block: GRANT NO etc. (left) + DDO Code / Personal No. / Name / Month (right)
   const topBlock = `
-    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;border:1px solid #333;margin-bottom:4px;font-size:10.5px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;border:1px solid #333;margin-bottom:4px;font-size:11.5px;">
       <tr>
         <td style="width:${W_LABEL}px;padding:4px 6px;border-right:1px solid #333;vertical-align:top;">
           GRANT NO.15<br><br>
@@ -423,8 +440,8 @@ function iaBillFHtml(bill) {
           <table style="min-width:0;width:100%;border-collapse:collapse;">
             ${[['DDO Code', f.ddeoCode], ['Personal No.', f.personalNo], ['Name', f.name], ['Month', f.periodDisplay]].map(([lbl, val], i) => `
               <tr style="${i < 3 ? 'border-bottom:1px solid #333;' : ''}">
-                <td style="padding:3px 8px;font-weight:700;font-size:10.5px;width:80px;">${lbl}</td>
-                <td style="padding:3px 8px;font-weight:700;font-size:13px;">${val}</td>
+                <td style="padding:3px 8px;font-weight:700;font-size:11.5px;width:80px;">${lbl}</td>
+                <td style="padding:3px 8px;font-weight:700;font-size:14px;">${val}</td>
               </tr>
             `).join('')}
           </table>
@@ -434,20 +451,20 @@ function iaBillFHtml(bill) {
 
   // Name row (plain)
   const nameRow = `
-    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:11.5px;margin-bottom:2px;">
       <tr>
-        <td style="width:70px;font-weight:700;">Name:</td>
-        <td style="width:210px;font-weight:700;">${f.name}</td>
-        <td style="width:70px;font-weight:700;">Post Held</td>
-        <td style="width:63px;font-weight:700;">${f.postHeld}</td>
-        <td style="width:91px;font-weight:700;">Markaz:</td>
-        <td style="width:196px;font-weight:700;">${f.markaz}</td>
+        <td style="width:72px;font-weight:700;">Name:</td>
+        <td style="width:216px;font-weight:700;">${f.name}</td>
+        <td style="width:72px;font-weight:700;">Post Held</td>
+        <td style="width:65px;font-weight:700;">${f.postHeld}</td>
+        <td style="width:93px;font-weight:700;">Markaz:</td>
+        <td style="width:201px;font-weight:700;">${f.markaz}</td>
       </tr>
     </table>`;
 
   // Column headers (plain)
   const colHeaders = `
-    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:9.5px;margin-bottom:2px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;">
       <tr>
         <td style="width:${W_LABEL}px;">&nbsp;</td>
         <td style="width:${W_CODE}px;text-align:center;font-weight:700;">Object<br>Classification<br>Code</td>
@@ -502,30 +519,36 @@ function iaBillFHtml(bill) {
     ${row4('Advance of Pay:', '14101', '', '')}
     ${row4(iaNumberToWordsPKR(f.totalGross), '', '', b(f.totalDeduction), { box: false })}
     ${row4('Net Amount Payable:-', '', b(f.totalGross), b(f.netTotal), { bold: true, fontSize: '12px', box: true })}
-    ${fullRow(`Rupees:&nbsp; <span style="border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.netTotal)}</span>`)}
   `;
+  const rupeesLine = fullRow(`Rupees:&nbsp; <span style="border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.netTotal)}</span>`);
 
   // Assemble page 2 content
   const body = `
-    <div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
+    <div style="text-align:center;font-size:13px;font-weight:700;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
 
     <table style="min-width:0;width:100%;margin-bottom:8px"><tr>
-      <td style="width:60%;font-size:10.5px;vertical-align:top">
+      <td style="width:60%;font-size:11px;vertical-align:top">
         Form No.S.T.R.18<br>
-        <span style="font-style:italic;font-size:9.5px">Note:- Government accepts no responsibility for any fraud or misappropriation in respect of money or cheque or bill made over to a messenger.</span>
+        <span style="font-style:italic;font-size:10px">Note:- Government accepts no responsibility for any fraud or misappropriation in respect of money or cheque or bill made over to a messenger.</span>
       </td>
-      <td style="width:40%;font-size:10.5px;direction:rtl;text-align:right;vertical-align:top">یہ بل ٹوکن رجسٹر پر سیریل نمبر..........................پر درج ہے۔</td>
+      <td style="width:40%;font-size:11px;direction:rtl;text-align:right;vertical-align:top">یہ بل ٹوکن رجسٹر پر سیریل نمبر..........................پر درج ہے۔</td>
     </tr></table>
 
     ${topBlock}
     ${nameRow}
-    ${colHeaders}
+    <div style="border:1.5px solid #333;">
+      ${colHeaders}
 
-    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:11.5px;">
       ${mainRows}
     </table>
+    </div>
 
-    <table style="min-width:0;width:100%;font-size:11px;margin-top:16px"><tr>
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:11.5px;margin-top:4px;">
+      ${rupeesLine}
+    </table>
+
+    <table style="min-width:0;width:100%;font-size:12px;margin-top:16px"><tr>
       <td style="width:100%;text-align:right;padding-top:20px;font-weight:700">Signature and Stamp of Officer</td>
     </tr></table>
   `;
