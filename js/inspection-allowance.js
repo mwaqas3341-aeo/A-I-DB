@@ -160,8 +160,32 @@ function iaDownloadPdf(bytes, filename) {
 }
 
 // ─── Page shell ────────────────────────────────────────────────────
+// IMPORTANT: css/styles.css defines several UNSCOPED, bare-element rules
+// (table{min-width:800px}, thead th{position:sticky;background:dark...},
+// tbody td{white-space:nowrap}, tbody td:first-child{position:sticky;
+// background:...}) meant for the app's dashboard grids. Because they use
+// plain element selectors with no class scoping, they silently apply to
+// EVERY table on the page — including these bill tables — and were the
+// real cause of the right-edge clipping, black header bars, and stray
+// sticky/background artifacts seen in generated PDFs. This block resets
+// them, scoped to #iaPdfRenderTarget only, so the live app's own tables
+// elsewhere are completely unaffected.
+const IA_STYLE_RESET = `
+  <style>
+    #iaPdfRenderTarget table { min-width:0 !important; }
+    #iaPdfRenderTarget th, #iaPdfRenderTarget thead th {
+      position:static !important; background:#fff !important; color:#111 !important;
+      text-transform:none !important; letter-spacing:normal !important; white-space:normal !important;
+    }
+    #iaPdfRenderTarget td, #iaPdfRenderTarget tbody td {
+      white-space:normal !important; position:static !important; background:transparent !important;
+    }
+    #iaPdfRenderTarget tr:hover, #iaPdfRenderTarget tbody tr:hover { background:transparent !important; }
+  </style>`;
+
 function iaPageShell(title, officeHeader, bodyHtml) {
   return `
+    ${IA_STYLE_RESET}
     <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;font-weight:700;box-sizing:border-box">
       <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
       ${officeHeader ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
@@ -215,7 +239,7 @@ function iaResolveBillFields(bill) {
 // ─── Adjustment Form (Page 1) ──────────────────────────────────────
 
 function iaFieldRow(pairs) {
-  return `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px">
+  return `<table style="min-width:0;width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px">
     ${pairs.map(row => `<tr>${row.map(([lbl, val]) => `
         <td style="padding:3px 6px;width:15%;font-weight:700;border:1px solid #333">${lbl}</td>
         <td style="padding:3px 6px;border:1px solid #333">${val ?? ''}</td>
@@ -256,19 +280,20 @@ function iaAllowanceTable(inspectionAmount, showAdjustmentHeader) {
              <td style="padding:2px 6px;border:1px solid #333;text-align:center">${glObject}</td>
              <td style="padding:2px 6px;border:1px solid #333;text-align:right">${amt.toLocaleString()}</td></tr>`;
   }).join('');
-  return `<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
+  // NOTE: th{} is styled globally and darkly for dashboard tables elsewhere
+  // in this app (see css/styles.css "thead th"), so every <th> below must
+  // carry an explicit background/color/position override or it silently
+  // inherits that dark sticky styling when captured for the PDF.
+  const TH = 'background:#fff;color:#111;position:static;text-transform:none;font-weight:700;';
+  return `<table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
     ${IA_COLGROUP_5}
     <thead>
-      ${showAdjustmentHeader ? `<tr>
-        <th style="border-bottom:1px solid #333"></th><th style="border-bottom:1px solid #333"></th>
-        <th colspan="3" style="text-align:center;padding:3px 6px;border-bottom:1px solid #333;font-weight:700">Adjustment</th>
-      </tr>` : ''}
       <tr>
-        <th style="text-align:left;padding:3px 6px;border:1.5px solid #333">Sr.#</th>
-        <th style="text-align:left;padding:3px 6px;border:1.5px solid #333">Items</th>
-        <th style="text-align:center;padding:3px 6px;border:1.5px solid #333">Wage Type</th>
-        <th style="text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
-        <th style="text-align:right;padding:3px 6px;border:1.5px solid #333">Amount</th>
+        <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Sr.#</th>
+        <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Items</th>
+        <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">${showAdjustmentHeader ? 'Adjustment Wage Type' : 'Wage Type'}</th>
+        <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
+        <th style="${TH}text-align:right;padding:3px 6px;border:1.5px solid #333">Amount</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody></table>`;
@@ -284,14 +309,15 @@ const IA_DEDUCTION_LINES = [
 ];
 
 function iaDeductionTable(totalDeduction) {
-  return `<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
+  const TH = 'background:#fff;color:#111;position:static;text-transform:none;font-weight:700;';
+  return `<table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
     ${IA_COLGROUP_5}
     <thead><tr>
-      <th style="text-align:left;padding:3px 6px;border:1.5px solid #333">Sr.#</th>
-      <th style="text-align:left;padding:3px 6px;border:1.5px solid #333">Deductions</th>
-      <th style="text-align:center;padding:3px 6px;border:1.5px solid #333">Wage Type</th>
-      <th style="text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
-      <th style="text-align:right;padding:3px 6px;border:1.5px solid #333">Amount</th>
+      <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Sr.#</th>
+      <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Deductions</th>
+      <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">Wage Type</th>
+      <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
+      <th style="${TH}text-align:right;padding:3px 6px;border:1.5px solid #333">Amount</th>
     </tr></thead>
     <tbody>
       ${IA_DEDUCTION_LINES.map(([label, wageType, glObject], i) => `
@@ -325,19 +351,19 @@ function iaAdjustmentFormHtml(bill) {
       [['Markaz', f.markaz], ['Period of Bill / Claim', f.periodDisplay]],
     ])}
     ${iaAllowanceTable(f.totalGross, true)}
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:10px">
+    <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:10px">
       ${IA_COLGROUP_TOTAL}
       <tr><td style="padding:4px 6px;font-weight:700;border:1px solid #333">Total Pay &amp; Allowances</td>
           <td style="padding:4px 6px;text-align:right;font-weight:700;border:1px solid #333">${f.totalGross.toLocaleString()}</td></tr>
     </table>
     ${iaDeductionTable(f.totalDeduction)}
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:24px">
+    <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:24px">
       ${IA_COLGROUP_TOTAL}
       <tr><td style="padding:4px 6px;font-weight:700;border:1px solid #333">Total Deductions</td><td style="padding:4px 6px;text-align:right;font-weight:700;border:1px solid #333">${f.totalDeduction.toLocaleString()}</td></tr>
       <tr><td style="padding:4px 6px;font-weight:700;font-size:13px;border:1px solid #333">Net Total</td><td style="padding:4px 6px;text-align:right;font-weight:700;font-size:13px;border:1px solid #333">${f.netTotal.toLocaleString()}</td></tr>
     </table>
     <p style="font-size:11px;margin-bottom:40px">Certified that sufficient budget is available to meet the above expenditure for the current financial year.</p>
-    <table style="width:100%;font-size:11px"><tr>
+    <table style="min-width:0;width:100%;font-size:11px"><tr>
       <td style="width:50%;text-align:center;padding-top:20px;font-weight:700">Assistant Education Officer<br>${f.markaz}</td>
       <td style="width:50%;text-align:center;padding-top:20px;font-weight:700">District Account Officer<br>${f.district}</td>
     </tr></table>`;
@@ -385,7 +411,7 @@ function iaBillFHtml(bill) {
 
   // Top block: GRANT NO etc. (left) + DDO Code / Personal No. / Name / Month (right)
   const topBlock = `
-    <table style="width:${W_TOTAL}px;border-collapse:collapse;border:1px solid #333;margin-bottom:4px;font-size:10.5px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;border:1px solid #333;margin-bottom:4px;font-size:10.5px;">
       <tr>
         <td style="width:${W_LABEL}px;padding:4px 6px;border-right:1px solid #333;vertical-align:top;">
           GRANT NO.15<br><br>
@@ -394,7 +420,7 @@ function iaBillFHtml(bill) {
           of Expend&nbsp;&nbsp;&nbsp;&nbsp;Detailed
         </td>
         <td style="width:${W_CODE + W_RATE + W_AMT}px;padding:0;vertical-align:top;">
-          <table style="width:100%;border-collapse:collapse;">
+          <table style="min-width:0;width:100%;border-collapse:collapse;">
             ${[['DDO Code', f.ddeoCode], ['Personal No.', f.personalNo], ['Name', f.name], ['Month', f.periodDisplay]].map(([lbl, val], i) => `
               <tr style="${i < 3 ? 'border-bottom:1px solid #333;' : ''}">
                 <td style="padding:3px 8px;font-weight:700;font-size:10.5px;width:80px;">${lbl}</td>
@@ -408,7 +434,7 @@ function iaBillFHtml(bill) {
 
   // Name row (plain)
   const nameRow = `
-    <table style="width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;">
       <tr>
         <td style="width:70px;font-weight:700;">Name:</td>
         <td style="width:210px;font-weight:700;">${f.name}</td>
@@ -421,7 +447,7 @@ function iaBillFHtml(bill) {
 
   // Column headers (plain)
   const colHeaders = `
-    <table style="width:${W_TOTAL}px;border-collapse:collapse;font-size:9.5px;margin-bottom:2px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:9.5px;margin-bottom:2px;">
       <tr>
         <td style="width:${W_LABEL}px;">&nbsp;</td>
         <td style="width:${W_CODE}px;text-align:center;font-weight:700;">Object<br>Classification<br>Code</td>
@@ -474,7 +500,7 @@ function iaBillFHtml(bill) {
     ${row4('Income Tax', '0<br>102', '', '')}
     ${fullRow('Deductions on account of Advance and Recoveries', { italic: true, fontSize: '9.5px' })}
     ${row4('Advance of Pay:', '14101', '', '')}
-    ${row4(iaNumberToWordsPKR(f.totalGross), '', '', b(f.totalDeduction), { box: false })}   // dotted underline is handled by CSS? We'll add dotted to the label
+    ${row4(iaNumberToWordsPKR(f.totalGross), '', '', b(f.totalDeduction), { box: false })}
     ${row4('Net Amount Payable:-', '', b(f.totalGross), b(f.netTotal), { bold: true, fontSize: '12px', box: true })}
     ${fullRow(`Rupees:&nbsp; <span style="border-bottom:1px dotted #333">${iaNumberToWordsPKR(f.netTotal)}</span>`)}
   `;
@@ -483,7 +509,7 @@ function iaBillFHtml(bill) {
   const body = `
     <div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
 
-    <table style="width:100%;margin-bottom:8px"><tr>
+    <table style="min-width:0;width:100%;margin-bottom:8px"><tr>
       <td style="width:60%;font-size:10.5px;vertical-align:top">
         Form No.S.T.R.18<br>
         <span style="font-style:italic;font-size:9.5px">Note:- Government accepts no responsibility for any fraud or misappropriation in respect of money or cheque or bill made over to a messenger.</span>
@@ -495,11 +521,11 @@ function iaBillFHtml(bill) {
     ${nameRow}
     ${colHeaders}
 
-    <table style="width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;">
       ${mainRows}
     </table>
 
-    <table style="width:100%;font-size:11px;margin-top:16px"><tr>
+    <table style="min-width:0;width:100%;font-size:11px;margin-top:16px"><tr>
       <td style="width:100%;text-align:right;padding-top:20px;font-weight:700">Signature and Stamp of Officer</td>
     </tr></table>
   `;
@@ -549,7 +575,7 @@ function iaBillBHtml(bill) {
     <p style="font-size:11px;font-weight:700;text-align:right;margin-bottom:20px">Signature and Stamp of Officer</p>
 
     <div style="text-align:center;font-size:14px;font-weight:700;margin-bottom:14px">DETAIL INSPECTION ALLOWANCE</div>
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #333;font-size:11.5px;margin-bottom:14px">
+    <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #333;font-size:11.5px;margin-bottom:14px">
       <colgroup>
         <col style="width:8%"><col style="width:34%"><col style="width:14.5%">
         <col style="width:14.5%"><col style="width:14.5%"><col style="width:14.5%">
@@ -575,7 +601,7 @@ function iaBillBHtml(bill) {
       </tr>
     </table>
     <p style="font-size:11px;text-align:right;margin-bottom:50px"><b>Net Amount (In words):</b> ${iaNumberToWordsPKR(f.netTotal)}</p>
-    <table style="width:100%;font-size:11px"><tr>
+    <table style="min-width:0;width:100%;font-size:11px"><tr>
       <td style="width:100%;text-align:right;padding-top:20px;font-weight:700">Signature and Stamp of Officer</td>
     </tr></table>`;
   return iaPageShell('', '', body);
