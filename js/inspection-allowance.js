@@ -607,3 +607,121 @@ function iaNumberToWordsPKR(num) {
 
   return parts.join(' ') + ' Rupees Only';
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  BILL PDF ASSEMBLY + DOWNLOAD
+//  Wires the HTML-builder helpers above (iaAdjustmentFormHtml,
+//  iaBillFHtml, iaBillBHtml) into an actual multi-page PDF using the
+//  same off-screen html2canvas + jsPDF pattern already proven working
+//  in performance.js (perfBuildCertificatePdfBytes) and
+//  budget-preparation.js (bpRenderTargetIntoPdf). Renders into the
+//  #iaPdfRenderTarget element that already sits in index.html.
+// ═══════════════════════════════════════════════════════════════════
+
+async function iaBuildBillPdfBytes(pagesHtml) {
+  const target = document.getElementById('iaPdfRenderTarget');
+  if (!target) throw new Error('#iaPdfRenderTarget not found in the page.');
+
+  // Same reliable off-screen-capture pattern used elsewhere in this repo:
+  // position it on-screen but visibility:hidden, then let html2canvas's
+  // onclone flip it visible only inside its own private capture DOM.
+  target.style.position = 'absolute';
+  target.style.left = '0';
+  target.style.top = '0';
+  target.style.width = '794px';
+  target.style.visibility = 'hidden';
+  target.style.zIndex = '-1';
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'pt', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+
+  for (let i = 0; i < pagesHtml.length; i++) {
+    target.innerHTML = pagesHtml[i];
+    // Give the browser a beat to lay out/paint (esp. any images) before capture.
+    await new Promise((r) => setTimeout(r, 250));
+
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      onclone: function (clonedDoc) {
+        const clonedTarget = clonedDoc.getElementById('iaPdfRenderTarget');
+        if (clonedTarget) clonedTarget.style.visibility = 'visible';
+      },
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+    const drawWidth = canvas.width * scale;
+    const drawHeight = canvas.height * scale;
+    const offsetX = (pageWidth - drawWidth) / 2;
+    const offsetY = (pageHeight - drawHeight) / 2;
+
+    if (i > 0) pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', offsetX, offsetY, drawWidth, drawHeight);
+  }
+
+  // Clean up — restore the target to its original inert state.
+  target.innerHTML = '';
+  target.style.position = '';
+  target.style.left = '';
+  target.style.top = '';
+  target.style.width = '';
+  target.style.visibility = '';
+  target.style.zIndex = '';
+
+  return pdf.output('arraybuffer');
+}
+
+// ─── Entry point: "Download Bill (PDF)" button (index.html) ────────
+async function iaDownloadBill() {
+  if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
+  if (iaState.selected.size === 0) { showToast('Select at least one prepared month.', false); return; }
+
+  const btn = document.getElementById('iaSubmitBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
+
+  try {
+    const months = [...iaState.selected].sort((a, b) => a - b);
+
+    // Build one "claim" per selected month from the already-loaded
+    // months grid data (deduction/due were computed server-side by
+    // getMyInspectionAllowanceMonths; allowance_rate is the flat
+    // monthly rate from getInspectionAllowanceRate).
+    const claims = months.map((m) => {
+      const row = iaState.months.find((x) => x.month === m) || {};
+      return {
+        month: m,
+        year: iaState.year,
+        allowance_rate: iaState.rate,
+        deduction: Number(row.deduction) || 0,
+        due: Number(row.due) || 0,
+      };
+    });
+
+    const bill = { user: iaState.profile, claims };
+    bill.fields = iaResolveBillFields(bill); // resolve once, reuse across all 3 pages
+
+    const pagesHtml = [
+      iaAdjustmentFormHtml(bill), // Page 1 — Payment of Arrears Pay & Allowances Through Adjustments
+      iaBillFHtml(bill),          // Page 2 — S.T.R.18 Pay Bill
+      iaBillBHtml(bill),          // Page 3 — Detail of Inspection Allowance
+    ];
+
+    const pdfBytes = await iaBuildBillPdfBytes(pagesHtml);
+
+    const label = months.map((m) => IA_MONTH_NAMES[m - 1]).join('-');
+    const filename = `Inspection_Allowance_Bill_${iaState.profile.personal_no || 'AEO'}_${label}_${iaState.year}.pdf`;
+    iaDownloadPdf(pdfBytes, filename);
+    showToast('Bill downloaded.', true);
+  } catch (err) {
+    showToast('Error generating bill: ' + err.message, false);
+  } finally {
+    btn.disabled = iaState.selected.size === 0;
+    btn.innerHTML = originalHtml;
+  }
+}
