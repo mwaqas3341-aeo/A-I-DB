@@ -186,7 +186,7 @@ const IA_STYLE_RESET = `
 function iaPageShell(title, officeHeader, bodyHtml, weight = 700) {
   return `
     ${IA_STYLE_RESET}
-    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;font-weight:${weight};box-sizing:border-box">
+    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Arial Narrow',Arial,sans-serif;color:#111;font-weight:${weight};box-sizing:border-box">
       <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
       ${officeHeader ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
       ${bodyHtml}
@@ -480,6 +480,7 @@ function iaBillFHtml(bill) {
     ['Special Additonal Allowance', 'A01209'],
     ['Medical Allowance', 'A01274'],
     ['Charge Allowance', 'A01238'],
+    ['Sc Allowance 1546', ''],
     ['Special/Relief Allowance 15%', 'A0120A'],
     ['SSB Allowance', 'A04115'],
     ['CONVEYANCE ALLOWANCE 2011', 'AO1203']
@@ -536,7 +537,7 @@ function iaBillFHtml(bill) {
 
     ${topBlock}
     ${nameRow}
-    <div style="border:1.5px solid #333;">
+    <div style="border:2.5px solid #333;">
       ${colHeaders}
 
     <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:11.5px;">
