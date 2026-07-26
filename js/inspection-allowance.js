@@ -162,7 +162,7 @@ function iaDownloadPdf(bytes, filename) {
 // ─── Page shell ────────────────────────────────────────────────────
 function iaPageShell(title, officeHeader, bodyHtml) {
   return `
-    <div style="width:794px;min-height:1123px;padding:40px 46px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box">
+    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Times New Roman',serif;color:#111;box-sizing:border-box">
       <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
       ${officeHeader ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
       ${bodyHtml}
@@ -350,11 +350,15 @@ function iaBillFHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
   const b = (v) => (v || v === 0 ? Number(v).toLocaleString() : '');
 
-  // Column widths (total 700px)
-  const W_LABEL = 413;  // wide description (formerly colspan 5)
-  const W_CODE  = 91;   // object classification code
-  const W_RATE  = 98;   // monthly rate
-  const W_AMT   = 98;   // amount
+  // Column widths (total 660px — narrowed a little, with W_TOTAL used
+  // below everywhere a table needed the old hardcoded 700px, so the
+  // page's usable ~778px inner width now has real breathing room on
+  // the right instead of being nearly flush with it).
+  const W_LABEL = 388;  // wide description (formerly colspan 5)
+  const W_CODE  = 86;   // object classification code
+  const W_RATE  = 93;   // monthly rate
+  const W_AMT   = 93;   // amount
+  const W_TOTAL = W_LABEL + W_CODE + W_RATE + W_AMT;
 
   // Helper to build a row with 4 cells
   function row4(label, code, rate, amount, opts = {}) {
@@ -381,7 +385,7 @@ function iaBillFHtml(bill) {
 
   // Top block: GRANT NO etc. (left) + DDO Code / Personal No. / Name / Month (right)
   const topBlock = `
-    <table style="width:700px;border-collapse:collapse;border:1px solid #333;margin-bottom:4px;font-size:10.5px;">
+    <table style="width:${W_TOTAL}px;border-collapse:collapse;border:1px solid #333;margin-bottom:4px;font-size:10.5px;">
       <tr>
         <td style="width:${W_LABEL}px;padding:4px 6px;border-right:1px solid #333;vertical-align:top;">
           GRANT NO.15<br><br>
@@ -404,7 +408,7 @@ function iaBillFHtml(bill) {
 
   // Name row (plain)
   const nameRow = `
-    <table style="width:700px;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;">
+    <table style="width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;margin-bottom:2px;">
       <tr>
         <td style="width:70px;font-weight:700;">Name:</td>
         <td style="width:210px;font-weight:700;">${f.name}</td>
@@ -417,7 +421,7 @@ function iaBillFHtml(bill) {
 
   // Column headers (plain)
   const colHeaders = `
-    <table style="width:700px;border-collapse:collapse;font-size:9.5px;margin-bottom:2px;">
+    <table style="width:${W_TOTAL}px;border-collapse:collapse;font-size:9.5px;margin-bottom:2px;">
       <tr>
         <td style="width:${W_LABEL}px;">&nbsp;</td>
         <td style="width:${W_CODE}px;text-align:center;font-weight:700;">Object<br>Classification<br>Code</td>
@@ -491,7 +495,7 @@ function iaBillFHtml(bill) {
     ${nameRow}
     ${colHeaders}
 
-    <table style="width:700px;border-collapse:collapse;font-size:10.5px;">
+    <table style="width:${W_TOTAL}px;border-collapse:collapse;font-size:10.5px;">
       ${mainRows}
     </table>
 
@@ -628,7 +632,7 @@ async function iaBuildBillPdfBytes(pagesHtml) {
   target.style.position = 'absolute';
   target.style.left = '0';
   target.style.top = '0';
-  target.style.width = '794px';
+  target.style.width = '830px';
   target.style.visibility = 'hidden';
   target.style.zIndex = '-1';
 
