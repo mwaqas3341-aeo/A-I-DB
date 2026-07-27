@@ -220,11 +220,7 @@ function iaResolveBillFields(bill) {
     wing: u.wing || '',
     period: claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(', '),
     periodDisplay: claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(' '),
-    monthsCsvPadded: (() => {
-      const labels = claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`);
-      while (labels.length < IA_MAX_SELECTED) labels.push('');
-      return labels.join(',');
-    })(),
+    monthsCsvPadded: claims.map((c) => `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`).join(', '),
     months: claims.map((c) => ({ label: `${IA_MONTH_NAMES[c.month - 1]} ${c.year}`, ...c })),
     grantNo: '15',
     functionalMajor: '40000 = Social Services',
@@ -435,7 +431,7 @@ function iaBillFHtml(bill) {
     const underline = o.underline ? 'text-decoration:underline;' : '';
     const italic = o.italic ? 'font-style:italic;' : '';
     const align = o.align || 'left';
-    const pad = o.pad || '3px 6px';
+    const pad = o.pad || '5px 6px';
     return `<td style="padding:${pad};font-size:${size}px;text-align:${align};${bold}${underline}${italic}${o.border || ''}">${html}</td>`;
   }
 
@@ -514,10 +510,10 @@ function iaBillFHtml(bill) {
       <td rowspan="2" style="${BL_THICK}padding:0;">
         <table style="width:100%;height:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:62px;padding:2px 4px;font-size:10px;vertical-align:top;">Special Pay</td>
-            <td rowspan="2" style="padding:2px 4px;font-size:12px;font-weight:700;font-style:italic;vertical-align:middle;">It is certified that the Inspection Allowance of...................................................has not been recieved by undersigned.</td>
+            <td style="width:62px;padding:4px 6px;font-size:10px;vertical-align:top;">Special Pay</td>
+            <td rowspan="2" style="padding:4px 6px;font-size:12px;font-weight:700;font-style:italic;vertical-align:middle;">It is certified that the Inspection Allowance of ${f.period} has not been recieved by undersigned.</td>
           </tr>
-          <tr><td style="padding:2px 4px;font-size:8px;vertical-align:bottom;">Technical Pay</td></tr>
+          <tr><td style="padding:4px 6px;font-size:8px;vertical-align:bottom;">Technical Pay</td></tr>
         </table>
       </td>
       ${td('A01153', { size: 10, align: 'center', border: BL_THICK + BR_THIN })}
@@ -767,7 +763,7 @@ async function iaBuildBillPdfBytes(pagesHtml, fitModes) {
   target.style.zIndex = '-1';
 
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF('p', 'pt', 'a4');
+  const pdf = new jsPDF('p', 'pt', 'legal');
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
