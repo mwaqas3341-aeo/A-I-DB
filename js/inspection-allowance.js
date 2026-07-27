@@ -388,107 +388,145 @@ function iaAdjustmentFormHtml(bill) {
 }
 
 // ─── Bill F (STR-18) — Page 2 ──────────────────────────────────────
-// Built as ONE table sharing a single 4-column colgroup (label / code /
-// rate / amount) from the Grant/DDO header all the way down through the
-// detail rows. Using rowspan/colspan on that shared grid — instead of
-// several separately-widthed stacked tables — guarantees every vertical
-// border (around "Markaz", "Monthly Rate", "Amount", and the DDO/Personal
-// No./Name/Month box) lines up exactly and the sections read as one
-// attached table rather than floating, independently-bordered pieces.
+// This is a direct, cell-by-cell replica of the "Bill F" sheet in
+// fresh_bill_copy_to_study.xlsx (verified with openpyxl: column widths,
+// merged ranges, border sides/styles, font sizes and bold/italic/underline
+// flags were all read from the workbook, not guessed).
+//
+// KEY STRUCTURAL FACT (this is what earlier revisions got wrong):
+// in the real sheet, the description column (B:H) has NO grid at all
+// between line items — only a single thick vertical rule down its left
+// edge for the whole block. The real grid (thin verticals + occasional
+// thick outer edges) lives ONLY in the numeric columns (I = Object
+// Classification Code, J = Monthly Rate, K = Amount), and even there,
+// horizontal lines only appear under specific milestone/total rows —
+// not between every row. This function reproduces that exactly instead
+// of boxing every cell.
 function iaBillFHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
   const b = (v) => (v || v === 0 ? Number(v).toLocaleString() : '');
 
-  // Column widths (total ~720px — sized to leave a comfortable margin
-  // inside the ~778px usable page width. W_TOTAL is used everywhere a
-  // table in this function needs a width, so every row of the merged
-  // table always stays in sync.)
-  const W_LABEL = 423;  // wide description (formerly colspan 5)
-  const W_CODE  = 94;   // object classification code
-  const W_RATE  = 101;  // monthly rate
-  const W_AMT   = 101;  // amount
+  // Column widths, proportional to the workbook's B:H / I / J / K widths,
+  // scaled to a fixed total so this lines up with the rest of the page.
+  const W_LABEL = 423; // merged B:H (description column)
+  const W_CODE  = 94;  // I — Object Classification Code
+  const W_RATE  = 101; // J — Monthly Rate
+  const W_AMT   = 101; // K — Amount
   const W_TOTAL = W_LABEL + W_CODE + W_RATE + W_AMT;
-  const BORDER = 'border:1px solid #333;';
 
-  // Helper to build a row with 4 cells
-  function row4(label, code, rate, amount, opts = {}) {
-    const bold = opts.bold ? 'font-weight:700;' : '';
-    const underline = opts.underline ? 'text-decoration:underline;' : '';
-    const fontSize = opts.fontSize || '11.5px';
-    // Every row gets a border on every cell; `box` only makes emphasized
-    // (total/net) rows stand out with a thicker rule + light shading —
-    // it no longer controls whether a border is drawn at all.
-    const border = opts.box ? 'border:1.5px solid #333;' : BORDER;
-    const bg = opts.box ? 'background:#f2f2f2;' : '';
+  // Border weights, matching the workbook's thin/medium/thick styles.
+  const THIN   = '1px solid #000';
+  const THICK  = '2px solid #000';
+  const DOTTED = '1px dotted #000';
+
+  const BL_THICK = `border-left:${THICK};`;
+  const BR_THIN  = `border-right:${THIN};`;
+  const BR_THICK = `border-right:${THICK};`;
+
+  // Generic cell renderer — every visual property (size/bold/underline/
+  // italic/align/border/padding) comes from the row spec below, which
+  // mirrors the workbook cell-for-cell.
+  function td(html, o = {}) {
+    const size = o.size || 11;
+    const bold = o.bold ? 'font-weight:700;' : '';
+    const underline = o.underline ? 'text-decoration:underline;' : '';
+    const italic = o.italic ? 'font-style:italic;' : '';
+    const align = o.align || 'left';
+    const pad = o.pad || '2px 6px';
+    return `<td style="padding:${pad};font-size:${size}px;text-align:${align};${bold}${underline}${italic}${o.border || ''}">${html}</td>`;
+  }
+
+  // One "line" of the bill: description cell (only ever gets the thick
+  // left rule) + the three numeric cells (which carry the real grid).
+  // `milestone: true` adds the thin bottom rule the workbook draws under
+  // totals/section boundaries — the ONLY place horizontal lines appear
+  // in the numeric columns.
+  function gridRow(label, labelOpts, code, codeOpts, rate, rateOpts, amount, amtOpts, milestone) {
+    const bb = milestone ? `border-bottom:${THIN};` : '';
     return `<tr>
-      <td style="padding:2px 6px;${border}${bg}${bold}${underline}font-size:${fontSize};text-align:left;">${label}</td>
-      <td style="padding:2px 6px;${border}${bg}${bold}font-size:${fontSize};text-align:center;">${code}</td>
-      <td style="padding:2px 6px;${border}${bg}${bold}font-size:${fontSize};text-align:right;">${rate}</td>
-      <td style="padding:2px 6px;${border}${bg}${bold}font-size:${fontSize};text-align:right;">${amount}</td>
+      ${td(label, { ...labelOpts, align: labelOpts.align || 'left', border: BL_THICK })}
+      ${td(code, { ...codeOpts, align: codeOpts.align || 'center', border: BL_THICK + BR_THIN + bb })}
+      ${td(rate, { ...rateOpts, align: rateOpts.align || 'center', border: BR_THIN + bb })}
+      ${td(amount, { ...amtOpts, align: amtOpts.align || 'center', border: BR_THICK + bb })}
     </tr>`;
   }
-  function fullRow(html, opts = {}) {
-    const align = opts.center ? 'center' : 'left';
-    const bold = opts.bold ? 'font-weight:700;' : '';
-    const underline = opts.underline ? 'text-decoration:underline;' : '';
-    const italic = opts.italic ? 'font-style:italic;' : '';
-    const fontSize = opts.fontSize || '11.5px';
-    const border = opts.box ? 'border:1.5px solid #333;' : BORDER;
-    const bg = opts.box ? 'background:#f2f2f2;' : '';
-    return `<tr><td colspan="4" style="padding:2px 6px;text-align:${align};${bold}${underline}${italic}font-size:${fontSize};${border}${bg}">${html}</td></tr>`;
-  }
 
-  // Grant/DDO header + Name/Markaz row + column headers — all rows of the
-  // SAME shared grid (col1=W_LABEL, col2=W_CODE, col3=W_RATE, col4=W_AMT).
-  // The DDO Code/Personal No./Name/Month values and the Markaz value each
-  // span the last two columns (colspan="2"), so their right edge is the
-  // table's own right border — the same right border the Monthly Rate /
-  // Amount columns use lower down — keeping everything aligned.
+  // ── Grant/DDO header block (rows 6-9 in the sheet) ──────────────────
+  // Grant info spans 4 rows on the left; DDO Code/Personal No./Name/
+  // Month stack on the right, each value spanning the same two columns
+  // (rate+amount) that Markaz/Monthly Rate/Amount use further down —
+  // so the right edge of this box is always the table's own border.
   const headerRows = `
     <tr>
-      <td rowspan="4" style="${BORDER}padding:4px 6px;vertical-align:top;font-size:11.5px;">
+      <td rowspan="4" style="${BL_THICK}border-top:${THICK};padding:4px 6px;vertical-align:top;font-size:11px;">
         GRANT NO.15<br><br>
         Functional&nbsp;&nbsp;&nbsp;&nbsp;Major&nbsp;&nbsp;&nbsp;&nbsp;40000 = Social Services<br><br>
         Classification&nbsp;&nbsp;&nbsp;&nbsp;Minor&nbsp;&nbsp;&nbsp;&nbsp;41000 = Education<br><br>
         of Expend&nbsp;&nbsp;&nbsp;&nbsp;Detailed
       </td>
-      <td style="${BORDER}padding:3px 8px;font-weight:700;font-size:11.5px;">DDO Code</td>
-      <td colspan="2" style="${BORDER}padding:3px 8px;font-weight:700;font-size:14px;">${f.ddeoCode}</td>
+      <td style="${BL_THICK}${BR_THICK}border-top:${THICK};border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:16px;">DDO Code</td>
+      <td colspan="2" style="${BR_THICK}border-top:${THICK};border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:22px;text-align:center;">${f.ddeoCode}</td>
     </tr>
     <tr>
-      <td style="${BORDER}padding:3px 8px;font-weight:700;font-size:11.5px;">Personal No.</td>
-      <td colspan="2" style="${BORDER}padding:3px 8px;font-weight:700;font-size:14px;">${f.personalNo}</td>
+      <td style="${BL_THICK}${BR_THICK}border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:16px;">Personal No.</td>
+      <td colspan="2" style="${BR_THICK}border-top:${THIN};border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:22px;text-align:center;">${f.personalNo}</td>
     </tr>
     <tr>
-      <td style="${BORDER}padding:3px 8px;font-weight:700;font-size:11.5px;">Name</td>
-      <td colspan="2" style="${BORDER}padding:3px 8px;font-weight:700;font-size:14px;">${f.name}</td>
+      <td style="${BL_THICK}${BR_THICK}border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:16px;">Name</td>
+      <td colspan="2" style="${BR_THICK}border-top:${THIN};border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:20px;text-align:center;">${f.name}</td>
     </tr>
     <tr>
-      <td style="${BORDER}padding:3px 8px;font-weight:700;font-size:11.5px;">Month</td>
-      <td colspan="2" style="${BORDER}padding:3px 8px;font-weight:700;font-size:14px;">${f.periodDisplay}</td>
+      <td style="${BL_THICK}${BR_THICK}border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:16px;">Month</td>
+      <td colspan="2" style="${BR_THICK}border-top:${THIN};border-bottom:${THIN};padding:3px 8px;font-weight:700;font-size:20px;text-align:center;">${f.periodDisplay}</td>
     </tr>
     <tr>
-      <td style="${BORDER}padding:0;font-weight:700;font-size:11.5px;">
+      <td style="${BL_THICK}border-right:${THIN};border-bottom:${THICK};padding:0;font-weight:700;font-size:14px;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:62px;padding:2px 6px;border-right:1px solid #333;white-space:nowrap;">Name:</td>
-            <td style="padding:2px 6px;border-right:1px solid #333;">${f.name}</td>
-            <td style="width:72px;padding:2px 6px;border-right:1px solid #333;text-align:center;white-space:nowrap;">Post Held</td>
-            <td style="padding:2px 6px;">${f.postHeld}</td>
+            <td style="width:56px;padding:2px 6px;border-right:${THIN};white-space:nowrap;text-align:center;">Name:</td>
+            <td style="padding:2px 6px;border-right:${THIN};text-align:center;font-size:16px;">${f.name}</td>
+            <td style="width:70px;padding:2px 6px;border-right:${THIN};text-align:center;white-space:nowrap;">Post Held</td>
+            <td style="padding:2px 6px;text-align:center;">${f.postHeld}</td>
           </tr>
         </table>
       </td>
-      <td style="${BORDER}padding:2px 6px;font-weight:700;font-size:11.5px;text-align:center;">Markaz:</td>
-      <td colspan="2" style="${BORDER}padding:2px 6px;font-weight:700;font-size:11.5px;">${f.markaz}</td>
+      <td style="${BL_THICK}${BR_THICK}border-bottom:${THICK};padding:2px 6px;font-weight:700;font-size:16px;text-align:center;">Markaz:</td>
+      <td colspan="2" style="${BR_THICK}border-bottom:${THICK};padding:2px 6px;font-weight:700;font-size:18px;text-align:center;">${f.markaz}</td>
     </tr>
     <tr>
-      <td style="${BORDER}padding:2px 6px;font-size:10.5px;">&nbsp;</td>
-      <td style="${BORDER}text-align:center;font-weight:700;padding:2px 6px;font-size:10.5px;">Object<br>Classification<br>Code</td>
-      <td style="${BORDER}text-align:center;font-weight:700;padding:2px 6px;font-size:10.5px;">Monthly<br>Rate</td>
-      <td style="${BORDER}text-align:center;font-weight:700;padding:2px 6px;font-size:10.5px;">Amount.</td>
+      <td style="${BL_THICK}padding:2px 6px;font-size:10px;">&nbsp;</td>
+      <td style="${BL_THICK}${BR_THIN}text-align:center;font-weight:700;padding:2px 6px;font-size:10px;">Object<br><span style="font-size:12px">Classification Code</span></td>
+      <td style="${BR_THIN}text-align:center;font-weight:700;padding:2px 6px;font-size:10px;">Monthly<br><span style="font-size:12px">Rate</span></td>
+      <td style="${BR_THICK}border-bottom:${THIN};text-align:center;font-weight:700;padding:2px 6px;font-size:10px;">Amount.</td>
     </tr>`;
 
-  // Regular allowance rows
+  // ── Detail rows (rows 13-48 in the sheet) ───────────────────────────
+  // "Special Pay" / "Technical Pay" (rows 17-18) are a special case: in
+  // the sheet, columns C:H merge ACROSS both rows to hold the single
+  // certification note, while column B alone carries "Special Pay" then
+  // "Technical Pay" on separate lines. A rowspan on the outer label cell
+  // plus a small nested table reproduces that exactly.
+  const specialPayRows = `
+    <tr>
+      <td rowspan="2" style="${BL_THICK}padding:0;">
+        <table style="width:100%;height:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:62px;padding:2px 4px;font-size:10px;vertical-align:top;">Special Pay</td>
+            <td rowspan="2" style="padding:2px 4px;font-size:12px;font-weight:700;font-style:italic;vertical-align:middle;">It is certified that the Inspection Allowance of...................................................has not been recieved by undersigned.</td>
+          </tr>
+          <tr><td style="padding:2px 4px;font-size:8px;vertical-align:bottom;">Technical Pay</td></tr>
+        </table>
+      </td>
+      ${td('A01153', { size: 10, align: 'center', border: BL_THICK + BR_THIN })}
+      ${td('', { border: BR_THIN })}
+      ${td('', { border: BR_THICK })}
+    </tr>
+    <tr>
+      ${td('A01104', { size: 12, align: 'center', border: BL_THICK + BR_THIN })}
+      ${td('', { border: BR_THIN + `border-bottom:${THIN};` })}
+      ${td('', { border: BR_THICK + `border-bottom:${THIN};` })}
+    </tr>`;
+
   const regularAllowanceRows = [
     ['House Rent Allowance', 'A01202'],
     ['Dearness Allowance', 'A01205'],
@@ -499,76 +537,84 @@ function iaBillFHtml(bill) {
     ['Special/Relief Allowance 15%', 'A0120A'],
     ['SSB Allowance', 'A04115'],
     ['CONVEYANCE ALLOWANCE 2011', 'AO1203']
-  ].map(([label, code]) => row4(label, code, '', '')).join('');
+  ].map(([label, code]) => gridRow(label, { size: 11 }, code, { size: 12 }, '', {}, '', {}, false)).join('');
 
-  // Detail rows (same grid, no gap between this and headerRows above)
   const detailRows = `
-    ${row4('', 'A01151', '', '')}
-    ${fullRow('the payment as detailed below:-')}
-    ${fullRow('BASIC SALARY', { bold: true, underline: true })}
-    ${row4('My Substantive/ Officiating Pay', '', '', '')}
-    ${row4('Special Pay &nbsp; <i style="font-size:9px">It is certified that the Inspection Allowance of...................................................has not been recieved by undersigned.</i>', 'A01153', '', '')}
-    ${row4('Technical Pay', 'A01104', '', '')}
-    ${row4('TOTAL BASIC SALARY', 'A011', '0', '0', { bold: true, box: true })}
+    ${gridRow('', {}, 'A01151', { size: 12 }, '', {}, '', {}, false)}
+    ${gridRow('the payment as detailed below:-', { size: 11 }, '', {}, '', {}, '', {}, false)}
+    ${gridRow('BASIC SALARY', { size: 11 }, '', {}, '', {}, '', {}, false)}
+    ${gridRow('My Substantive/ Officiating Pay', { size: 11 }, '', {}, '', {}, '', {}, false)}
+    ${specialPayRows}
+    ${gridRow('<span style="padding-left:66px">TOTAL BASIC SALARY</span>', { size: 11 }, 'A011', { size: 12, bold: true }, '0', { size: 12, bold: true }, '0', { size: 12, bold: true }, true)}
 
-    ${fullRow('REGULAR ALLOWANCES:', { bold: true, underline: true })}
+    ${gridRow('REGULAR ALLOWANCES:', { size: 12, bold: true, underline: true }, '', {}, '', {}, '', {}, false)}
     ${regularAllowanceRows}
-    ${row4(`Inspection Allowance&nbsp; ${f.monthsCsvPadded}`, 'AO1297', b(f.totalGross), b(f.totalGross), { bold: true })}
-    ${row4('TOTAL REGULAR ALLOWANCES', 'A012', b(f.totalGross), b(f.totalGross), { bold: true, box: true })}
+    ${gridRow(`<span style="font-weight:700;font-size:13px">Inspection Allowance</span> <span style="font-weight:700;font-size:14px">${f.monthsCsvPadded}</span>`, {}, 'AO1297', { size: 13 }, b(f.totalGross), { size: 13, bold: true }, b(f.totalGross), { size: 13, bold: true }, true)}
+    ${gridRow('<span style="padding-left:66px">TOTAL REGULAR ALLOWANCES</span>', { size: 11 }, 'A012', { size: 12, bold: true }, b(f.totalGross), { size: 18, bold: true }, b(f.totalGross), { size: 18, bold: true }, true)}
 
-    ${fullRow('OTHER ALLOWANCES:', { bold: true, underline: true })}
-    ${row4('Leave Salary', 'A01278', '', '')}
-    ${row4('Total Other Allowance', 'A01299', '', '', { bold: true })}
+    ${gridRow('OTHER ALLOWANCES:', { size: 12, bold: true, underline: true }, '', {}, '', {}, '', {}, false)}
+    ${gridRow('Leave Salary', { size: 11 }, 'A01278', { size: 12 }, '', {}, '', {}, false)}
+    ${gridRow('<span style="padding-left:66px">Total Other Allowance</span>', { size: 11 }, 'A01299', { size: 12 }, '', {}, '', {}, false)}
 
-    ${row4('Gross Claim Establishment Charges<br><span style="font-size:9.5px">(Pay + Regular Allow + Other Allow)</span>', '0<br>0000', b(f.totalGross), b(f.totalGross), { bold: true, underline: true, fontSize: '10.5px', box: true })}
+    ${gridRow('Gross Claim Establishment Charges', { size: 12, bold: true, underline: true }, '&nbsp;0<br>0000', { size: 12, bold: true }, b(f.totalGross), { size: 15, bold: true }, b(f.totalGross), { size: 15, bold: true }, true)}
+    ${gridRow('<span style="padding-left:66px">(Pay + Regular Allow + Other Allow)</span>', { size: 11 }, '', {}, '', {}, '', {}, true)}
 
-    ${fullRow('LESS FUND DEDUCTION:', { bold: true, underline: true })}
-    ${row4('G.P.Fund Account No----------------------', '11502', '', '')}
-    ${row4('G.P.F', 'G06103', '', '')}
-    ${row4('Benevolent Fund', 'G06201', '', '')}
-    ${row4('Group Insurance Fund', 'G06408', '', '')}
-    ${row4('Net Claim:', '', '', '', { bold: true })}
+    ${gridRow('LESS FUND DEDUCTION:', { size: 12, bold: true, underline: true }, '', {}, '', {}, '', {}, false)}
+    ${gridRow('G.P.Fund Account No----------------------', { size: 11 }, '11502', { size: 12 }, '', {}, '', {}, false)}
+    ${gridRow('G.P.F', { size: 11 }, 'G06103', { size: 12 }, '', {}, '', {}, false)}
+    ${gridRow('Benevolent Fund', { size: 11 }, 'G06201', { size: 12 }, '', {}, '', {}, false)}
+    ${gridRow('Group Insurance Fund', { size: 11 }, 'G06408', { size: 12 }, '', {}, '', {}, false)}
+    ${gridRow('<span style="padding-left:66px">Net Claim:</span>', { size: 11 }, '', {}, '', {}, '', {}, false)}
 
-    ${fullRow('DEDUCTIONS:', { bold: true, underline: true })}
-    ${row4('Income Tax', '0<br>102', '', '')}
-    ${fullRow('Deductions on account of Advance and Recoveries', { italic: true, fontSize: '9.5px' })}
-    ${row4('Advance of Pay:', '14101', '', '')}
-    ${row4(iaNumberToWordsPKR(f.totalGross), '', '', b(f.totalDeduction), { box: false })}
-    ${row4('Net Amount Payable:-', '', b(f.totalGross), b(f.netTotal), { bold: true, fontSize: '12px', box: true })}
+    ${gridRow('DEDUCTIONS:', { size: 12, bold: true, underline: true }, '', {}, '', {}, '', {}, true)}
+    ${gridRow('Income Tax', { size: 9 }, '0 102', { size: 9 }, '', {}, '', { bold: true }, true)}
+    ${gridRow('Deductions on account of Advance and Recoveries', { size: 9 }, '', {}, '', {}, '', {}, false)}
+    ${gridRow('Advance of Pay:', { size: 9 }, '14101', { size: 9 }, '', {}, '', {}, false)}
+    ${gridRow('<span style="padding-left:66px">' + iaNumberToWordsPKR(f.totalGross) + '</span>', { size: 11 }, '', {}, '', {}, b(f.totalDeduction), { size: 18, bold: true, align: 'right' }, true)}
+    <tr>
+      ${td('Net Amount Payable:-', { size: 11, border: BL_THICK })}
+      ${td('', { border: BL_THICK + `border-right:${THIN};` + `border-top:${THICK};border-bottom:${THICK};` })}
+      ${td(b(f.totalGross), { size: 18, bold: true, align: 'center', border: `border-right:${THIN};border-top:${THICK};border-bottom:${THICK};` })}
+      ${td(b(f.netTotal), { size: 18, bold: true, align: 'center', border: BR_THICK + `border-top:${THICK};border-bottom:${THICK};` })}
+    </tr>
   `;
-  const rupeesLine = fullRow(`Rupees:&nbsp; ${iaNumberToWordsPKR(f.netTotal)}`, { box: true, bold: true });
+
+  // The "Rupees:" line sits OUTSIDE the numeric grid in the sheet (no
+  // I/J/K columns on that row at all) — just the description column
+  // with a dotted rule under it, so it's rendered as its own tiny table.
+  const rupeesLine = `<tr>
+    <td style="${BL_THICK}border-bottom:${DOTTED};padding:2px 6px;font-size:12px;">Rupees:&nbsp;</td>
+    <td style="${BR_THICK}border-bottom:${DOTTED};padding:2px 6px;font-size:18px;font-weight:700;">${iaNumberToWordsPKR(f.netTotal)}</td>
+  </tr>`;
 
   const colgroup = `<colgroup>
     <col style="width:${W_LABEL}px;"><col style="width:${W_CODE}px;">
     <col style="width:${W_RATE}px;"><col style="width:${W_AMT}px;">
   </colgroup>`;
 
-  // Assemble page 2 content — headerRows + detailRows live in the SAME
-  // table/colgroup, so the whole block (Grant info down to Net Amount
-  // Payable) is one continuous, fully-aligned, fully-bordered table.
   const body = `
-    <div style="text-align:center;font-size:13px;font-weight:700;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
+    <div style="text-align:right;font-size:13px;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
 
     <table style="min-width:0;width:100%;margin-bottom:8px"><tr>
       <td style="width:60%;font-size:11px;vertical-align:top">
         Form No.S.T.R.18<br>
-        <span style="font-style:italic;font-size:10px">Note:- Government accepts no responsibility for any fraud or misappropriation in respect of money or cheque or bill made over to a messenger.</span>
+        <span style="font-size:11px">Note:- Government accepts no responsibility for any fraud or misappropriation in respect of money or cheque or bill made over to a messenger.</span>
       </td>
-      <td style="width:40%;font-size:11px;direction:rtl;text-align:right;vertical-align:top">یہ بل ٹوکن رجسٹر پر سیریل نمبر..........................پر درج ہے۔</td>
+      <td style="width:40%;font-size:12px;font-weight:700;direction:rtl;text-align:right;vertical-align:top">یہ بل ٹوکن رجسٹر پر سیریل نمبر..........................پر درج ہے۔</td>
     </tr></table>
 
-    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:11.5px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;">
       ${colgroup}
       ${headerRows}
       ${detailRows}
     </table>
 
-    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;font-size:11.5px;margin-top:4px;">
+    <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;margin-top:0;">
       ${colgroup}
       ${rupeesLine}
     </table>
 
-    <table style="min-width:0;width:100%;font-size:12px;margin-top:16px"><tr>
+    <table style="min-width:0;width:100%;font-size:14px;margin-top:16px"><tr>
       <td style="width:100%;text-align:right;padding-top:20px;font-weight:700">Signature and Stamp of Officer</td>
     </tr></table>
   `;
