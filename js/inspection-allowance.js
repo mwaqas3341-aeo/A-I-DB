@@ -776,12 +776,12 @@ async function iaBuildBillPdfBytes(pagesHtml, fitModes) {
     const mode = fitModes[i] || 'contain';
     let scale, drawWidth, drawHeight, offsetX, offsetY;
     if (mode === 'fill-width') {
-      // Fill the full page width (this page's content runs taller than
-      // A4's aspect ratio, so a plain contain-fit shrinks it to leave
-      // empty bands on both sides — fill-width removes those margins).
-      scale = pageWidth / canvas.width;
+      // Always draw at exactly pageWidth x pageHeight (full-bleed), so
+      // the page is completely filled with no side margins AND nothing
+      // — including the stamp line at the very bottom — ever falls
+      // outside the visible page area.
       drawWidth = pageWidth;
-      drawHeight = canvas.height * scale;
+      drawHeight = pageHeight;
       offsetX = 0;
       offsetY = 0;
     } else {
