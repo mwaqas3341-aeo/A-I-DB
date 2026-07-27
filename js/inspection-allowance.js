@@ -183,12 +183,12 @@ const IA_STYLE_RESET = `
     #iaPdfRenderTarget tr:hover, #iaPdfRenderTarget tbody tr:hover { background:transparent !important; }
   </style>`;
 
-function iaPageShell(title, officeHeader, bodyHtml, weight = 700) {
+function iaPageShell(title, officeHeader, bodyHtml, weight = 700, titleSize = 16, officeHeaderSize = 14) {
   return `
     ${IA_STYLE_RESET}
-    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Arial Narrow',Arial,sans-serif;color:#111;font-weight:${weight};box-sizing:border-box">
-      <div style="text-align:center;font-size:15px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
-      ${officeHeader ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
+    <div style="width:830px;min-height:1174px;padding:40px 34px 40px 18px;font-family:'Arial Narrow',Arial,sans-serif;color:#111;font-weight:${weight};line-height:1.35;box-sizing:border-box">
+      <div style="text-align:center;font-size:${titleSize}px;font-weight:700;text-transform:uppercase;margin-bottom:2px">${title}</div>
+      ${officeHeader ? `<div style="text-align:center;font-size:${officeHeaderSize}px;font-weight:700;margin-bottom:14px">${officeHeader}</div>` : '<div style="margin-bottom:14px"></div>'}
       ${bodyHtml}
     </div>`;
 }
@@ -273,27 +273,30 @@ const IA_COLGROUP_TOTAL = `<colgroup><col style="width:80%"><col style="width:20
 
 function iaAllowanceTable(inspectionAmount, showAdjustmentHeader) {
   const rows = IA_ALLOWANCE_LINES.map(([label, wageType, glObject], i) => {
-    const amt = label === 'INSPECTION ALLOWANCE' ? inspectionAmount : 0;
-    return `<tr><td style="padding:2px 6px;border:1px solid #333">${i + 1}</td>
-             <td style="padding:2px 6px;border:1px solid #333">${label}${label === 'INSPECTION ALLOWANCE' ? ':' : ''}</td>
-             <td style="padding:2px 6px;border:1px solid #333;text-align:center">${wageType}</td>
-             <td style="padding:2px 6px;border:1px solid #333;text-align:center">${glObject}</td>
-             <td style="padding:2px 6px;border:1px solid #333;text-align:center">${amt.toLocaleString()}</td></tr>`;
+    const isInspection = label === 'INSPECTION ALLOWANCE';
+    const amt = isInspection ? inspectionAmount : 0;
+    const labelStyle = isInspection ? 'font-size:16px;font-weight:700;' : '';
+    const numStyle = isInspection ? 'font-size:22px;font-weight:700;' : '';
+    return `<tr><td style="padding:3px 6px;border:1px solid #333">${i + 1}</td>
+             <td style="padding:3px 6px;border:1px solid #333;${labelStyle}">${label}${isInspection ? ':' : ''}</td>
+             <td style="padding:3px 6px;border:1px solid #333;text-align:center">${wageType}</td>
+             <td style="padding:3px 6px;border:1px solid #333;text-align:center;${numStyle}">${glObject}</td>
+             <td style="padding:3px 6px;border:1px solid #333;text-align:center;${numStyle}">${amt.toLocaleString()}</td></tr>`;
   }).join('');
   // NOTE: th{} is styled globally and darkly for dashboard tables elsewhere
   // in this app (see css/styles.css "thead th"), so every <th> below must
   // carry an explicit background/color/position override or it silently
   // inherits that dark sticky styling when captured for the PDF.
-  const TH = 'background:#fff;color:#111;position:static;text-transform:none;font-weight:700;';
-  return `<table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
+  const TH = 'background:#fff;color:#111;position:static;text-transform:none;font-weight:700;font-size:12px;';
+  return `<table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;margin-bottom:8px">
     ${IA_COLGROUP_5}
     <thead>
       <tr>
-        <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Sr.#</th>
-        <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Items</th>
-        <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">${showAdjustmentHeader ? 'Adjustment Wage Type' : 'Wage Type'}</th>
-        <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
-        <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">Amount</th>
+        <th style="${TH}text-align:left;padding:4px 6px;border:1.5px solid #333">Sr.#</th>
+        <th style="${TH}text-align:left;padding:4px 6px;border:1.5px solid #333">Items</th>
+        <th style="${TH}text-align:center;padding:4px 6px;border:1.5px solid #333">${showAdjustmentHeader ? 'Adjustment Wage Type' : 'Wage Type'}</th>
+        <th style="${TH}text-align:center;padding:4px 6px;border:1.5px solid #333">G/L Object</th>
+        <th style="${TH}text-align:center;padding:4px 6px;border:1.5px solid #333">Amount</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody></table>`;
@@ -309,34 +312,34 @@ const IA_DEDUCTION_LINES = [
 ];
 
 function iaDeductionTable(totalDeduction) {
-  const TH = 'background:#fff;color:#111;position:static;text-transform:none;font-weight:700;';
-  return `<table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px;margin-bottom:8px">
+  const TH = 'background:#fff;color:#111;position:static;text-transform:none;font-weight:700;font-size:12px;';
+  return `<table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;margin-bottom:8px">
     ${IA_COLGROUP_5}
     <thead><tr>
-      <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Sr.#</th>
-      <th style="${TH}text-align:left;padding:3px 6px;border:1.5px solid #333">Deductions</th>
-      <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">Wage Type</th>
-      <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">G/L Object</th>
-      <th style="${TH}text-align:center;padding:3px 6px;border:1.5px solid #333">Amount</th>
+      <th style="${TH}text-align:left;padding:4px 6px;border:1.5px solid #333">Sr.#</th>
+      <th style="${TH}text-align:left;padding:4px 6px;border:1.5px solid #333">Deductions</th>
+      <th style="${TH}text-align:center;padding:4px 6px;border:1.5px solid #333">Wage Type</th>
+      <th style="${TH}text-align:center;padding:4px 6px;border:1.5px solid #333">G/L Object</th>
+      <th style="${TH}text-align:center;padding:4px 6px;border:1.5px solid #333">Amount</th>
     </tr></thead>
     <tbody>
       ${IA_DEDUCTION_LINES.map(([label, wageType, glObject], i) => `
-        <tr><td style="padding:2px 6px;border:1px solid #333">${i + 1}</td>
-            <td style="padding:2px 6px;border:1px solid #333">${label}</td>
-            <td style="padding:2px 6px;border:1px solid #333;text-align:center">${wageType}</td>
-            <td style="padding:2px 6px;border:1px solid #333;text-align:center">${glObject}</td>
-            <td style="padding:2px 6px;border:1px solid #333"></td></tr>`
+        <tr><td style="padding:3px 6px;border:1px solid #333">${i + 1}</td>
+            <td style="padding:3px 6px;border:1px solid #333">${label}</td>
+            <td style="padding:3px 6px;border:1px solid #333;text-align:center">${wageType}</td>
+            <td style="padding:3px 6px;border:1px solid #333;text-align:center">${glObject}</td>
+            <td style="padding:3px 6px;border:1px solid #333"></td></tr>`
       ).join('')}
-      <tr><td style="padding:2px 6px;border:1px solid #333">${IA_DEDUCTION_LINES.length + 1}</td>
-          <td style="padding:2px 6px;border:1px solid #333">Inspection allowance</td>
-          <td style="padding:2px 6px;border:1px solid #333"></td>
-          <td style="padding:2px 6px;border:1px solid #333"></td>
-          <td style="padding:2px 6px;border:1px solid #333;text-align:center">${totalDeduction.toLocaleString()}</td></tr>
-      <tr><td style="padding:2px 6px;border:1px solid #333">${IA_DEDUCTION_LINES.length + 2}</td>
-          <td style="padding:2px 6px;border:1px solid #333">Adj ROP</td>
-          <td style="padding:2px 6px;border:1px solid #333">6126</td>
-          <td style="padding:2px 6px;border:1px solid #333"></td>
-          <td style="padding:2px 6px;border:1px solid #333"></td></tr>
+      <tr><td style="padding:3px 6px;border:1px solid #333">${IA_DEDUCTION_LINES.length + 1}</td>
+          <td style="padding:3px 6px;border:1px solid #333">Inspection allowance</td>
+          <td style="padding:3px 6px;border:1px solid #333"></td>
+          <td style="padding:3px 6px;border:1px solid #333"></td>
+          <td style="padding:3px 6px;border:1px solid #333;text-align:center">${totalDeduction.toLocaleString()}</td></tr>
+      <tr><td style="padding:3px 6px;border:1px solid #333">${IA_DEDUCTION_LINES.length + 2}</td>
+          <td style="padding:3px 6px;border:1px solid #333">Adj ROP</td>
+          <td style="padding:3px 6px;border:1px solid #333">6126</td>
+          <td style="padding:3px 6px;border:1px solid #333"></td>
+          <td style="padding:3px 6px;border:1px solid #333"></td></tr>
     </tbody>
   </table>`;
 }
@@ -345,46 +348,46 @@ function iaAdjustmentFormHtml(bill) {
   const f = bill.fields || iaResolveBillFields(bill);
 
   const headerBlock = `
-    <table style="min-width:0;width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px">
+    <table style="min-width:0;width:100%;border-collapse:collapse;margin-bottom:10px;font-size:11px">
       <colgroup><col style="width:20%"><col style="width:22%"><col style="width:23%"><col style="width:35%"></colgroup>
       <tr>
-        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">DDO Code / Cost Centre</td>
-        <td style="padding:3px 6px;border:1px solid #333">${f.ddeoCode}</td>
-        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">Description of Cost Centre</td>
-        <td style="padding:3px 6px;border:1px solid #333">${f.costCentreDescription}</td>
+        <td style="padding:4px 6px;font-weight:700;border:1px solid #333">DDO Code / Cost Centre</td>
+        <td style="padding:4px 6px;border:1px solid #333;font-size:18px;font-weight:700;">${f.ddeoCode}</td>
+        <td style="padding:4px 6px;font-weight:700;border:1px solid #333;font-size:18px;">Description of Cost Centre</td>
+        <td style="padding:4px 6px;border:1px solid #333;font-size:18px;font-weight:700;">${f.costCentreDescription}</td>
       </tr>
       <tr>
-        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">Personal Number</td>
-        <td style="padding:3px 6px;border:1px solid #333">${f.personalNo}</td>
-        <td style="padding:3px 6px;border:1px solid #333">${f.name}</td>
-        <td style="padding:3px 6px;border:1px solid #333">${f.markaz}</td>
+        <td style="padding:4px 6px;font-weight:700;border:1px solid #333">Personal Number</td>
+        <td style="padding:4px 6px;border:1px solid #333;font-size:20px;font-weight:700;">${f.personalNo}</td>
+        <td style="padding:4px 6px;border:1px solid #333;font-size:18px;font-weight:700;">${f.name}</td>
+        <td style="padding:4px 6px;border:1px solid #333;font-size:18px;font-weight:700;">${f.markaz}</td>
       </tr>
       <tr>
-        <td style="padding:3px 6px;font-weight:700;border:1px solid #333">Period of Bill / Claim</td>
-        <td colspan="3" style="padding:3px 6px;border:1px solid #333">${f.periodDisplay}</td>
+        <td style="padding:4px 6px;font-weight:700;border:1px solid #333">Period of Bill / Claim</td>
+        <td colspan="3" style="padding:4px 6px;border:1px solid #333;font-size:16px;font-weight:700;">${f.periodDisplay}</td>
       </tr>
     </table>`;
 
   const body = `
     ${headerBlock}
     ${iaAllowanceTable(f.totalGross, true)}
-    <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:10px">
+    <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:16px;margin-bottom:10px">
       ${IA_COLGROUP_TOTAL}
-      <tr><td style="padding:4px 6px;font-weight:700;border:1px solid #333">Total Pay &amp; Allowances</td>
-          <td style="padding:4px 6px;text-align:right;font-weight:700;border:1px solid #333">${f.totalGross.toLocaleString()}</td></tr>
+      <tr><td style="padding:5px 6px;font-weight:700;border:1px solid #333">Total Pay &amp; Allowances</td>
+          <td style="padding:5px 6px;text-align:right;font-weight:700;border:1px solid #333">${f.totalGross.toLocaleString()}</td></tr>
     </table>
     ${iaDeductionTable(f.totalDeduction)}
     <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin-bottom:24px">
       ${IA_COLGROUP_TOTAL}
-      <tr><td style="padding:4px 6px;font-weight:700;border:1px solid #333">Total Deductions</td><td style="padding:4px 6px;text-align:right;font-weight:700;border:1px solid #333">${f.totalDeduction.toLocaleString()}</td></tr>
-      <tr><td style="padding:4px 6px;font-weight:700;font-size:13px;border:1px solid #333">Net Total</td><td style="padding:4px 6px;text-align:right;font-weight:700;font-size:13px;border:1px solid #333">${f.netTotal.toLocaleString()}</td></tr>
+      <tr><td style="padding:5px 6px;font-weight:700;border:1px solid #333">Total Deductions</td><td style="padding:5px 6px;text-align:right;font-weight:700;border:1px solid #333">${f.totalDeduction.toLocaleString()}</td></tr>
+      <tr><td style="padding:5px 6px;font-weight:700;font-size:18px;border:1px solid #333">Net Total</td><td style="padding:5px 6px;text-align:right;font-weight:700;font-size:18px;border:1px solid #333">${f.netTotal.toLocaleString()}</td></tr>
     </table>
-    <p style="font-size:11px;margin-bottom:40px">Certified that sufficient budget is available to meet the above expenditure for the current financial year.</p>
-    <table style="min-width:0;width:100%;font-size:11px"><tr>
+    <p style="font-size:12px;margin-bottom:40px">Certified that sufficient budget is available to meet the above expenditure for the current financial year.</p>
+    <table style="min-width:0;width:100%;font-size:12px"><tr>
       <td style="width:50%;text-align:center;padding-top:20px;font-weight:700">Assistant Education Officer<br>${f.markaz}</td>
       <td style="width:50%;text-align:center;padding-top:20px;font-weight:700">District Account Officer<br>${f.district}</td>
     </tr></table>`;
-  return iaPageShell('Payment of Arrears Pay &amp; Allowances Through Adjustments', f.officeHeader, body);
+  return iaPageShell('Payment of Arrears Pay &amp; Allowances Through Adjustments', f.officeHeader, body, 700, 16, 14);
 }
 
 // ─── Bill F (STR-18) — Page 2 ──────────────────────────────────────
@@ -432,7 +435,7 @@ function iaBillFHtml(bill) {
     const underline = o.underline ? 'text-decoration:underline;' : '';
     const italic = o.italic ? 'font-style:italic;' : '';
     const align = o.align || 'left';
-    const pad = o.pad || '2px 6px';
+    const pad = o.pad || '3px 6px';
     return `<td style="padding:${pad};font-size:${size}px;text-align:${align};${bold}${underline}${italic}${o.border || ''}">${html}</td>`;
   }
 
@@ -619,7 +622,7 @@ function iaBillFHtml(bill) {
     </tr></table>
   `;
 
-  return iaPageShell(f.officeHeader, '', body, 800);
+  return iaPageShell(f.officeHeader, '', body, 800, 20);
 }
 
 // ─── Bill B (Detail of Inspection Allowance) — Page 3 ──────────────
@@ -632,48 +635,48 @@ function iaBillBHtml(bill) {
 
   const rows = claimRows.map((c, i) => {
     if (!c) {
-      return `<tr>
+      return `<tr style="font-size:14px">
         <td style="padding:5px 8px;border:1px solid #333">${i + 1}</td>
         <td style="padding:5px 8px;border:1px solid #333"></td>
-        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
-        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
-        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
-        <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">0</td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">0</td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">0</td>
+        <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">0</td>
       </tr>`;
     }
     const due = Number(c.due) || 0;
-    return `<tr>
+    return `<tr style="font-size:14px">
       <td style="padding:5px 8px;border:1px solid #333">${i + 1}</td>
-      <td style="padding:5px 8px;border:1px solid #333">${IA_MONTH_NAMES[c.month - 1]} ${c.year}</td>
-      <td style="padding:5px 8px;border:1px solid #333;text-align:right">${due.toLocaleString()}</td>
-      <td style="padding:5px 8px;border:1px solid #333;text-align:right">0</td>
-      <td style="padding:5px 8px;border:1px solid #333;text-align:right">${due.toLocaleString()}</td>
-      <td style="padding:5px 8px;border:1px solid #333;text-align:right">${due.toLocaleString()}</td>
+      <td style="padding:5px 8px;border:1px solid #333;font-weight:700">${IA_MONTH_NAMES[c.month - 1]} ${c.year}</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">${due.toLocaleString()}</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">0</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">${due.toLocaleString()}</td>
+      <td style="padding:5px 8px;border:1px solid #333;text-align:right;font-weight:700">${due.toLocaleString()}</td>
     </tr>`;
   }).join('');
 
   const body = `
     <div style="font-size:11px;font-weight:700;margin-bottom:6px">Certified that:-</div>
-    <div style="font-size:10px;line-height:1.6;margin-bottom:16px">
+    <div style="font-size:11px;line-height:1.6;margin-bottom:16px">
       <p>(a) I have neither been provided with accommodation by the Government nor I share any such accommodation with another allottee without necessary permission of the Estate Officer.</p>
       <p>(b) My wife/husband is in the service of the Federal/Provincial Government/Autonomous body.</p>
       <p>(c) My wife/husband who is in the service of Federal/Provincial Government/Autonomous body is in receipt of house rent allowance.</p>
       <p>(d) I am not residing within my work premises.</p>
       <p>(e) I am not maintaining a Motor Cycle/Car No. ………………………….. which is registered in my own name or in the name of my spouse who is not drawing Motor Cycle/Car Allowance for the same.</p>
     </div>
-    <p style="font-size:11px;font-weight:700;text-align:right;margin-bottom:20px">Signature and Stamp of Officer</p>
+    <p style="font-size:14px;font-weight:700;text-align:right;margin-bottom:20px">Signature and Stamp of Officer</p>
 
-    <div style="text-align:center;font-size:14px;font-weight:700;margin-bottom:14px">DETAIL INSPECTION ALLOWANCE</div>
+    <div style="text-align:center;font-size:16px;font-weight:700;margin-bottom:14px">DETAIL INSPECTION ALLOWANCE</div>
     <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #333;font-size:11.5px;margin-bottom:14px">
       <colgroup>
         <col style="width:8%"><col style="width:34%"><col style="width:14.5%">
         <col style="width:14.5%"><col style="width:14.5%"><col style="width:14.5%">
       </colgroup>
-      <tr style="font-weight:700;font-size:13px">
+      <tr style="font-weight:700;font-size:18px">
         <td style="padding:8px;border:1px solid #333;text-align:center" colspan="2">${f.name}</td>
         <td style="padding:8px;border:1px solid #333;text-align:center" colspan="4">${f.markaz}</td>
       </tr>
-      <tr style="font-weight:700;background:#f2f2f2">
+      <tr style="font-weight:700;background:#f2f2f2;font-size:12px">
         <td style="padding:6px 8px;border:1px solid #333;text-align:center" colspan="2">Period</td>
         <td style="padding:6px 8px;border:1px solid #333;text-align:center">Due</td>
         <td style="padding:6px 8px;border:1px solid #333;text-align:center">Drawn</td>
@@ -681,7 +684,7 @@ function iaBillBHtml(bill) {
         <td style="padding:6px 8px;border:1px solid #333;text-align:center">Total</td>
       </tr>
       ${rows}
-      <tr style="font-weight:700">
+      <tr style="font-weight:700;font-size:14px">
         <td style="padding:6px 8px;border:1px solid #333" colspan="2">NET CLAIM</td>
         <td style="padding:6px 8px;text-align:right;border:1px solid #333">${f.netTotal.toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right;border:1px solid #333">0</td>
@@ -689,8 +692,19 @@ function iaBillBHtml(bill) {
         <td style="padding:6px 8px;text-align:right;border:1px solid #333">${f.netTotal.toLocaleString()}</td>
       </tr>
     </table>
-    <p style="font-size:11px;text-align:right;margin-bottom:50px"><b>Net Amount (In words):</b> ${iaNumberToWordsPKR(f.netTotal)}</p>
-    <table style="min-width:0;width:100%;font-size:11px"><tr>
+    <table style="min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;margin-bottom:50px">
+      <colgroup>
+        <col style="width:8%"><col style="width:34%"><col style="width:14.5%">
+        <col style="width:14.5%"><col style="width:14.5%"><col style="width:14.5%">
+      </colgroup>
+      <tr>
+        <td colspan="2"></td>
+        <td colspan="4" style="padding:8px 8px 0 8px;font-size:16px;font-weight:800;">
+          <b>Net Amount (In words):</b> ${iaNumberToWordsPKR(f.netTotal)}
+        </td>
+      </tr>
+    </table>
+    <table style="min-width:0;width:100%;font-size:14px"><tr>
       <td style="width:100%;text-align:right;padding-top:20px;font-weight:700">Signature and Stamp of Officer</td>
     </tr></table>`;
   return iaPageShell('', '', body);
