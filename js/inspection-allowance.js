@@ -468,7 +468,16 @@ function iaBillFHtml(bill) {
       <td colspan="2" style="${BORDER}padding:3px 8px;font-weight:700;font-size:14px;">${f.periodDisplay}</td>
     </tr>
     <tr>
-      <td style="${BORDER}padding:2px 6px;font-weight:700;font-size:11.5px;">Name:&nbsp; ${f.name} &nbsp;&nbsp;&nbsp; Post Held &nbsp; ${f.postHeld}</td>
+      <td style="${BORDER}padding:0;font-weight:700;font-size:11.5px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:62px;padding:2px 6px;border-right:1px solid #333;white-space:nowrap;">Name:</td>
+            <td style="padding:2px 6px;border-right:1px solid #333;">${f.name}</td>
+            <td style="width:72px;padding:2px 6px;border-right:1px solid #333;text-align:center;white-space:nowrap;">Post Held</td>
+            <td style="padding:2px 6px;">${f.postHeld}</td>
+          </tr>
+        </table>
+      </td>
       <td style="${BORDER}padding:2px 6px;font-weight:700;font-size:11.5px;text-align:center;">Markaz:</td>
       <td colspan="2" style="${BORDER}padding:2px 6px;font-weight:700;font-size:11.5px;">${f.markaz}</td>
     </tr>
