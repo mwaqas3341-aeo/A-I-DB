@@ -1,9 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
 //  INSPECTION ALLOWANCE — bill preparation module
-//  Deductions are set centrally by the Tehsil Representative during
-//  Budget Preparation. An AEO can only download a month once their
-//  tehsil+month has been prepared; their own deduction defaults to 0
-//  (full rate) if the TR didn't specifically adjust it for them.
+//  Two workflows depending on the AEO's tehsil+wing budget type:
+//   - Collective: a Tehsil Representative prepares deductions centrally
+//     during Budget Preparation. The AEO just clicks Download Bill —
+//     no questions asked — for whatever prepared months are pending.
+//   - Individual: no TR is assigned (or tehsil+wing is explicitly set
+//     to Individual). The AEO picks 1-4 months themselves (any year)
+//     and enters their own deduction (blank/0 = full rate), then
+//     generates the bill directly.
+//  Either way, a read-only history table below shows the last 18
+//  months on file — for viewing only, never for interaction.
 // ═══════════════════════════════════════════════════════════════════
 
 const IA_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -12,9 +18,10 @@ const IA_MAX_SELECTED = 4;
 let iaState = {
   rate: 25000,
   profile: null,
-  year: new Date().getFullYear(),
-  months: [],       // [{month, prepared, deduction, due}] for the selected year
-  selected: new Set(), // month numbers currently checked for the bill
+  mode: 'individual',     // 'collective' | 'individual'
+  tehsil: '', wing: '',
+  pendingCollective: [],  // collective mode: prepared-but-not-yet-downloaded rows
+  wizardEntries: [],      // individual mode: [{year, month, deduction}] from the dropdown wizard
 };
 
 // ─── Entry point (dashboard card) ──────────────────────────────────
@@ -22,19 +29,14 @@ async function openInspectionAllowanceView() {
   if (typeof switchGlobalTab === 'function') switchGlobalTab('inspectionAllowanceView', null);
 
   const isAdmin = String(currentUser?.role).toLowerCase() === 'admin';
-  const isTr = Array.isArray(currentUser?.tr_tehsils) && currentUser.tr_tehsils.length > 0;
+  const isTr = Array.isArray(currentUser?.tr_scopes) && currentUser.tr_scopes.length > 0;
   document.getElementById('iaTabBudgetPrepBtn').style.display = (isAdmin || isTr) ? 'inline-flex' : 'none';
   iaSwitchTab('myBill');
 
-  const yearSel = document.getElementById('ia_year');
-  const yNow = new Date().getFullYear();
-  yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1].map(y => `<option value="${y}" ${y === yNow ? 'selected' : ''}>${y}</option>`).join('');
-  iaState.year = yNow;
-  iaState.selected = new Set();
-
   await iaLoadRate();
   await iaLoadProfile();
-  await iaLoadMonths();
+  await iaLoadMode();
+  iaLoadHistory();
 }
 
 function iaSwitchTab(tab) {
@@ -81,72 +83,230 @@ async function iaLoadProfile() {
 
   const incomplete = !res.page_no || !res.ddeo_code || !res.bps_scale;
   document.getElementById('iaProfileIncompleteWarn').style.display = incomplete ? 'block' : 'none';
-  if (incomplete) document.getElementById('iaSubmitBtn').disabled = true;
+  iaState.profileIncomplete = incomplete;
+  if (incomplete) {
+    document.getElementById('iaSubmitBtn').disabled = true;
+    document.getElementById('iaCollectiveDownloadBtn').disabled = true;
+  }
 }
 
-// ─── Months grid (My Bill tab) ───────────────────────────────────────
-async function iaLoadMonths() {
-  iaState.year = Number(document.getElementById('ia_year').value);
-  iaState.selected = new Set();
-  const grid = document.getElementById('iaMonthsGrid');
-  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading months…</div>`;
+// ─── Mode resolution (Collective vs Individual) ─────────────────────
+async function iaLoadMode() {
+  document.getElementById('iaModeLoading').style.display = 'block';
+  document.getElementById('iaCollectiveBox').style.display = 'none';
+  document.getElementById('iaIndividualBox').style.display = 'none';
 
-  const res = await apiCall('getMyInspectionAllowanceMonths', { year: iaState.year });
-  if (!res || !res.success) { grid.innerHTML = `<div style="color:var(--bad);padding:12px">${res?.message || 'Could not load months.'}</div>`; return; }
+  const res = await apiCall('getMyBudgetMode');
+  document.getElementById('iaModeLoading').style.display = 'none';
+  if (!res || !res.success) { showToast(res?.message || 'Could not determine your budget type.', false); return; }
 
-  iaState.months = res.months;
-  iaRenderMonthsGrid();
+  iaState.mode = res.mode;
+  iaState.tehsil = res.tehsil;
+  iaState.wing = res.wing;
+
+  if (res.mode === 'collective') {
+    document.getElementById('iaCollectiveBox').style.display = 'block';
+    await iaLoadPendingCollective();
+  } else {
+    document.getElementById('iaIndividualBox').style.display = 'block';
+    iaRenderWizardRows();
+  }
 }
 
-function iaRenderMonthsGrid() {
-  const grid = document.getElementById('iaMonthsGrid');
-  grid.innerHTML = `
+// ─── Collective mode: one-click download, zero questions ───────────
+async function iaLoadPendingCollective() {
+  const statusEl = document.getElementById('iaCollectiveStatus');
+  const btn = document.getElementById('iaCollectiveDownloadBtn');
+  statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking for prepared months…';
+  btn.disabled = true;
+
+  const res = await apiCall('getMyPendingCollectiveBill');
+  if (!res || !res.success) { statusEl.innerHTML = `<span style="color:var(--bad)">${res?.message || 'Could not load your bill.'}</span>`; return; }
+
+  iaState.pendingCollective = res.months || [];
+  if (!iaState.pendingCollective.length) {
+    statusEl.innerHTML = `Nothing to download yet for <b>${iaState.tehsil} / ${iaState.wing}</b> — ask your Tehsil Representative to prepare this month's budget.`;
+    btn.disabled = true;
+    return;
+  }
+  const label = iaState.pendingCollective.map(m => `${IA_MONTH_NAMES[m.month - 1]} ${m.year}`).join(', ');
+  const total = iaState.pendingCollective.reduce((s, m) => s + Number(m.due || 0), 0);
+  statusEl.innerHTML = `Ready to download: <b>${label}</b> — Net Total <b style="color:#0d9488">PKR ${total.toLocaleString()}</b>`;
+  btn.disabled = !!iaState.profileIncomplete;
+}
+
+async function iaDownloadCollectiveBill() {
+  if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
+  if (!iaState.pendingCollective.length) { showToast('Nothing to download.', false); return; }
+
+  const btn = document.getElementById('iaCollectiveDownloadBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
+
+  try {
+    const claims = iaState.pendingCollective.map(m => ({
+      month: m.month, year: m.year, allowance_rate: Number(m.allowance_rate) || iaState.rate,
+      deduction: Number(m.deduction) || 0, due: Number(m.due) || 0,
+    }));
+    const filename = await iaBuildAndDownloadBill(claims);
+
+    const ids = iaState.pendingCollective.map(m => m.id);
+    await apiCall('markInspectionAllowanceDownloaded', { ids });
+
+    showToast('Bill downloaded.', true);
+    iaLoadHistory();
+    iaRedirectToPerformance(claims);
+    iaState.pendingCollective = [];
+    document.getElementById('iaCollectiveStatus').innerHTML = 'Downloaded. Check back once your TR prepares the next month.';
+  } catch (err) {
+    showToast('Error generating bill: ' + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+// ─── Individual mode: Number of Months → cascading pickers → deductions ─
+function iaRenderWizardRows() {
+  const count = Number(document.getElementById('ia_wizardCount').value) || 1;
+  const wrap = document.getElementById('iaWizardRows');
+  const yNow = new Date().getFullYear();
+  const years = [yNow - 1, yNow, yNow + 1];
+
+  // Preserve any rows already filled in when the count changes.
+  const prev = iaState.wizardEntries;
+  iaState.wizardEntries = Array.from({ length: count }, (_, i) => prev[i] || { year: yNow, month: new Date().getMonth() + 1, deduction: '' });
+
+  wrap.innerHTML = iaState.wizardEntries.map((e, i) => `
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px dashed var(--s2)">
+      <div class="ff" style="min-width:110px">
+        <span class="flabel">Year</span>
+        <select onchange="iaWizardUpdate(${i}, 'year', this.value)" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          ${years.map(y => `<option value="${y}" ${y === e.year ? 'selected' : ''}>${y}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ff" style="min-width:150px">
+        <span class="flabel">Month</span>
+        <select onchange="iaWizardUpdate(${i}, 'month', this.value)" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          ${IA_MONTH_NAMES.map((name, mi) => `<option value="${mi + 1}" ${mi + 1 === e.month ? 'selected' : ''}>${name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ff" style="min-width:180px">
+        <span class="flabel">Deduction by DDEO (if any)</span>
+        <input type="number" min="0" step="1" placeholder="0 = full amount" value="${e.deduction}"
+          oninput="iaWizardUpdate(${i}, 'deduction', this.value)"
+          style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px;width:100%">
+      </div>
+    </div>`).join('');
+
+  iaUpdateWizardTotal();
+}
+
+function iaWizardUpdate(i, field, value) {
+  const e = iaState.wizardEntries[i];
+  if (!e) return;
+  e[field] = (field === 'deduction') ? value : Number(value);
+  iaUpdateWizardTotal();
+}
+
+function iaUpdateWizardTotal() {
+  const total = iaState.wizardEntries.reduce((s, e) => s + Math.max(0, iaState.rate - (Number(e.deduction) || 0)), 0);
+  document.getElementById('iaNetTotalDisplay').textContent = 'PKR ' + total.toLocaleString();
+}
+
+async function iaGenerateIndividualBill() {
+  if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
+  if (iaState.profileIncomplete) { showToast('Complete your profile (Page No / DDEO Code / BPS Scale) before generating a bill.', false); return; }
+  const entries = iaState.wizardEntries;
+
+  // Validate before hitting the server: no duplicate year+month pairs.
+  const keys = entries.map(e => `${e.year}-${e.month}`);
+  if (new Set(keys).size !== keys.length) { showToast('You picked the same month/year twice — choose different months.', false); return; }
+
+  const btn = document.getElementById('iaSubmitBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
+
+  try {
+    const payloadEntries = entries.map(e => ({ year: e.year, month: e.month, deduction: Number(e.deduction) || 0 }));
+    const res = await apiCall('submitIndividualBill', { entries: payloadEntries });
+    if (!res || !res.success) throw new Error(res?.message || 'Could not save your bill.');
+
+    const rate = Number(res.rate) || iaState.rate;
+    const claims = (res.entries || []).map(r => ({
+      month: r.month, year: r.year, allowance_rate: rate, deduction: Number(r.deduction) || 0, due: Number(r.due) || 0,
+    }));
+
+    await iaBuildAndDownloadBill(claims);
+    showToast('Bill generated and downloaded.', true);
+    iaLoadHistory();
+    iaRedirectToPerformance(claims);
+  } catch (err) {
+    showToast('Error generating bill: ' + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+// ─── Shared PDF build+download (used by both modes) ─────────────────
+async function iaBuildAndDownloadBill(claims) {
+  claims = claims.slice().sort((a, b) => (a.year - b.year) || (a.month - b.month));
+  const bill = { user: iaState.profile, claims };
+  bill.fields = iaResolveBillFields(bill); // resolve once, reuse across all 3 pages
+
+  const pagesHtml = [
+    iaAdjustmentFormHtml(bill), // Page 1 — Payment of Arrears Pay & Allowances Through Adjustments
+    iaBillFHtml(bill),          // Page 2 — S.T.R.18 Pay Bill
+    iaBillBHtml(bill),          // Page 3 — Detail of Inspection Allowance
+  ];
+  const pdfBytes = await iaBuildBillPdfBytes(pagesHtml, ['contain', 'fill-width', 'contain']);
+
+  const label = claims.map(c => `${IA_MONTH_NAMES[c.month - 1]}-${c.year}`).join('_');
+  const filename = `Inspection_Allowance_Bill_${iaState.profile.personal_no || 'AEO'}_${label}.pdf`;
+  iaDownloadPdf(pdfBytes, filename);
+  return filename;
+}
+
+// Bill generation and Performance Preparation must always stay in sync —
+// after a successful download, jump straight to Performance with the
+// exact same months (and years) already selected.
+function iaRedirectToPerformance(claims) {
+  const monthYearPairs = claims.map(c => ({ year: c.year, month: c.month }));
+  iaSwitchTab('performance');
+  if (typeof perfInitWithPreselected === 'function') {
+    setTimeout(() => perfInitWithPreselected(monthYearPairs), 50);
+  }
+}
+
+// ─── Read-only Bill History (both modes) ─────────────────────────────
+async function iaLoadHistory() {
+  const wrap = document.getElementById('iaHistoryTable');
+  wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</div>`;
+
+  const res = await apiCall('getInspectionAllowanceHistory');
+  if (!res || !res.success) { wrap.innerHTML = `<div style="color:var(--bad);padding:12px">${res?.message || 'Could not load history.'}</div>`; return; }
+
+  const rows = res.data || [];
+  if (!rows.length) { wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)">No records yet.</div>`; return; }
+
+  wrap.innerHTML = `
     <table style="width:100%;border-collapse:collapse;font-size:.85rem">
       <thead><tr style="text-align:left;border-bottom:2px solid var(--b0);background:var(--s2)">
-        <th style="padding:8px;width:36px"></th><th style="padding:8px">Month</th>
-        <th style="padding:8px">Status</th><th style="padding:8px">Deduction</th><th style="padding:8px">Due</th>
+        <th style="padding:8px">Month</th><th style="padding:8px">Deduction</th>
+        <th style="padding:8px">Due</th><th style="padding:8px">Downloaded</th>
       </tr></thead>
       <tbody>
-        ${iaState.months.map(m => {
-          const disabled = !m.prepared;
-          const checked = iaState.selected.has(m.month);
-          return `<tr style="border-bottom:1px solid var(--s2);${disabled ? 'opacity:.5' : ''}">
-            <td style="padding:8px">
-              <input type="checkbox" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="iaToggleMonth(${m.month}, this.checked)">
-            </td>
-            <td style="padding:8px;font-weight:600">${IA_MONTH_NAMES[m.month - 1]}</td>
-            <td style="padding:8px">${m.prepared ? '<span style="color:#0d9488">✅ Prepared</span>' : '<span style="color:var(--t3)">Not prepared yet</span>'}</td>
-            <td style="padding:8px">${m.prepared ? 'PKR ' + m.deduction.toLocaleString() : '—'}</td>
-            <td style="padding:8px;font-weight:700;color:#0d9488">${m.prepared ? 'PKR ' + m.due.toLocaleString() : '—'}</td>
-          </tr>`;
-        }).join('')}
+        ${rows.map(r => `<tr style="border-bottom:1px solid var(--s2)">
+          <td style="padding:8px;font-weight:600">${IA_MONTH_NAMES[r.month - 1]} ${r.year}</td>
+          <td style="padding:8px">PKR ${Number(r.deduction).toLocaleString()}</td>
+          <td style="padding:8px;font-weight:700;color:#0d9488">PKR ${Number(r.due).toLocaleString()}</td>
+          <td style="padding:8px;color:var(--t3)">${r.downloaded_at ? new Date(r.downloaded_at).toLocaleDateString() : '—'}</td>
+        </tr>`).join('')}
       </tbody>
     </table>`;
-  iaUpdateNetTotal();
-}
-
-function iaToggleMonth(month, checked) {
-  if (checked) {
-    if (iaState.selected.size >= IA_MAX_SELECTED) {
-      showToast(`Maximum ${IA_MAX_SELECTED} months per bill.`, false);
-      iaRenderMonthsGrid(); // re-render to uncheck the box that triggered this
-      return;
-    }
-    iaState.selected.add(month);
-  } else {
-    iaState.selected.delete(month);
-  }
-  iaUpdateNetTotal();
-  document.getElementById('iaSubmitBtn').disabled = iaState.selected.size === 0;
-}
-
-function iaUpdateNetTotal() {
-  let total = 0;
-  iaState.selected.forEach(m => {
-    const row = iaState.months.find(x => x.month === m);
-    if (row) total += row.due;
-  });
-  document.getElementById('iaNetTotalDisplay').textContent = 'PKR ' + total.toLocaleString();
 }
 
 // ─── PDF generation helpers ────────────────────────────────────────
@@ -819,52 +979,4 @@ async function iaBuildBillPdfBytes(pagesHtml, fitModes) {
 }
 
 // ─── Entry point: "Download Bill (PDF)" button (index.html) ────────
-async function iaDownloadBill() {
-  if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
-  if (iaState.selected.size === 0) { showToast('Select at least one prepared month.', false); return; }
 
-  const btn = document.getElementById('iaSubmitBtn');
-  const originalHtml = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
-
-  try {
-    const months = [...iaState.selected].sort((a, b) => a - b);
-
-    // Build one "claim" per selected month from the already-loaded
-    // months grid data (deduction/due were computed server-side by
-    // getMyInspectionAllowanceMonths; allowance_rate is the flat
-    // monthly rate from getInspectionAllowanceRate).
-    const claims = months.map((m) => {
-      const row = iaState.months.find((x) => x.month === m) || {};
-      return {
-        month: m,
-        year: iaState.year,
-        allowance_rate: iaState.rate,
-        deduction: Number(row.deduction) || 0,
-        due: Number(row.due) || 0,
-      };
-    });
-
-    const bill = { user: iaState.profile, claims };
-    bill.fields = iaResolveBillFields(bill); // resolve once, reuse across all 3 pages
-
-    const pagesHtml = [
-      iaAdjustmentFormHtml(bill), // Page 1 — Payment of Arrears Pay & Allowances Through Adjustments
-      iaBillFHtml(bill),          // Page 2 — S.T.R.18 Pay Bill
-      iaBillBHtml(bill),          // Page 3 — Detail of Inspection Allowance
-    ];
-
-    const pdfBytes = await iaBuildBillPdfBytes(pagesHtml, ['contain', 'fill-width', 'contain']);
-
-    const label = months.map((m) => IA_MONTH_NAMES[m - 1]).join('-');
-    const filename = `Inspection_Allowance_Bill_${iaState.profile.personal_no || 'AEO'}_${label}_${iaState.year}.pdf`;
-    iaDownloadPdf(pdfBytes, filename);
-    showToast('Bill downloaded.', true);
-  } catch (err) {
-    showToast('Error generating bill: ' + err.message, false);
-  } finally {
-    btn.disabled = iaState.selected.size === 0;
-    btn.innerHTML = originalHtml;
-  }
-}

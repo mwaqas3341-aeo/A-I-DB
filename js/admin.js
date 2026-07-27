@@ -114,12 +114,91 @@ function switchAdminTab(tab, btn) {
   document.getElementById('adminPanelTools').style.display   = tab === 'tools'   ? 'block' : 'none';
   document.getElementById('adminPanelKpi').style.display     = tab === 'kpi'     ? 'block' : 'none';
   document.getElementById('adminPanelGeneral').style.display = tab === 'general' ? 'block' : 'none';
+  document.getElementById('adminPanelIA').style.display      = tab === 'ia'      ? 'block' : 'none';
   document.querySelectorAll('.admin-sub-tab').forEach(b => b.classList.remove('active-admin-tab'));
   if (btn) btn.classList.add('active-admin-tab');
   if (tab === 'links')   loadLinksAppsTable();
   if (tab === 'tools')   loadToolsTableAdmin();
   if (tab === 'kpi')     loadKpiCardsTable();
   if (tab === 'general') loadGeneralList('designation');
+  if (tab === 'ia')      loadInspectionAllowanceAdmin();
+}
+
+// ═══════════════════════════════════════════════
+//  INSPECTION ALLOWANCE MANAGEMENT — Tehsil Budget Config + TR assignments
+// ═══════════════════════════════════════════════
+function loadInspectionAllowanceAdmin() {
+  loadTehsilBudgetConfig();
+  loadTehsilRepsAdmin();
+}
+
+function loadTehsilBudgetConfig() {
+  const tbody = document.getElementById('budgetConfigTBody');
+  tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { tbody.innerHTML = `<tr><td colspan="4" style="padding:14px;color:var(--bad)">${res.message || 'Load failed.'}</td></tr>`; return; }
+      if (!res.data.length) { tbody.innerHTML = '<tr><td colspan="4" style="padding:14px;color:var(--t3)">No tehsil/wing combinations found yet.</td></tr>'; return; }
+      tbody.innerHTML = res.data.map(row => {
+        const isCollective = row.budget_type === 'collective';
+        const changed = row.updated_at ? new Date(row.updated_at).toLocaleDateString() : '—';
+        return `<tr>
+          <td style="padding:8px;font-weight:600">${row.tehsil}</td>
+          <td style="padding:8px">${row.wing}</td>
+          <td style="padding:8px">
+            <select style="height:34px;border:1px solid var(--b0);border-radius:6px;padding:0 8px;font-size:.82rem"
+              onchange="setTehsilBudgetTypeAdmin('${row.tehsil.replace(/'/g,"\\'")}', '${row.wing}', this.value)">
+              <option value="individual" ${!isCollective ? 'selected' : ''}>Individual (self-serve)</option>
+              <option value="collective" ${isCollective ? 'selected' : ''}>Collective (TR-prepared)</option>
+            </select>
+          </td>
+          <td style="padding:8px;color:var(--t3);font-size:.8rem">${changed}</td>
+        </tr>`;
+      }).join('');
+    })
+    .withFailureHandler(err => { tbody.innerHTML = `<tr><td colspan="4" style="padding:14px;color:var(--bad)">Error: ${err.message}</td></tr>`; })
+    .listTehsilBudgetConfig();
+}
+
+function setTehsilBudgetTypeAdmin(tehsil, wing, type) {
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res.success) showToast(`${tehsil} / ${wing} set to ${type === 'collective' ? 'Collective' : 'Individual'}.`);
+      else { showToast(res.message || 'Update failed.', false); loadTehsilBudgetConfig(); }
+    })
+    .withFailureHandler(err => { showToast('Error: ' + err.message, false); loadTehsilBudgetConfig(); })
+    .setTehsilBudgetType({ tehsil, wing, type });
+}
+
+function loadTehsilRepsAdmin() {
+  const tbody = document.getElementById('tehsilRepsTBody');
+  tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { tbody.innerHTML = `<tr><td colspan="6" style="padding:14px;color:var(--bad)">${res.message || 'Load failed.'}</td></tr>`; return; }
+      if (!res.data.length) { tbody.innerHTML = '<tr><td colspan="6" style="padding:14px;color:var(--t3)">No Tehsil Representatives assigned yet — use the "Is this person a Tehsil Representative?" toggle in User Management.</td></tr>'; return; }
+      tbody.innerHTML = res.data.map(row => `
+        <tr>
+          <td style="padding:8px">${row.app_users?.name || '—'}</td>
+          <td style="padding:8px">${row.app_users?.personal_no || '—'}</td>
+          <td style="padding:8px">${row.tehsil}</td>
+          <td style="padding:8px">${row.wing}</td>
+          <td style="padding:8px;color:var(--t3);font-size:.8rem">${row.assigned_at ? new Date(row.assigned_at).toLocaleDateString() : '—'}</td>
+          <td style="padding:8px"><button class="btn-icon-del" onclick="removeTehsilRepAdmin(${row.id})" title="Remove"><i class="bi bi-trash3-fill"></i></button></td>
+        </tr>`).join('');
+    })
+    .withFailureHandler(err => { tbody.innerHTML = `<tr><td colspan="6" style="padding:14px;color:var(--bad)">Error: ${err.message}</td></tr>`; })
+    .listTehsilReps();
+}
+
+function removeTehsilRepAdmin(id) {
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res.success) { showToast('Tehsil Representative removed.'); loadTehsilRepsAdmin(); }
+      else showToast(res.message || 'Remove failed.', false);
+    })
+    .withFailureHandler(err => showToast('Error: ' + err.message, false))
+    .removeTehsilRep({ id });
 }
 
 // ═══════════════════════════════════════════════
@@ -792,6 +871,15 @@ function editUser(cnic) {
     setVal('u_bps_scale',   row[UH.BPS_SCALE]    || '');
     document.getElementById('u_receives_budget_copy').checked = !!row[UH.RECEIVES_BUDGET_COPY];
     refreshDyOfficePreview();
+    document.getElementById('u_is_tehsil_rep').checked = false; // reset while the lookup below resolves
+    google.script.run
+      .withSuccessHandler(res => {
+        if (!res || !res.success || !row._id) return;
+        const isRep = (res.data || []).some(r => r.user_id === row._id);
+        document.getElementById('u_is_tehsil_rep').checked = isRep;
+      })
+      .withFailureHandler(() => {})
+      .listTehsilReps();
     userModalInst.show();
   };
   if (!jLoaded) showToast('Loading jurisdiction data…', true);
@@ -826,6 +914,7 @@ function clearUserForm() {
   document.getElementById('scopeValueArea').innerHTML = '';
   document.getElementById('scopePreviewWrap').style.display = 'none';
   document.getElementById('u_receives_budget_copy').checked = false;
+  document.getElementById('u_is_tehsil_rep').checked = false;
   refreshDyOfficePreview();
 }
 
@@ -874,6 +963,7 @@ function submitUser() {
     [UH.DDEO_CODE]:   document.getElementById('u_ddeo_code').value.trim(),
     [UH.BPS_SCALE]:   document.getElementById('u_bps_scale').value.trim() || null,
     [UH.RECEIVES_BUDGET_COPY]: document.getElementById('u_receives_budget_copy').checked,
+    isTehsilRep: document.getElementById('u_is_tehsil_rep').checked,
     // Dy Office Detail intentionally NOT sent — it's a Postgres GENERATED
     // column (wing + tehsil), writing to it would error the update.
   };

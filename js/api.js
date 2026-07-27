@@ -562,14 +562,21 @@ async function apiCall(action, payload) {
         .single();
 
       // Tehsil Representative assignments — admins implicitly have TR
-      // authority everywhere, so they don't need explicit rows.
-      let trTehsils = [];
+      // authority everywhere, so they don't need explicit rows. TR scope
+      // is now (tehsil, wing) pairs, e.g. a TR for "KAROR LALISAN / M-EE"
+      // does not automatically also cover "KAROR LALISAN / W-EE".
+      let trScopes = [];
       if (String(fullProfile.role).toLowerCase() === 'admin') {
-        const { data: allTehsils } = await _sb.from('app_users').select('tehsil').not('tehsil', 'is', null);
-        trTehsils = [...new Set((allTehsils || []).map(r => r.tehsil).filter(Boolean))];
+        const { data: allScopes } = await _sb.from('app_users').select('tehsil, wing').not('tehsil', 'is', null);
+        const seen = new Set();
+        (allScopes || []).forEach(r => {
+          if (!r.tehsil || !r.wing) return;
+          const key = r.tehsil + '|' + r.wing;
+          if (!seen.has(key)) { seen.add(key); trScopes.push({ tehsil: r.tehsil, wing: r.wing }); }
+        });
       } else {
-        const { data: trRows } = await _sb.from('tehsil_representatives').select('tehsil').eq('user_id', authData.user.id);
-        trTehsils = (trRows || []).map(r => r.tehsil);
+        const { data: trRows } = await _sb.from('tehsil_representatives').select('tehsil, wing').eq('user_id', authData.user.id);
+        trScopes = (trRows || []).map(r => ({ tehsil: r.tehsil, wing: r.wing }));
       }
 
       const userObj = {
@@ -597,7 +604,7 @@ async function apiCall(action, payload) {
         ddeo_code:      fullProfile.ddeo_code,
         bps_scale:      fullProfile.bps_scale,
         dy_office_detail: fullProfile.dy_office_detail,
-        tr_tehsils: trTehsils, // tehsils this user can prepare Inspection Allowance budgets for
+        tr_scopes: trScopes, // [{tehsil, wing}] pairs this user can prepare Inspection Allowance budgets for
       };
 
       localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(userObj));
@@ -1868,7 +1875,7 @@ async function apiCall(action, payload) {
       const targetUserId = (isAdmin && p.userId) ? p.userId : user.id;
       const { data, error } = await _sb
         .from('inspection_allowance_deductions')
-        .select('year, month, allowance_rate, deduction, due, created_at')
+        .select('year, month, allowance_rate, deduction, due, downloaded_at, created_at')
         .eq('user_id', targetUserId)
         .order('year', { ascending: false })
         .order('month', { ascending: false });
@@ -1876,36 +1883,85 @@ async function apiCall(action, payload) {
       return { success: true, data: data || [] };
     }
 
+    // Resolves whether the logged-in user's tehsil+wing is Collective
+    // (TR-prepared, Download-only) or Individual (self-serve Generate Bill).
+    // No config row = Individual by default.
+    case 'getMyBudgetMode': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const { data: me } = await _sb.from('app_users').select('tehsil, wing').eq('id', user.id).single();
+      if (!me?.tehsil || !me?.wing) return { success: false, message: 'Your profile is missing tehsil/wing.' };
+      const { data: cfg } = await _sb.from('tehsil_budget_config')
+        .select('budget_type').eq('tehsil', me.tehsil).eq('wing', me.wing).maybeSingle();
+      return { success: true, tehsil: me.tehsil, wing: me.wing, mode: cfg?.budget_type || 'individual' };
+    }
+
+    // Collective mode: fetch this user's prepared-but-not-yet-downloaded
+    // months (can span years), oldest first, capped at 4 to match the PDF.
+    case 'getMyPendingCollectiveBill': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const { data, error } = await _sb.from('inspection_allowance_deductions')
+        .select('id, year, month, allowance_rate, deduction, due')
+        .eq('user_id', user.id).is('downloaded_at', null)
+        .order('year', { ascending: true }).order('month', { ascending: true })
+        .limit(4);
+      if (error) return { success: false, message: error.message };
+      return { success: true, months: data || [] };
+    }
+
+    // Individual mode: self-submit 1-4 (year, month, deduction) entries.
+    case 'submitIndividualBill': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const entries = Array.isArray(p.entries) ? p.entries : [];
+      const { data, error } = await _sb.rpc('submit_my_inspection_allowance', { p_entries: entries });
+      if (error) return { success: false, message: error.message };
+      return { success: true, ...data };
+    }
+
+    // Marks rows downloaded so a collective-mode "Download Bill" click
+    // doesn't re-offer the same prepared month next time.
+    case 'markInspectionAllowanceDownloaded': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const ids = Array.isArray(p.ids) ? p.ids : [];
+      if (!ids.length) return { success: true };
+      const { error } = await _sb.rpc('mark_inspection_allowance_downloaded', { p_ids: ids });
+      if (error) return { success: false, message: error.message };
+      return { success: true };
+    }
+
     // ── BUDGET PREPARATION (Tehsil Representatives + Admins only) ──────
-    // Roster of AEOs in a tehsil, for the TR's prep grid.
+    // Roster of AEOs in a tehsil+wing, for the TR's prep grid.
     case 'getTehsilRosterForBudget': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const tehsil = (p.tehsil || '').trim();
-      if (!user || !tehsil) return { success: false, message: 'Missing tehsil.' };
-      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: tehsil });
-      if (!authOk) return { success: false, message: 'Not authorized for this tehsil.' };
+      const wing = (p.wing || '').trim();
+      if (!user || !tehsil || !wing) return { success: false, message: 'Missing tehsil/wing.' };
+      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: tehsil, p_wing: wing });
+      if (!authOk) return { success: false, message: 'Not authorized for this tehsil/wing.' };
 
       const { data, error } = await _sb.from('app_users')
         .select('id, personal_no, name, wing, tehsil, markaz_name, designation, ddeo_code')
-        .eq('tehsil', tehsil).order('name');
+        .eq('tehsil', tehsil).eq('wing', wing).order('name');
       if (error) return { success: false, message: error.message };
       return { success: true, data: data || [] };
     }
 
-    // Existing deductions already on file for a tehsil+year (to pre-fill the grid)
-    // and which months are already marked prepared (for the status strip).
+    // Existing deductions already on file for a tehsil+wing+year (to pre-fill
+    // the grid) and which months are already marked prepared.
     case 'getBudgetPrepStatus': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const tehsil = (p.tehsil || '').trim();
+      const wing = (p.wing || '').trim();
       const year = Number(p.year);
-      if (!user || !tehsil || !year) return { success: false, message: 'Missing tehsil/year.' };
+      if (!user || !tehsil || !wing || !year) return { success: false, message: 'Missing tehsil/wing/year.' };
 
       const { data: preps, error: prepErr } = await _sb.from('budget_preparations')
         .select('month, prepared_by_name, prepared_at, updated_at, pdf_sent_at, send_error')
-        .eq('tehsil', tehsil).eq('year', year);
+        .eq('tehsil', tehsil).eq('wing', wing).eq('year', year);
       if (prepErr) return { success: false, message: prepErr.message };
 
-      const { data: users } = await _sb.from('app_users').select('id').eq('tehsil', tehsil);
+      const { data: users } = await _sb.from('app_users').select('id').eq('tehsil', tehsil).eq('wing', wing);
       const userIds = (users || []).map(u => u.id);
       let deductions = [];
       if (userIds.length) {
@@ -1919,19 +1975,19 @@ async function apiCall(action, payload) {
 
     case 'prepareTehsilBudget': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      const { tehsil, year, month, entries } = p;
-      if (!user || !tehsil || !year || !month || !Array.isArray(entries) || !entries.length) {
-        return { success: false, message: 'Missing tehsil, year, month, or entries.' };
+      const { tehsil, wing, year, month, entries } = p;
+      if (!user || !tehsil || !wing || !year || !month || !Array.isArray(entries) || !entries.length) {
+        return { success: false, message: 'Missing tehsil, wing, year, month, or entries.' };
       }
       const { data, error } = await _sb.rpc('prepare_tehsil_budget', {
-        p_tehsil: tehsil, p_year: year, p_month: month, p_entries: entries,
+        p_tehsil: tehsil, p_wing: wing, p_year: year, p_month: month, p_entries: entries,
       });
       if (error) return { success: false, message: error.message };
 
       // Fetch the id of the (now upserted) budget_preparations row so the
       // frontend can hand it to the send-budget-pdf edge function.
       const { data: prepRow } = await _sb.from('budget_preparations')
-        .select('id').eq('tehsil', tehsil).eq('year', year).eq('month', month).single();
+        .select('id').eq('tehsil', tehsil).eq('wing', wing).eq('year', year).eq('month', month).single();
 
       return { success: true, bill: data, prepId: prepRow?.id || null };
     }
@@ -1940,7 +1996,7 @@ async function apiCall(action, payload) {
     case 'listTehsilReps': {
       if (!user || String(user.role).toLowerCase() !== 'admin') return { success: false, message: 'Admin access required.' };
       const { data, error } = await _sb.from('tehsil_representatives')
-        .select('id, user_id, tehsil, assigned_at, app_users(name, personal_no)').order('tehsil');
+        .select('id, user_id, tehsil, wing, assigned_at, app_users(name, personal_no)').order('tehsil');
       if (error) return { success: false, message: error.message };
       return { success: true, data: data || [] };
     }
@@ -1949,7 +2005,7 @@ async function apiCall(action, payload) {
       if (!user || String(user.role).toLowerCase() !== 'admin') return { success: false, message: 'Admin access required.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const { error } = await _sb.from('tehsil_representatives')
-        .insert([{ user_id: p.userId, tehsil: p.tehsil, assigned_by: user.id }]);
+        .insert([{ user_id: p.userId, tehsil: p.tehsil, wing: p.wing, assigned_by: user.id }]);
       if (error) return { success: false, message: error.message };
       return { success: true };
     }
@@ -1962,20 +2018,54 @@ async function apiCall(action, payload) {
       return { success: true };
     }
 
-    // Self-service: what does MY tehsil's budget prep look like for a given year?
-    // Returns all 12 months: whether prepared, and my deduction/due (0/full-rate if
-    // this tehsil+month was prepared but I wasn't individually given a deduction).
+    // Admin-only: Tehsil Budget Configuration screen (General Management).
+    // Lists every tehsil+wing that actually has users, merged with whatever
+    // config rows exist (missing = Individual by default).
+    case 'listTehsilBudgetConfig': {
+      if (!user || String(user.role).toLowerCase() !== 'admin') return { success: false, message: 'Admin access required.' };
+      const { data: scopes } = await _sb.from('app_users').select('tehsil, wing').not('tehsil', 'is', null).not('wing', 'is', null);
+      const { data: cfgRows } = await _sb.from('tehsil_budget_config').select('tehsil, wing, budget_type, updated_at');
+      const cfgMap = Object.fromEntries((cfgRows || []).map(r => [r.tehsil + '|' + r.wing, r]));
+      const seen = new Set();
+      const list = [];
+      (scopes || []).forEach(s => {
+        const key = s.tehsil + '|' + s.wing;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const cfg = cfgMap[key];
+        list.push({ tehsil: s.tehsil, wing: s.wing, budget_type: cfg?.budget_type || 'individual', updated_at: cfg?.updated_at || null });
+      });
+      list.sort((a, b) => a.tehsil.localeCompare(b.tehsil) || a.wing.localeCompare(b.wing));
+      return { success: true, data: list };
+    }
+
+    case 'setTehsilBudgetType': {
+      if (!user || String(user.role).toLowerCase() !== 'admin') return { success: false, message: 'Admin access required.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      if (!p.tehsil || !p.wing || !['collective', 'individual'].includes(p.type)) {
+        return { success: false, message: 'Missing tehsil/wing/type.' };
+      }
+      const { error } = await _sb.rpc('set_tehsil_budget_type', { p_tehsil: p.tehsil, p_wing: p.wing, p_type: p.type });
+      if (error) return { success: false, message: error.message };
+      return { success: true };
+    }
+
+    // Self-service: what does MY tehsil+wing's budget prep look like for a
+    // given year? Returns all 12 months: whether prepared, and my
+    // deduction/due (0/full-rate if prepared but I wasn't individually
+    // adjusted). Used as the read-only history table in both modes.
     case 'getMyInspectionAllowanceMonths': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const year = Number(p.year) || new Date().getFullYear();
 
-      const { data: me } = await _sb.from('app_users').select('tehsil').eq('id', user.id).single();
+      const { data: me } = await _sb.from('app_users').select('tehsil, wing').eq('id', user.id).single();
       const tehsil = me?.tehsil;
+      const wing = me?.wing;
       if (!tehsil) return { success: false, message: 'No tehsil on your profile.' };
 
       const { data: preps, error: prepErr } = await _sb.from('budget_preparations')
-        .select('month').eq('tehsil', tehsil).eq('year', year);
+        .select('month').eq('tehsil', tehsil).eq('wing', wing).eq('year', year);
       if (prepErr) return { success: false, message: prepErr.message };
       const preparedSet = new Set((preps || []).map(p => p.month));
 
@@ -1988,7 +2078,7 @@ async function apiCall(action, payload) {
 
       const months = Array.from({ length: 12 }, (_, i) => {
         const m = i + 1;
-        const prepared = preparedSet.has(m);
+        const prepared = preparedSet.has(m) || !!dedByMonth[m]; // individual self-entries count as "prepared" too
         const ded = dedByMonth[m];
         return {
           month: m,
@@ -1997,23 +2087,38 @@ async function apiCall(action, payload) {
           due: prepared ? Number(ded?.due ?? fullRate) : null,
         };
       });
-      return { success: true, tehsil, rate: fullRate, months };
+      return { success: true, tehsil, wing, rate: fullRate, months };
     }
 
     // Admin-only: lightweight roster for the batch-generate picker
     case 'saveUser': {
       const p = Array.isArray(payload) ? payload[0] : payload;
+      const isTehsilRep = !!p.isTehsilRep;
       const reverseMap = Object.fromEntries(Object.entries(USER_COL_MAP).map(([c,h])=>[h,c]));
       const dbRow = {};
       for (const [h, v] of Object.entries(p)) {
         if (h === 'Password') continue;  // never write plaintext passwords to app_users
         if (h === '_id') continue;       // internal field, not a real column
+        if (h === 'isTehsilRep') continue; // handled separately below (tehsil_representatives table, not a column)
         const col = reverseMap[h] || h;
         if (col === 'dy_office_detail') continue; // Postgres GENERATED column (wing+tehsil) — read-only
         dbRow[col] = v;
       }
       const newPassword = p['Password'] || '';
       const cnic = dbRow.cnic;
+
+      // Keeps tehsil_representatives in sync with the "Is this person a
+      // Tehsil Representative?" checkbox. Scope is always this user's OWN
+      // tehsil+wing (never an arbitrary admin-picked one), so we simply
+      // clear any existing rows for them and re-add one if still checked.
+      async function syncTehsilRep(userId) {
+        if (!userId) return;
+        await _sb.from('tehsil_representatives').delete().eq('user_id', userId);
+        if (isTehsilRep && dbRow.tehsil && dbRow.wing) {
+          await _sb.from('tehsil_representatives')
+            .insert([{ user_id: userId, tehsil: dbRow.tehsil, wing: dbRow.wing, assigned_by: user.id }]);
+        }
+      }
 
       // Reliable edit-vs-create detection: look up by CNIC (always present,
       // unique) rather than trusting an id/_id field the frontend form
@@ -2041,6 +2146,7 @@ async function apiCall(action, payload) {
                      'Add/adjust an UPDATE policy for the admin role on app_users in Supabase.',
           };
         }
+        await syncTehsilRep(existingId);
         if (newPassword) {
           const pwResult = await _callAdminFunction('resetPassword', { userId: existingId, newPassword });
           if (!pwResult.success) {
@@ -2070,12 +2176,11 @@ async function apiCall(action, payload) {
         // Fallback: if the Edge Function doesn't (yet) persist the email
         // column itself, write it directly here as the admin — this only
         // runs if creation succeeded and gives us a new user id back.
-        if (result && result.success && dbRow.email) {
-          const newId = result.userId || result.id || (result.user && result.user.id);
-          if (newId) {
-            await _sb.from('app_users').update({ email: dbRow.email }).eq('id', newId);
-          }
+        const newId = result && (result.userId || result.id || (result.user && result.user.id));
+        if (result && result.success && dbRow.email && newId) {
+          await _sb.from('app_users').update({ email: dbRow.email }).eq('id', newId);
         }
+        if (result && result.success) await syncTehsilRep(newId);
         return result;
       }
     }

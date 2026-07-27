@@ -450,6 +450,49 @@ function perfInit() {
   perfLoadMonths();
 }
 
+// Called after a successful Inspection Allowance bill download/generation
+// (see iaRedirectToPerformance in inspection-allowance.js) so bill and
+// performance prep always cover the exact same months.
+//
+// NOTE: perfState is single-year under the hood (one perf_year dropdown
+// drives everything below, including the save/submit logic further down
+// this file), so it can't natively hold two different years selected at
+// once. A bill spanning two years (allowed since it can mix e.g. Dec 2025
+// + Jan 2026) is handled by jumping to whichever year has more of the
+// bill's months and pre-checking those; the other year's month(s), if
+// any, are explicitly flagged via toast so the AEO does a quick second
+// pass for those rather than having them silently dropped.
+async function perfInitWithPreselected(monthYearPairs) {
+  perfInjectGateStyles();
+  if (!monthYearPairs || !monthYearPairs.length) { perfInit(); return; }
+
+  const counts = {};
+  monthYearPairs.forEach(p => { counts[p.year] = (counts[p.year] || 0) + 1; });
+  const years = Object.keys(counts).map(Number);
+  const primaryYear = years.reduce((a, b) => (counts[b] > counts[a] ? b : a), years[0]);
+  const primaryMonths = monthYearPairs.filter(p => p.year === primaryYear).map(p => p.month);
+  const otherPairs = monthYearPairs.filter(p => p.year !== primaryYear);
+
+  const yearSel = document.getElementById("perf_year");
+  const yNow = new Date().getFullYear();
+  const yearOptions = [...new Set([yNow - 2, yNow - 1, yNow, yNow + 1, primaryYear])].sort();
+  yearSel.innerHTML = yearOptions.map((y) => `<option value="${y}" ${y === primaryYear ? "selected" : ""}>${y}</option>`).join("");
+
+  perfState.config = {};
+  await perfLoadMonths(); // resets perfState.selected, loads perfState.months for primaryYear
+
+  perfState.selected = new Set(primaryMonths.filter(m => perfState.months.some(x => x.month === m)));
+  perfRenderMonthsGrid();
+  perfRenderConfigPanels();
+
+  if (otherPairs.length) {
+    const label = otherPairs.map(p => `${IA_MONTH_NAMES[p.month - 1]} ${p.year}`).join(', ');
+    showToast(`Months pre-selected for ${primaryYear}. Your bill also included ${label} — switch the Year above to prepare that certificate separately.`, false);
+  } else {
+    showToast('Months from your bill are pre-selected below — fill in the KPIs and save.', true);
+  }
+}
+
 async function perfLoadMonths() {
   const year = Number(document.getElementById("perf_year").value);
   const grid = document.getElementById("perfMonthsGrid");

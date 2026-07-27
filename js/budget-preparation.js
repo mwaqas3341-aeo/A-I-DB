@@ -16,9 +16,9 @@ let bpPreviewModalInst = null;
 let bpState = {
   rate: 25000,
   tehsil: '',
+  wing: '',
   year: new Date().getFullYear(),
-  roster: [],            // [{id, personal_no, name, wing, markaz_name, designation, ddeo_code}] — filtered to selected wing
-  tehsilRoster: [],      // full tehsil fetch (both wings), before wing filtering
+  roster: [],            // [{id, personal_no, name, wing, markaz_name, designation, ddeo_code}] — scoped to tehsil+wing by the backend
   selectedMonths: [],    // month numbers, up to 4
   deductionsByUser: {},  // { userId: { [month]: {deduction, due} } } — existing, from DB
   preparedMonths: {},    // { month: {prepared_by_name, prepared_at, pdf_sent_at, send_error} }
@@ -27,11 +27,13 @@ let bpState = {
 };
 
 async function bpInit() {
-  const tehsils = (currentUser?.tr_tehsils || []);
+  const scopes = (currentUser?.tr_scopes || []);
+  const tehsils = [...new Set(scopes.map(s => s.tehsil))];
   const tehselSel = document.getElementById('bp_tehsil');
   tehselSel.innerHTML = tehsils.length
     ? tehsils.map(t => `<option value="${t}">${t}</option>`).join('')
     : `<option value="">No tehsil assigned</option>`;
+  bpPopulateWingsForTehsil();
 
   const yearSel = document.getElementById('bp_year');
   const yNow = new Date().getFullYear();
@@ -45,6 +47,23 @@ async function bpInit() {
 
   bpRefreshGoogleStatus();
   if (tehsils.length) bpLoadRoster();
+}
+
+// Wings are only ever the ones this TR is actually assigned to for the
+// selected tehsil — a TR for "KAROR LALISAN / M-EE" never sees W-EE.
+function bpPopulateWingsForTehsil() {
+  const scopes = (currentUser?.tr_scopes || []);
+  const tehsil = document.getElementById('bp_tehsil').value;
+  const wings = [...new Set(scopes.filter(s => s.tehsil === tehsil).map(s => s.wing))].sort();
+  const wingSel = document.getElementById('bp_wing');
+  const prevWing = wingSel.value;
+  wingSel.innerHTML = wings.map(w => `<option value="${w}">${w}</option>`).join('') || `<option value="">—</option>`;
+  wingSel.value = wings.includes(prevWing) ? prevWing : (wings[0] || '');
+}
+
+function bpOnTehsilChange() {
+  bpPopulateWingsForTehsil();
+  bpLoadRoster();
 }
 
 async function bpRefreshGoogleStatus() {
@@ -88,30 +107,22 @@ function bpToggleMonth(month) {
 // ─── Roster + existing deductions ───────────────────────────────────
 async function bpLoadRoster() {
   const tehsil = document.getElementById('bp_tehsil').value;
+  const wing = document.getElementById('bp_wing').value;
   const year = Number(document.getElementById('bp_year').value);
-  bpState.tehsil = tehsil; bpState.year = year;
+  bpState.tehsil = tehsil; bpState.wing = wing; bpState.year = year;
   bpState.editGrid = {};
 
   const wrap = document.getElementById('bp_rosterWrap');
-  if (!tehsil) { wrap.innerHTML = `<div style="padding:30px;text-align:center;color:var(--t3)">Select a tehsil to begin.</div>`; return; }
+  if (!tehsil || !wing) { wrap.innerHTML = `<div style="padding:30px;text-align:center;color:var(--t3)">Select a tehsil and wing to begin.</div>`; return; }
   wrap.innerHTML = `<div style="padding:30px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading roster…</div>`;
 
   const [rosterRes, statusRes] = await Promise.all([
-    apiCall('getTehsilRosterForBudget', { tehsil }),
-    apiCall('getBudgetPrepStatus', { tehsil, year }),
+    apiCall('getTehsilRosterForBudget', { tehsil, wing }),
+    apiCall('getBudgetPrepStatus', { tehsil, wing, year }),
   ]);
 
   if (!rosterRes || !rosterRes.success) { wrap.innerHTML = `<div style="padding:20px;color:var(--bad)">${rosterRes?.message || 'Failed to load roster.'}</div>`; return; }
-  bpState.tehsilRoster = rosterRes.data || [];
-
-  // A tehsil can have both M-EE and W-EE AEOs (e.g. Karor) — they're
-  // administratively separate (different DDO/DEO), so budgets must be
-  // prepared per wing, never mixed.
-  const wings = [...new Set(bpState.tehsilRoster.map(u => u.wing).filter(Boolean))].sort();
-  const wingSel = document.getElementById('bp_wing');
-  const prevWing = wingSel.value;
-  wingSel.innerHTML = wings.map(w => `<option value="${w}">${w}</option>`).join('') || `<option value="">—</option>`;
-  wingSel.value = wings.includes(prevWing) ? prevWing : (wings[0] || '');
+  bpState.roster = rosterRes.data || []; // already scoped to this tehsil+wing by the backend
 
   bpState.deductionsByUser = {};
   bpState.preparedMonths = {};
@@ -124,15 +135,6 @@ async function bpLoadRoster() {
   }
 
   bpRenderMonthStatusStrip();
-  bpApplyWingFilter();
-}
-
-// Filters the fetched tehsil roster down to the selected wing only —
-// Male and Female AEOs in the same tehsil must never appear on the same
-// budget grid or letter.
-function bpApplyWingFilter() {
-  const wing = document.getElementById('bp_wing').value;
-  bpState.roster = (bpState.tehsilRoster || []).filter(u => u.wing === wing);
   bpRenderRoster();
 }
 
@@ -292,7 +294,7 @@ async function bpConfirmPrepare() {
     for (const month of bpState.selectedMonths) {
       btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Saving ${BP_MONTH_NAMES[month - 1]}…`;
       const entries = bpState.roster.map(u => ({ user_id: u.id, deduction: bpDeductionFor(u.id, month) }));
-      const res = await apiCall('prepareTehsilBudget', { tehsil: bpState.tehsil, year: bpState.year, month, entries });
+      const res = await apiCall('prepareTehsilBudget', { tehsil: bpState.tehsil, wing: bpState.wing, year: bpState.year, month, entries });
       if (!res || !res.success) { showToast(`Failed to save ${BP_MONTH_NAMES[month - 1]}: ${res?.message || 'Unknown error'}`, false); return; }
       monthBills[month] = res;
     }
