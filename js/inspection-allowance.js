@@ -582,9 +582,10 @@ function iaBillFHtml(bill) {
   // The "Rupees:" line sits OUTSIDE the numeric grid in the sheet (no
   // I/J/K columns on that row at all) — just the description column
   // with a dotted rule under it, so it's rendered as its own tiny table.
-  const rupeesLine = `<tr>
-    <td style="${BL_THICK}border-bottom:${DOTTED};padding:2px 6px;font-size:12px;">Rupees:&nbsp;</td>
-    <td style="${BR_THICK}border-bottom:${DOTTED};padding:2px 6px;font-size:18px;font-weight:700;">${iaNumberToWordsPKR(f.netTotal)}</td>
+  const rupeesLine = `<colgroup><col style="width:100px;"><col style="width:${W_TOTAL - 100}px;"></colgroup>
+  <tr>
+    <td style="${BL_THICK}border-bottom:${DOTTED};padding:2px 6px;font-size:12px;white-space:nowrap;">Rupees:&nbsp;</td>
+    <td style="${BR_THICK}border-bottom:${DOTTED};padding:2px 6px;font-size:18px;font-weight:700;white-space:nowrap;">${iaNumberToWordsPKR(f.netTotal)}</td>
   </tr>`;
 
   const colgroup = `<colgroup>
@@ -593,7 +594,7 @@ function iaBillFHtml(bill) {
   </colgroup>`;
 
   const body = `
-    <div style="text-align:right;font-size:13px;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
+    <div style="width:${W_LABEL}px;text-align:right;font-size:13px;margin-bottom:10px">Pay Bill Of Gazetted Officer</div>
 
     <table style="min-width:0;width:100%;margin-bottom:8px"><tr>
       <td style="width:60%;font-size:11px;vertical-align:top">
@@ -610,7 +611,6 @@ function iaBillFHtml(bill) {
     </table>
 
     <table style="min-width:0;width:${W_TOTAL}px;border-collapse:collapse;margin-top:0;">
-      ${colgroup}
       ${rupeesLine}
     </table>
 
@@ -737,7 +737,8 @@ function iaNumberToWordsPKR(num) {
 //  #iaPdfRenderTarget element that already sits in index.html.
 // ═══════════════════════════════════════════════════════════════════
 
-async function iaBuildBillPdfBytes(pagesHtml) {
+async function iaBuildBillPdfBytes(pagesHtml, fitModes) {
+  fitModes = fitModes || pagesHtml.map(() => 'contain');
   const target = document.getElementById('iaPdfRenderTarget');
   if (!target) throw new Error('#iaPdfRenderTarget not found in the page.');
 
@@ -772,11 +773,24 @@ async function iaBuildBillPdfBytes(pagesHtml) {
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
-    const drawWidth = canvas.width * scale;
-    const drawHeight = canvas.height * scale;
-    const offsetX = (pageWidth - drawWidth) / 2;
-    const offsetY = (pageHeight - drawHeight) / 2;
+    const mode = fitModes[i] || 'contain';
+    let scale, drawWidth, drawHeight, offsetX, offsetY;
+    if (mode === 'fill-width') {
+      // Fill the full page width (this page's content runs taller than
+      // A4's aspect ratio, so a plain contain-fit shrinks it to leave
+      // empty bands on both sides — fill-width removes those margins).
+      scale = pageWidth / canvas.width;
+      drawWidth = pageWidth;
+      drawHeight = canvas.height * scale;
+      offsetX = 0;
+      offsetY = 0;
+    } else {
+      scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+      drawWidth = canvas.width * scale;
+      drawHeight = canvas.height * scale;
+      offsetX = (pageWidth - drawWidth) / 2;
+      offsetY = (pageHeight - drawHeight) / 2;
+    }
 
     if (i > 0) pdf.addPage();
     pdf.addImage(imgData, 'JPEG', offsetX, offsetY, drawWidth, drawHeight);
@@ -831,7 +845,7 @@ async function iaDownloadBill() {
       iaBillBHtml(bill),          // Page 3 — Detail of Inspection Allowance
     ];
 
-    const pdfBytes = await iaBuildBillPdfBytes(pagesHtml);
+    const pdfBytes = await iaBuildBillPdfBytes(pagesHtml, ['contain', 'fill-width', 'contain']);
 
     const label = months.map((m) => IA_MONTH_NAMES[m - 1]).join('-');
     const filename = `Inspection_Allowance_Bill_${iaState.profile.personal_no || 'AEO'}_${label}_${iaState.year}.pdf`;
