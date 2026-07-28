@@ -2,8 +2,10 @@
 //  INSPECTION ALLOWANCE — bill preparation module
 //  Two workflows depending on the AEO's tehsil+wing budget type:
 //   - Collective: a Tehsil Representative prepares deductions centrally
-//     during Budget Preparation. The AEO just clicks Download Bill —
-//     no questions asked — for whatever prepared months are pending.
+//     during Budget Preparation. The AEO picks which prepared month(s)
+//     to bill via Year/Month dropdowns — options are limited to what
+//     the TR has actually prepared, and the deduction shown per month
+//     is read-only, coming straight from the TR's saved data.
 //   - Individual: no TR is assigned (or tehsil+wing is explicitly set
 //     to Individual). The AEO picks 1-4 months themselves (any year)
 //     and enters their own deduction (blank/0 = full rate), then
@@ -18,10 +20,11 @@ const IA_MAX_SELECTED = 4;
 let iaState = {
   rate: 25000,
   profile: null,
-  mode: 'individual',     // 'collective' | 'individual'
+  mode: 'individual',        // 'collective' | 'individual'
   tehsil: '', wing: '',
-  pendingCollective: [],  // collective mode: prepared-but-not-yet-downloaded rows
-  wizardEntries: [],      // individual mode: [{year, month, deduction}] from the dropdown wizard
+  pendingCollective: [],      // collective mode: TR-prepared-but-not-yet-downloaded rows available to pick from
+  collectiveSelected: [],     // collective mode: rows currently chosen via the Year/Month dropdowns (subset of pendingCollective, max IA_MAX_SELECTED)
+  wizardEntries: [],          // individual mode: [{year, month, deduction}] from the dropdown wizard
 };
 
 // ─── Entry point (dashboard card) ──────────────────────────────────
@@ -113,11 +116,18 @@ async function iaLoadMode() {
   }
 }
 
-// ─── Collective mode: one-click download, zero questions ───────────
+// ─── Collective mode: Year/Month dropdowns limited to prepared months ─
 async function iaLoadPendingCollective() {
   const statusEl = document.getElementById('iaCollectiveStatus');
+  const countRow = document.getElementById('iaCollectiveCountRow');
+  const totalRow = document.getElementById('iaCollectiveTotalRow');
+  const wizardWrap = document.getElementById('iaCollectiveWizard');
   const btn = document.getElementById('iaCollectiveDownloadBtn');
+
   statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking for prepared months…';
+  countRow.style.display = 'none';
+  totalRow.style.display = 'none';
+  wizardWrap.innerHTML = '';
   btn.disabled = true;
 
   const res = await apiCall('getMyPendingCollectiveBill');
@@ -126,18 +136,109 @@ async function iaLoadPendingCollective() {
   iaState.pendingCollective = res.months || [];
   if (!iaState.pendingCollective.length) {
     statusEl.innerHTML = `Nothing to download yet for <b>${iaState.tehsil} / ${iaState.wing}</b> — ask your Tehsil Representative to prepare this month's budget.`;
-    btn.disabled = true;
+    iaState.collectiveSelected = [];
     return;
   }
-  const label = iaState.pendingCollective.map(m => `${IA_MONTH_NAMES[m.month - 1]} ${m.year}`).join(', ');
-  const total = iaState.pendingCollective.reduce((s, m) => s + Number(m.due || 0), 0);
-  statusEl.innerHTML = `Ready to download: <b>${label}</b> — Net Total <b style="color:#0d9488">PKR ${total.toLocaleString()}</b>`;
-  btn.disabled = !!iaState.profileIncomplete;
+
+  statusEl.innerHTML = `<b>${iaState.pendingCollective.length}</b> prepared month(s) available for <b>${iaState.tehsil} / ${iaState.wing}</b>. Choose which one(s) to bill below.`;
+  countRow.style.display = 'flex';
+  totalRow.style.display = 'flex';
+  iaRenderCollectiveWizard();
+}
+
+// Rebuilds the "Number of Months" options (capped at what's actually
+// available and at IA_MAX_SELECTED), then seeds the first selections.
+function iaRenderCollectiveWizard() {
+  const maxAvailable = Math.min(IA_MAX_SELECTED, iaState.pendingCollective.length);
+  const countSel = document.getElementById('ia_collectiveCount');
+  countSel.innerHTML = Array.from({ length: maxAvailable }, (_, i) => i + 1)
+    .map(n => `<option value="${n}">${n}</option>`).join('');
+  countSel.value = '1';
+
+  iaState.collectiveSelected = iaState.pendingCollective.slice(0, 1).map(e => ({ ...e }));
+  iaRenderCollectiveRows();
+}
+
+// Called when the "Number of Months" dropdown changes — keeps existing
+// picks where possible, fills any new rows with the next unused prepared month.
+function iaOnCollectiveCountChange() {
+  const maxAvailable = Math.min(IA_MAX_SELECTED, iaState.pendingCollective.length);
+  const count = Math.min(Number(document.getElementById('ia_collectiveCount').value) || 1, maxAvailable);
+
+  const prev = iaState.collectiveSelected;
+  const usedIds = new Set();
+  const next = [];
+  for (let i = 0; i < count; i++) {
+    let entry = prev[i] && iaState.pendingCollective.find(m => m.id === prev[i].id);
+    if (!entry || usedIds.has(entry.id)) entry = iaState.pendingCollective.find(m => !usedIds.has(m.id));
+    if (entry) { usedIds.add(entry.id); next.push({ ...entry }); }
+  }
+  iaState.collectiveSelected = next;
+  iaRenderCollectiveRows();
+}
+
+// Renders one Year+Month dropdown row per selected slot. Year options are
+// only years that actually have a prepared month pending; Month options
+// are cascaded to only the prepared months within the chosen year.
+// Deduction is shown read-only — it's the TR's saved figure, not user-entered.
+function iaRenderCollectiveRows() {
+  const wrap = document.getElementById('iaCollectiveWizard');
+  const years = [...new Set(iaState.pendingCollective.map(m => m.year))].sort((a, b) => a - b);
+
+  wrap.innerHTML = iaState.collectiveSelected.map((e, i) => {
+    const monthsForYear = iaState.pendingCollective.filter(m => m.year === e.year);
+    return `
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px dashed var(--s2)">
+      <div class="ff" style="min-width:110px">
+        <span class="flabel">Year</span>
+        <select onchange="iaCollectiveWizardUpdate(${i}, 'year', this.value)" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          ${years.map(y => `<option value="${y}" ${y === e.year ? 'selected' : ''}>${y}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ff" style="min-width:150px">
+        <span class="flabel">Month</span>
+        <select onchange="iaCollectiveWizardUpdate(${i}, 'month', this.value)" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px">
+          ${monthsForYear.map(m => `<option value="${m.month}" ${m.month === e.month ? 'selected' : ''}>${IA_MONTH_NAMES[m.month - 1]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ff" style="min-width:180px">
+        <span class="flabel">Deduction (set by TR)</span>
+        <input type="text" value="PKR ${Number(e.deduction || 0).toLocaleString()}" disabled
+          style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px;width:100%;background:var(--s2);color:var(--t3)">
+      </div>
+    </div>`;
+  }).join('');
+
+  iaUpdateCollectiveTotal();
+  document.getElementById('iaCollectiveDownloadBtn').disabled = !iaState.collectiveSelected.length || !!iaState.profileIncomplete;
+}
+
+function iaCollectiveWizardUpdate(i, field, value) {
+  const e = iaState.collectiveSelected[i];
+  if (!e) return;
+  if (field === 'year') {
+    const firstForYear = iaState.pendingCollective.find(m => m.year === Number(value));
+    if (firstForYear) Object.assign(e, firstForYear);
+  } else {
+    const match = iaState.pendingCollective.find(m => m.year === e.year && m.month === Number(value));
+    if (match) Object.assign(e, match);
+  }
+  iaRenderCollectiveRows();
+}
+
+function iaUpdateCollectiveTotal() {
+  const total = iaState.collectiveSelected.reduce((s, e) => s + Number(e.due || 0), 0);
+  document.getElementById('iaCollectiveNetTotalDisplay').textContent = 'PKR ' + total.toLocaleString();
 }
 
 async function iaDownloadCollectiveBill() {
   if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
-  if (!iaState.pendingCollective.length) { showToast('Nothing to download.', false); return; }
+  const selected = iaState.collectiveSelected;
+  if (!selected.length) { showToast('Pick at least one month to download.', false); return; }
+
+  // Same safeguard as individual mode: no duplicate year+month picks.
+  const keys = selected.map(e => `${e.year}-${e.month}`);
+  if (new Set(keys).size !== keys.length) { showToast('You picked the same month/year twice — choose different months.', false); return; }
 
   const btn = document.getElementById('iaCollectiveDownloadBtn');
   const originalHtml = btn.innerHTML;
@@ -145,20 +246,19 @@ async function iaDownloadCollectiveBill() {
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
 
   try {
-    const claims = iaState.pendingCollective.map(m => ({
+    const claims = selected.map(m => ({
       month: m.month, year: m.year, allowance_rate: Number(m.allowance_rate) || iaState.rate,
       deduction: Number(m.deduction) || 0, due: Number(m.due) || 0,
     }));
-    const filename = await iaBuildAndDownloadBill(claims);
+    await iaBuildAndDownloadBill(claims);
 
-    const ids = iaState.pendingCollective.map(m => m.id);
+    const ids = selected.map(m => m.id);
     await apiCall('markInspectionAllowanceDownloaded', { ids });
 
     showToast('Bill downloaded.', true);
     iaLoadHistory();
     iaRedirectToPerformance(claims);
-    iaState.pendingCollective = [];
-    document.getElementById('iaCollectiveStatus').innerHTML = 'Downloaded. Check back once your TR prepares the next month.';
+    await iaLoadPendingCollective(); // refresh — remaining prepared months (if any) become pickable again
   } catch (err) {
     showToast('Error generating bill: ' + err.message, false);
   } finally {
