@@ -1888,10 +1888,12 @@ async function apiCall(action, payload) {
     // No config row = Individual by default.
     case 'getMyBudgetMode': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
-      const { data: me } = await _sb.from('app_users').select('tehsil, wing').eq('id', user.id).single();
+      const { data: me, error: meErr } = await _sb.from('app_users').select('tehsil, wing').eq('id', user.id).single();
+      if (meErr) return { success: false, message: 'Could not load your profile: ' + meErr.message };
       if (!me?.tehsil || !me?.wing) return { success: false, message: 'Your profile is missing tehsil/wing.' };
-      const { data: cfg } = await _sb.from('tehsil_budget_config')
+      const { data: cfg, error: cfgErr } = await _sb.from('tehsil_budget_config')
         .select('budget_type').eq('tehsil', me.tehsil).eq('wing', me.wing).maybeSingle();
+      if (cfgErr) return { success: false, message: 'Could not load budget config: ' + cfgErr.message };
       return { success: true, tehsil: me.tehsil, wing: me.wing, mode: cfg?.budget_type || 'individual' };
     }
 
@@ -2112,12 +2114,15 @@ async function apiCall(action, payload) {
       // tehsil+wing (never an arbitrary admin-picked one), so we simply
       // clear any existing rows for them and re-add one if still checked.
       async function syncTehsilRep(userId) {
-        if (!userId) return;
-        await _sb.from('tehsil_representatives').delete().eq('user_id', userId);
+        if (!userId) return null;
+        const { error: delErr } = await _sb.from('tehsil_representatives').delete().eq('user_id', userId);
+        if (delErr) return 'Could not update Tehsil Representative status: ' + delErr.message;
         if (isTehsilRep && dbRow.tehsil && dbRow.wing) {
-          await _sb.from('tehsil_representatives')
+          const { error: insErr } = await _sb.from('tehsil_representatives')
             .insert([{ user_id: userId, tehsil: dbRow.tehsil, wing: dbRow.wing, assigned_by: user.id }]);
+          if (insErr) return 'Could not assign Tehsil Representative: ' + insErr.message;
         }
+        return null;
       }
 
       // Reliable edit-vs-create detection: look up by CNIC (always present,
@@ -2146,7 +2151,8 @@ async function apiCall(action, payload) {
                      'Add/adjust an UPDATE policy for the admin role on app_users in Supabase.',
           };
         }
-        await syncTehsilRep(existingId);
+        const trErr = await syncTehsilRep(existingId);
+        if (trErr) return { success: true, message: 'User saved, but: ' + trErr };
         if (newPassword) {
           const pwResult = await _callAdminFunction('resetPassword', { userId: existingId, newPassword });
           if (!pwResult.success) {
@@ -2180,7 +2186,10 @@ async function apiCall(action, payload) {
         if (result && result.success && dbRow.email && newId) {
           await _sb.from('app_users').update({ email: dbRow.email }).eq('id', newId);
         }
-        if (result && result.success) await syncTehsilRep(newId);
+        if (result && result.success) {
+          const trErr = await syncTehsilRep(newId);
+          if (trErr) result.message = (result.message || 'User created.') + ' But: ' + trErr;
+        }
         return result;
       }
     }
