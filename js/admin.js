@@ -94,7 +94,10 @@ window.addEventListener('DOMContentLoaded', () => {
       .withSuccessHandler(res => {
         btn.disabled = false; btn.innerHTML = '<i class="bi bi-person-x-fill"></i> Delete User';
         deleteUserModalInst.hide();
-        if (res.success) { showToast(res.message); loadUsers(); }
+        if (res.success) {
+          showToast(res.message); loadUsers();
+          if (typeof loadTehsilRepsAdmin === 'function') loadTehsilRepsAdmin();
+        }
         else showToast(res.message || 'Delete failed.', false);
       })
       .withFailureHandler(err => {
@@ -977,6 +980,13 @@ function submitUser() {
       btn.disabled = false; btn.innerHTML = '<i class="bi bi-floppy-fill"></i> Save User';
       if (res.success) {
         userModalInst.hide(); showToast(res.message || 'User saved!'); loadUsers();
+        // The user modal also edits the "Is this person a Tehsil
+        // Representative?" toggle, which lives in a different admin
+        // panel (Inspection Allowance → Tehsil Representatives). That
+        // table needs to reflect the change immediately — it's a
+        // static element in the DOM regardless of which tab is
+        // currently visible, so it's always safe to refresh.
+        if (typeof loadTehsilRepsAdmin === 'function') loadTehsilRepsAdmin();
         // If the admin just edited their OWN profile, sync currentUser
         // immediately — otherwise the write-report form (and anything
         // else that reads currentUser) would keep using the stale
