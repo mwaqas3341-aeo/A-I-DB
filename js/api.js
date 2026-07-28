@@ -1897,15 +1897,20 @@ async function apiCall(action, payload) {
       return { success: true, tehsil: me.tehsil, wing: me.wing, mode: cfg?.budget_type || 'individual' };
     }
 
-    // Collective mode: fetch this user's prepared-but-not-yet-downloaded
-    // months (can span years), oldest first, capped at 4 to match the PDF.
+    // Collective mode: fetch ALL of this user's prepared months (can span
+    // years) — not just never-downloaded ones. AEOs may need to re-download
+    // a bill any time (lost file, deleted file, etc.), so download history
+    // is informational only and never blocks a month from being picked
+    // again; markInspectionAllowanceDownloaded below just refreshes the
+    // timestamp on every download. Capped at 18 to match the Bill History
+    // depth shown elsewhere.
     case 'getMyPendingCollectiveBill': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const { data, error } = await _sb.from('inspection_allowance_deductions')
-        .select('id, year, month, allowance_rate, deduction, due')
-        .eq('user_id', user.id).is('downloaded_at', null)
+        .select('id, year, month, allowance_rate, deduction, due, downloaded_at')
+        .eq('user_id', user.id)
         .order('year', { ascending: true }).order('month', { ascending: true })
-        .limit(4);
+        .limit(18);
       if (error) return { success: false, message: error.message };
       return { success: true, months: data || [] };
     }
@@ -1920,8 +1925,9 @@ async function apiCall(action, payload) {
       return { success: true, ...data };
     }
 
-    // Marks rows downloaded so a collective-mode "Download Bill" click
-    // doesn't re-offer the same prepared month next time.
+    // Refreshes downloaded_at (to now) for the given rows every time a bill
+    // is downloaded — including re-downloads of a month downloaded before.
+    // Never blocks or errors on rows that already have a downloaded_at set.
     case 'markInspectionAllowanceDownloaded': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});

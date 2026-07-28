@@ -135,19 +135,21 @@ async function iaLoadPendingCollective() {
 
   iaState.pendingCollective = res.months || [];
   if (!iaState.pendingCollective.length) {
-    statusEl.innerHTML = `Nothing to download yet for <b>${iaState.tehsil} / ${iaState.wing}</b> — ask your Tehsil Representative to prepare this month's budget.`;
+    statusEl.innerHTML = `Nothing prepared yet for <b>${iaState.tehsil} / ${iaState.wing}</b> — ask your Tehsil Representative to prepare a month's budget.`;
     iaState.collectiveSelected = [];
     return;
   }
 
-  statusEl.innerHTML = `<b>${iaState.pendingCollective.length}</b> prepared month(s) available for <b>${iaState.tehsil} / ${iaState.wing}</b>. Choose which one(s) to bill below.`;
+  statusEl.innerHTML = `<b>${iaState.pendingCollective.length}</b> prepared month(s) available for <b>${iaState.tehsil} / ${iaState.wing}</b>. Pick any — including already-downloaded ones — to (re)download below.`;
   countRow.style.display = 'flex';
   totalRow.style.display = 'flex';
   iaRenderCollectiveWizard();
 }
 
 // Rebuilds the "Number of Months" options (capped at what's actually
-// available and at IA_MAX_SELECTED), then seeds the first selections.
+// available and at IA_MAX_SELECTED), then seeds the first selection —
+// preferring the newest never-downloaded month, falling back to the
+// newest month overall if everything has already been downloaded before.
 function iaRenderCollectiveWizard() {
   const maxAvailable = Math.min(IA_MAX_SELECTED, iaState.pendingCollective.length);
   const countSel = document.getElementById('ia_collectiveCount');
@@ -155,7 +157,9 @@ function iaRenderCollectiveWizard() {
     .map(n => `<option value="${n}">${n}</option>`).join('');
   countSel.value = '1';
 
-  iaState.collectiveSelected = iaState.pendingCollective.slice(0, 1).map(e => ({ ...e }));
+  const neverDownloaded = iaState.pendingCollective.filter(m => !m.downloaded_at);
+  const seed = neverDownloaded.length ? neverDownloaded[neverDownloaded.length - 1] : iaState.pendingCollective[iaState.pendingCollective.length - 1];
+  iaState.collectiveSelected = seed ? [{ ...seed }] : [];
   iaRenderCollectiveRows();
 }
 
@@ -178,15 +182,21 @@ function iaOnCollectiveCountChange() {
 }
 
 // Renders one Year+Month dropdown row per selected slot. Year options are
-// only years that actually have a prepared month pending; Month options
-// are cascaded to only the prepared months within the chosen year.
-// Deduction is shown read-only — it's the TR's saved figure, not user-entered.
+// every year that has a prepared month (regardless of download history);
+// Month options cascade to only the prepared months within the chosen
+// year. Deduction is shown read-only — it's the TR's saved figure, not
+// user-entered. A month that was already downloaded before is still fully
+// selectable — re-downloading is allowed (e.g. a lost/deleted file) and
+// simply refreshes the downloaded_at timestamp; it's shown as a hint only.
 function iaRenderCollectiveRows() {
   const wrap = document.getElementById('iaCollectiveWizard');
   const years = [...new Set(iaState.pendingCollective.map(m => m.year))].sort((a, b) => a - b);
 
   wrap.innerHTML = iaState.collectiveSelected.map((e, i) => {
     const monthsForYear = iaState.pendingCollective.filter(m => m.year === e.year);
+    const downloadedHint = e.downloaded_at
+      ? `<div style="width:100%;font-size:.75rem;color:var(--t3);margin-top:2px"><i class="bi bi-info-circle"></i> Already downloaded on ${new Date(e.downloaded_at).toLocaleDateString()} — downloading again is fine.</div>`
+      : '';
     return `
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px dashed var(--s2)">
       <div class="ff" style="min-width:110px">
@@ -206,6 +216,7 @@ function iaRenderCollectiveRows() {
         <input type="text" value="PKR ${Number(e.deduction || 0).toLocaleString()}" disabled
           style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 8px;width:100%;background:var(--s2);color:var(--t3)">
       </div>
+      ${downloadedHint}
     </div>`;
   }).join('');
 
@@ -258,7 +269,7 @@ async function iaDownloadCollectiveBill() {
     showToast('Bill downloaded.', true);
     iaLoadHistory();
     iaRedirectToPerformance(claims);
-    await iaLoadPendingCollective(); // refresh — remaining prepared months (if any) become pickable again
+    await iaLoadPendingCollective(); // refresh — updates the downloaded-on hints and Bill History
   } catch (err) {
     showToast('Error generating bill: ' + err.message, false);
   } finally {
