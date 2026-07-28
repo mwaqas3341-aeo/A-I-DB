@@ -125,7 +125,19 @@ function handleUserImportFileSelected(input) {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true, codepage: 65001 });
       const firstSheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
+      // raw:true (not raw:false/formatted) is critical here: CNIC and
+      // Personal No. are typically stored as plain numbers in Excel, and
+      // a 13-digit CNIC is too long for Excel's "General" display format,
+      // so raw:false (formatted-as-displayed) hands back scientific
+      // notation like "3.22021E+12". The digit-only sanitizer below then
+      // silently keeps the exponent digits too, producing a garbled
+      // 8-digit CNIC that looks valid but isn't (this bit real data —
+      // see incident where 5 Choubara AEOs' CNICs were corrupted this
+      // exact way). raw:true returns the actual JS number instead, and
+      // String(3220207961517) safely round-trips to the full digit
+      // string with no notation, since it's far under the ~1e21
+      // threshold where JS itself would switch to exponential notation.
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: true });
       if (!rows.length) { showToast('That file has no data rows.', false); return; }
       _uiRawRows = rows;
       _uiHeaders = Object.keys(rows[0]);
@@ -217,6 +229,12 @@ function _uiBuildPreview() {
     const missing = [];
     if (!sanitized[UH.NAME]) missing.push('Name');
     if (!pno && !cnic) missing.push('Personal No. or CNIC');
+    // A real CNIC is always exactly 13 digits. Anything else mapped in
+    // is almost always a parsing artifact (e.g. a spreadsheet number
+    // that got mangled into scientific notation before reaching here)
+    // rather than a genuine CNIC — better to flag it for review than
+    // silently save a wrong value into someone's account.
+    if (cnic && cnic.length !== 13) missing.push(`CNIC looks invalid (${cnic.length} digits, expected 13)`);
 
     const existing = (pno && byPno.get(pno)) || (cnic && byCnic.get(cnic)) || null;
     const mode = existing ? 'update' : 'insert';
