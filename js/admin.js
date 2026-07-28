@@ -1350,7 +1350,6 @@ const KPI_MODULE_LABEL = {
   hr:              '👥 HR / Staff',
   public_schools:  '🏢 Public Schools',
   private_schools: '🏫 Private Schools',
-  dispatch:        '📤 Report Dispatch',
 };
 
 // Shared "who can see this" badge — same look everywhere it's used

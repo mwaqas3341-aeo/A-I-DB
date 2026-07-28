@@ -699,7 +699,7 @@ async function apiCall(action, payload) {
 
     case 'getKpiCards': {
       // payload (optional) is the module key the caller wants cards for,
-      // e.g. 'tools', 'hr', 'public_schools', 'private_schools', 'dispatch'.
+      // e.g. 'tools', 'hr', 'public_schools', 'private_schools'.
       // Omitted/blank => 'dashboard', which also matches legacy rows saved
       // before the `module` column existed (module IS NULL).
       const moduleKey = (typeof payload === 'string' && payload.trim()) ? payload.trim() : 'dashboard';

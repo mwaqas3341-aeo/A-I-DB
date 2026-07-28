@@ -480,7 +480,7 @@ function escHtml(str) {
 //  main Dashboard's Quick Access section, now generalized so any
 //  module page can show its own admin-configured card set. Each card
 //  is tagged with a `Module` key ('dashboard' | 'tools' | 'hr' |
-//  'public_schools' | 'private_schools' | 'dispatch' …) in the Admin
+//  'public_schools' | 'private_schools' …) in the Admin
 //  Panel; this loader fetches only the cards for the requested module
 //  and renders them into that module's own grid/section elements.
 //
