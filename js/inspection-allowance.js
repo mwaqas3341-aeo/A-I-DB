@@ -476,6 +476,11 @@ function iaResolveBillFields(bill) {
   const totalGross = claims.reduce((s, c) => s + Number(c.allowance_rate || 0), 0);
   const totalDeduction = claims.reduce((s, c) => s + Number(c.deduction || 0), 0);
   const netTotal = claims.reduce((s, c) => s + Number(c.due || 0), 0);
+  // The fixed per-month rate (e.g. 25000) — NOT multiplied by the number of
+  // months billed. Used for the "Monthly Rate" column on page 2, which is
+  // always a single month's rate regardless of how many months are on the
+  // bill; totalGross (the multi-month sum) belongs only in the Amount column.
+  const monthlyRate = claims.length ? Number(claims[0].allowance_rate) || 0 : 0;
 
   return {
     ddeoCode: u.ddeo_code || '—',
@@ -500,6 +505,7 @@ function iaResolveBillFields(bill) {
     totalGross,
     totalDeduction,
     netTotal,
+    monthlyRate,
   };
 }
 
@@ -819,14 +825,14 @@ function iaBillFHtml(bill) {
 
     ${gridRow('REGULAR ALLOWANCES:', { size: 12, bold: true, underline: true }, '', {}, '', {}, '', {}, false)}
     ${regularAllowanceRows}
-    ${gridRow(`<span style="font-weight:700;font-size:13px">Inspection Allowance</span> <span style="font-weight:700;font-size:14px">${f.monthsCsvPadded}</span>`, {}, 'AO1297', { size: 13 }, b(f.totalGross), { size: 13, bold: true }, b(f.totalGross), { size: 13, bold: true }, true)}
-    ${gridRow('<span style="padding-left:66px">TOTAL REGULAR ALLOWANCES</span>', { size: 11 }, 'A012', { size: 12, bold: true }, b(f.totalGross), { size: 18, bold: true }, b(f.totalGross), { size: 18, bold: true }, true)}
+    ${gridRow(`<span style="font-weight:700;font-size:13px">Inspection Allowance</span> <span style="font-weight:700;font-size:14px">${f.monthsCsvPadded}</span>`, {}, 'AO1297', { size: 13 }, b(f.monthlyRate), { size: 13, bold: true }, b(f.totalGross), { size: 13, bold: true }, true)}
+    ${gridRow('<span style="padding-left:66px">TOTAL REGULAR ALLOWANCES</span>', { size: 11 }, 'A012', { size: 12, bold: true }, b(f.monthlyRate), { size: 18, bold: true }, b(f.totalGross), { size: 18, bold: true }, true)}
 
     ${gridRow('OTHER ALLOWANCES:', { size: 12, bold: true, underline: true }, '', {}, '', {}, '', {}, false)}
     ${gridRow('Leave Salary', { size: 11 }, 'A01278', { size: 12 }, '', {}, '', {}, false)}
     ${gridRow('<span style="padding-left:66px">Total Other Allowance</span>', { size: 11 }, 'A01299', { size: 12 }, '', {}, '', {}, false)}
 
-    ${gridRow('Gross Claim Establishment Charges', { size: 12, bold: true, underline: true }, '&nbsp;0<br>0000', { size: 12, bold: true }, b(f.totalGross), { size: 15, bold: true }, b(f.totalGross), { size: 15, bold: true }, true)}
+    ${gridRow('Gross Claim Establishment Charges', { size: 12, bold: true, underline: true }, '&nbsp;0<br>0000', { size: 12, bold: true }, b(f.monthlyRate), { size: 15, bold: true }, b(f.totalGross), { size: 15, bold: true }, true)}
     ${gridRow('<span style="padding-left:66px">(Pay + Regular Allow + Other Allow)</span>', { size: 11 }, '', {}, '', {}, '', {}, true)}
 
     ${gridRow('LESS FUND DEDUCTION:', { size: 12, bold: true, underline: true }, '', {}, '', {}, '', {}, false)}
