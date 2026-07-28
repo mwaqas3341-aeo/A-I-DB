@@ -81,7 +81,7 @@ async function iaLoadProfile() {
     <div class="ia-profile-item"><span class="lbl">${lbl}</span><span class="val">${val || '—'}</span></div>
   `).join('');
 
-  const incomplete = !res.page_no || !res.ddeo_code || !res.bps_scale;
+  const incomplete = !res.ddeo_code || !res.bps_scale;
   document.getElementById('iaProfileIncompleteWarn').style.display = incomplete ? 'block' : 'none';
   iaState.profileIncomplete = incomplete;
   if (incomplete) {
@@ -217,7 +217,7 @@ function iaUpdateWizardTotal() {
 
 async function iaGenerateIndividualBill() {
   if (!iaState.profile) { showToast('Profile not loaded yet.', false); return; }
-  if (iaState.profileIncomplete) { showToast('Complete your profile (Page No / DDEO Code / BPS Scale) before generating a bill.', false); return; }
+  if (iaState.profileIncomplete) { showToast('Complete your profile (DDEO Code / BPS Scale) before generating a bill.', false); return; }
   const entries = iaState.wizardEntries;
 
   // Validate before hitting the server: no duplicate year+month pairs.
