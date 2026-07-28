@@ -478,12 +478,21 @@
               <span class="spinner-border spinner-border-sm"></span> Checking your tehsil's budget type…
             </div>
 
-            <!-- Collective (TR-prepared): download only, zero questions asked -->
+            <!-- Collective (TR-prepared): AEO picks Year/Month from what the TR has actually
+                 prepared; deduction shown is read-only (comes from the TR's saved data) -->
             <div id="iaCollectiveBox" style="display:none">
               <div id="iaCollectiveStatus" style="margin-bottom:14px;font-size:.85rem;color:var(--t3)"></div>
-              <button class="btn btn-primary" id="iaCollectiveDownloadBtn" onclick="iaDownloadCollectiveBill()" disabled>
-                <i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)
-              </button>
+              <div id="iaCollectiveCountRow" style="display:none;align-items:center;gap:10px;margin-bottom:14px">
+                <span class="flabel" style="margin:0">Number of Months</span>
+                <select id="ia_collectiveCount" onchange="iaOnCollectiveCountChange()" style="height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 10px"></select>
+              </div>
+              <div id="iaCollectiveWizard"></div>
+              <div id="iaCollectiveTotalRow" style="display:none;margin-top:18px;padding-top:14px;border-top:1px dashed var(--b0);justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+                <div style="font-size:.95rem"><b>Net Total: <span id="iaCollectiveNetTotalDisplay" style="color:#0d9488">PKR 0</span></b></div>
+                <button class="btn btn-primary" id="iaCollectiveDownloadBtn" onclick="iaDownloadCollectiveBill()" disabled>
+                  <i class="bi bi-file-earmark-pdf-fill"></i> Download Bill (PDF)
+                </button>
+              </div>
             </div>
 
             <!-- Individual (self-serve): number of months → cascading month pickers → deductions -->
