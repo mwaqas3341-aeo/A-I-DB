@@ -142,17 +142,17 @@
       <i class="bi bi-building-fill"></i> AEO Portal <span class="live-dot" title="Live"></span>
     </button>
 
-    <div class="nav-links">
+    <div class="nav-links" id="navLinksPanel">
       <button class="nav-link-btn active" id="navHomeBtn"
-              onclick="switchGlobalTab('homeView', this)">
+              onclick="switchGlobalTab('homeView', this); closeMobileNav()">
         <i class="bi bi-grid-1x2-fill"></i> Dashboard
       </button>
       <button class="nav-link-btn" id="navAdminBtn" style="display:none"
-              onclick="openAdminModule(); switchGlobalTab('adminDataView', this)">
+              onclick="openAdminModule(); switchGlobalTab('adminDataView', this); closeMobileNav()">
         <i class="bi bi-shield-lock-fill"></i> Admin Panel
       </button>
       <button class="nav-link-btn" id="navMyProfileBtn"
-              onclick="openMyProfileModal()">
+              onclick="openMyProfileModal(); closeMobileNav()">
         <i class="bi bi-person-circle"></i> My Profile
       </button>
     </div>
@@ -177,7 +177,11 @@
     <button class="btn-logout" onclick="doLogout()">
       <i class="bi bi-box-arrow-right"></i> Logout
     </button>
+    <button class="nav-hamburger" id="navHamburgerBtn" onclick="toggleMobileNav()" aria-label="Open menu" aria-expanded="false" aria-controls="navLinksPanel">
+      <i class="bi bi-list"></i>
+    </button>
   </nav>
+  <div class="nav-scrim" id="navScrim" onclick="closeMobileNav()"></div>
 
   <!-- ── HOME / DASHBOARD VIEW ────────────── -->
   <div id="homeView" class="app-view active-view">
