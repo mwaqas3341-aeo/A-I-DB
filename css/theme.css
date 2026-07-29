@@ -313,10 +313,19 @@ tbody tr:hover td:first-child{ background:var(--brand-light); }
 /* Tablet-specific: HR sidebar collapses to icons-only row on top instead of side rail */
 @media (max-width: 860px){
   .hr-app-layout{ flex-direction:column; height:auto; }
-  .hr-sidebar{ width:100%; flex-direction:row; overflow-x:auto; }
-  .hr-sidebar-inner{ display:flex; flex-direction:row; gap:4px; padding:8px; }
+  /* Previously overflow-x:auto with no scroll affordance — items like
+     "Terminations" got silently cut off at the viewport edge with no
+     visual hint more tabs existed. Wrapping instead keeps every tab
+     visible and tappable without hidden/undiscoverable content. */
+  .hr-sidebar{ width:100%; flex-direction:row; overflow-x:visible; }
+  .hr-sidebar-inner{ display:flex; flex-direction:row; flex-wrap:wrap; gap:6px; padding:10px; }
   .hr-sidebar-section-label{ display:none; }
-  .hr-nav-item{ flex-direction:column; gap:4px; font-size:11px; padding:8px 10px; white-space:nowrap; }
+  .hr-nav-item{
+    flex-direction:column; gap:4px; font-size:11px; padding:8px 10px;
+    white-space:normal; width:auto; flex:0 0 auto;
+    background:rgba(255,255,255,.06); min-width:64px; text-align:center;
+  }
+  .hr-nav-item.hr-active{ background:rgba(37,99,235,.85); }
   .hr-main-content{ padding:16px; }
 }
 
