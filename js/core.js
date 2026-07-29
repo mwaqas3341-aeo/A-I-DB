@@ -27,6 +27,34 @@ window.addEventListener('unhandledrejection', function (e) {
   var msg = (e && e.reason && e.reason.message) ? e.reason.message : 'unknown error';
   showToast('Unexpected error: ' + msg, 'error');
 });
+
+// =====================================================================
+//  MOBILE NAVIGATION (hamburger drawer)
+//  Below 680px the top-nav's .nav-links (Dashboard / Admin Panel /
+//  My Profile) is rendered as a slide-down panel instead of being
+//  hidden outright, so every nav item stays reachable on mobile.
+// =====================================================================
+function toggleMobileNav() {
+  var nav = document.querySelector('.top-nav');
+  var btn = document.getElementById('navHamburgerBtn');
+  if (!nav) return;
+  var isOpen = nav.classList.toggle('nav-open');
+  document.body.classList.toggle('nav-scrim-active', isOpen);
+  if (btn) btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+}
+function closeMobileNav() {
+  var nav = document.querySelector('.top-nav');
+  var btn = document.getElementById('navHamburgerBtn');
+  if (!nav) return;
+  nav.classList.remove('nav-open');
+  document.body.classList.remove('nav-scrim-active');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+// Close the drawer automatically if the viewport is resized/rotated
+// past the mobile breakpoint while it's open.
+window.addEventListener('resize', function () {
+  if (window.innerWidth > 768) closeMobileNav();
+});
 // =====================================================================
 //  INIT
 // =====================================================================
