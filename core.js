@@ -53,7 +53,7 @@ function closeMobileNav() {
 // Close the drawer automatically if the viewport is resized/rotated
 // past the mobile breakpoint while it's open.
 window.addEventListener('resize', function () {
-  if (window.innerWidth > 680) closeMobileNav();
+  if (window.innerWidth > 768) closeMobileNav();
 });
 // =====================================================================
 //  INIT
