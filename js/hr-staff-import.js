@@ -57,8 +57,14 @@ const HR_FIELD_SANITIZER = {
 const HR_DATE_HEADERS = Object.keys(HR_FIELD_SANITIZER).filter(h => HR_FIELD_SANITIZER[h] === 'date');
 
 // Not asked for in the template — auto-derived (District/Wing/Tehsil/
-// Markaz from EMIS) or system-managed (Status / Changes Made by / Time).
-const HR_EXCLUDED_HEADERS = ['District', 'Wing', 'Tehsil', 'MARKAZ NAME', 'Status', 'Changes Made by', 'Time'];
+// Markaz from EMIS), system-managed (Status / Changes Made by / Time),
+// or DB-computed (Date of Retirement is recalculated by a trigger from
+// Date of Birth on every insert/update-of-DOB; asking for it in the
+// template is misleading since a typed value gets silently discarded
+// on new hires, and can drift out of sync with DOB on updates that
+// don't touch the DOB column). Same exclusion the manual Add/Edit
+// Staff form already applies (SF_ID_TO_COL has no entry for it).
+const HR_EXCLUDED_HEADERS = ['District', 'Wing', 'Tehsil', 'MARKAZ NAME', 'Status', 'Changes Made by', 'Time', 'DATE OF RETIREMENT'];
 
 let _hiRawRows = [];
 let _hiHeaders = [];
