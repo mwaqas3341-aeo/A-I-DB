@@ -1500,7 +1500,7 @@ async function apiCall(action, payload) {
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
         status:           'retired',
-        changes_made_by:  'System (Auto — Age 60)',
+        changes_made_by:  'System (Auto - Age 60)',
         changes_made_at:  new Date().toISOString(),
       }));
       if (!r.ok) return { success: false, retired: false, error: r.message };
@@ -1509,9 +1509,9 @@ async function apiCall(action, payload) {
         personal_no:     pno,
         employee_name:   s.name_of_teacher || '',
         event_type:      'retired',
-        notification_no: 'AUTO — Age 60',
+        notification_no: 'AUTO - Age 60',
         effective_date:  retirementDate.toISOString().slice(0, 10),
-        created_by:      'System (Auto — Age 60)',
+        created_by:      'System (Auto - Age 60)',
       }]);
 
       return {

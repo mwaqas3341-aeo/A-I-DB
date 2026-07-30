@@ -109,7 +109,7 @@ const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Dele
 // AND the Supabase pg_cron job (see supabase/auto_retirement.sql). Keeping
 // one shared label lets the frontend recognize "the system did this" no
 // matter which of the two paths actually made the change.
-const HR_AUTO_ACTOR_LABEL = 'System (Auto — Age 60)';
+const HR_AUTO_ACTOR_LABEL = 'System (Auto - Age 60)';
 
 const SF_MAP = {
   sf_emis:                 'SCHOOL EMIS CODE',
