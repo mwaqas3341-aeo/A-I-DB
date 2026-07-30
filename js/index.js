@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════
 const systemNotes = [
   { text: "Please update all schools Public & Private data under your jurisdiction.", isNew: true },
-  { text: "Portal Tools Manager has been added to the main dashboard.", isNew: true },
+  { text: "Automated Process of Marking the an Employee retired if he attains age of 60 years.If your employee is missing.Check the Retirements menu for verification.", isNew: true },
   { text: "Please update your data whole staff  & verify head teachers working under your jurisdiction.", isNew: false },
   { text: "Contact support via WhatsApp for any data sync issues.", isNew: false }
 ];
