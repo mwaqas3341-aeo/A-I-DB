@@ -1589,7 +1589,7 @@ function openTransferModal(row) {
       </div>
       <div class="transfer-step">
         <label>Date of Joining New School <span style="color:#EF4444">*</span></label>
-        <input type="date" id="tf_date" onclick="try{this.showPicker()}catch(e){}">
+        <input type="date" id="tf_date" onclick="smartDatePickerClick(this)">
         <div class="transfer-hint">Replaces Date of Posting in Present School.</div>
         <div class="transfer-err" id="tfe_date"></div>
       </div>
@@ -1686,12 +1686,12 @@ function openPromotionModal(row) {
     </div>
     <div class="transfer-step">
       <label>Date of Posting in Present School</label>
-      <input type="date" id="pm_postDate" onclick="try{this.showPicker()}catch(e){}">
+      <input type="date" id="pm_postDate" onclick="smartDatePickerClick(this)">
       <div class="transfer-hint">Leave blank to keep existing value.</div>
     </div>
     <div class="transfer-step">
       <label>Date of Joining in Present Scale <span style="color:#EF4444">*</span></label>
-      <input type="date" id="pm_scaleDate" onclick="try{this.showPicker()}catch(e){}">
+      <input type="date" id="pm_scaleDate" onclick="smartDatePickerClick(this)">
       <div class="transfer-err" id="pme_scale"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
@@ -1778,7 +1778,7 @@ function openSeparationModal(actionType, row) {
     </div>
     <div class="transfer-step">
       <label>Effective Date${requiresNotif ? ' <span style="color:#EF4444">*</span>' : ''}</label>
-      <input type="date" id="sa_date" onclick="try{this.showPicker()}catch(e){}">
+      <input type="date" id="sa_date" onclick="smartDatePickerClick(this)">
       <div class="transfer-err" id="sae_date"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">

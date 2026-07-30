@@ -923,7 +923,7 @@ function _sfmRenderTransferModal(row) {
 
     '<div class="transfer-step">' +
       '<label>Date of Joining New School <span style="color:var(--danger)">*</span></label>' +
-      '<input type="date" id="tf_joiningDate" onclick="try{this.showPicker()}catch(e){}">' +
+      '<input type="date" id="tf_joiningDate" onclick="smartDatePickerClick(this)">' +
       '<div class="transfer-err" id="tfe_date"></div>' +
       '<div class="transfer-hint">This date will be written to col Q (Date of Posting in Present School).</div>' +
     '</div>' +
@@ -1265,13 +1265,13 @@ function _mtRenderConfirmStep() {
 
     '<div class="transfer-step">' +
       '<label>Date of Joining New School — ' + escHtml(safeVal(a['NAME OF TEACHER'])) + ' <span style="color:var(--danger)">*</span></label>' +
-      '<input type="date" id="mt_dateA" onclick="try{this.showPicker()}catch(e){}" onchange="mtSyncDateB()">' +
+      '<input type="date" id="mt_dateA" onclick="smartDatePickerClick(this)" onchange="mtSyncDateB()">' +
       '<div class="transfer-err" id="mte_dateA"></div>' +
     '</div>' +
 
     '<div class="transfer-step">' +
       '<label>Date of Joining New School — ' + escHtml(b.name) + ' <span style="color:var(--danger)">*</span></label>' +
-      '<input type="date" id="mt_dateB" onclick="try{this.showPicker()}catch(e){}">' +
+      '<input type="date" id="mt_dateB" onclick="smartDatePickerClick(this)">' +
       '<div class="transfer-err" id="mte_dateB"></div>' +
       '<div class="transfer-hint">Defaults to the same date as above — edit if they join on different days.</div>' +
     '</div>' +
@@ -1445,13 +1445,13 @@ function _sfmRenderPromotionModal(row) {
 
     '<div class="transfer-step">' +
       '<label>Date of Posting in Present School (col Q)</label>' +
-      '<input type="date" id="pm_postingDate" onclick="try{this.showPicker()}catch(e){}">' +
+      '<input type="date" id="pm_postingDate" onclick="smartDatePickerClick(this)">' +
       '<div class="transfer-hint">Leave blank to keep current value.</div>' +
     '</div>' +
 
     '<div class="transfer-step">' +
       '<label>Date of Joining in Present Scale (col R) <span style="color:var(--danger)">*</span></label>' +
-      '<input type="date" id="pm_scaleDate" onclick="try{this.showPicker()}catch(e){}">' +
+      '<input type="date" id="pm_scaleDate" onclick="smartDatePickerClick(this)">' +
       '<div class="transfer-err" id="pme_scaleDate"></div>' +
       '<div class="transfer-hint">This date will be written to col R.</div>' +
     '</div>' +

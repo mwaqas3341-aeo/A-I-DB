@@ -56,6 +56,28 @@ window.addEventListener('resize', function () {
   if (window.innerWidth > 768) closeMobileNav();
 });
 // =====================================================================
+//  SMART DATE PICKER CLICK
+//  Native <input type="date"> already lets you click any mm/dd/yyyy
+//  segment and type straight into it -- but once the calendar dropdown
+//  (opened via showPicker()) is showing, the browser routes ALL
+//  keystrokes to the calendar widget instead of the date segments, so
+//  typing silently does nothing while it's open. Calling showPicker()
+//  unconditionally on every click (the old behavior) meant typing never
+//  worked at all.
+//  Fix: only auto-open the picker on the FIRST click (when the field
+//  isn't focused yet) -- that's the "click anywhere opens the calendar"
+//  behavior. A second click on an already-focused field is left alone;
+//  the browser's own native behavior toggles the already-open picker
+//  closed and positions the caret on the clicked segment, so typing
+//  mm/dd/yyyy directly works exactly as it would on a plain, unmodified
+//  date input.
+// =====================================================================
+function smartDatePickerClick(el) {
+  if (document.activeElement !== el) {
+    try { el.showPicker(); } catch (_e) {}
+  }
+}
+// =====================================================================
 //  INIT
 // =====================================================================
 window.addEventListener('DOMContentLoaded', () => {
@@ -554,7 +576,7 @@ function openActionFormModal(actionType, row) {
     </div>
     <div class="form-row">
       <label>Effective Date${notifRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>
-      <input type="date" id="af_effectiveDate" onclick="try{this.showPicker()}catch(e){}">
+      <input type="date" id="af_effectiveDate" onclick="smartDatePickerClick(this)">
       <div class="transfer-err" id="afe_date"></div>
     </div>
     <button class="primary-btn" id="af_submitBtn" style="width:100%;margin-top:12px">

@@ -330,7 +330,7 @@ function _hiRenderPreview() {
               const needsCheck = flag && !flag.ok;
               return `<td style="padding:6px">
                 <input type="date" value="${val && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : ''}"
-                  onclick="try{this.showPicker()}catch(e){}"
+                  onclick="smartDatePickerClick(this)"
                   onchange="hiOnDateEdit(${idx}, '${h.replace(/'/g, "\\'")}', this.value)"
                   style="width:100%;height:28px;border:1px solid ${needsCheck ? 'var(--bad)' : 'var(--b0)'};border-radius:5px;font-size:.74rem">
                 ${needsCheck ? `<div style="color:var(--bad);font-size:.68rem">from "${escHtml(flag.raw)}" — please check</div>` : ''}
