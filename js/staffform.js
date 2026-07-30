@@ -604,23 +604,29 @@ function sfmValidate() {
     e('sf_emis', 'sfe_emis', 'EMIS not found in Schools data.');
   }
 
+  // Name/DOB/Gender/Designation/BPS/Govt-Entry-Date are no longer
+  // hard-required — AEOs entering or updating a record from a paper
+  // file don't always have every field on hand in one sitting, and the
+  // old behavior blocked saving ANY change (even something as small as
+  // a phone number update) until all of these were filled in. They can
+  // still be added later via Edit. Personal No. and EMIS Code stay
+  // required below: Personal No. is the record's identity key used
+  // everywhere else (transfers/promotions/revert/uniqueness), and EMIS
+  // Code is what the whole jurisdiction-visibility system derives
+  // District/Wing/Tehsil/Markaz from — leaving it blank would silently
+  // make the record invisible in every non-admin user's filtered views.
   if (!v('sf_name')) e('sf_name', 'sfe_name', 'Name of Teacher is required.');
-  if (!v('sf_dob')) e('sf_dob', 'sfe_dob', 'Date of Birth is required.');
-  if (!v('sf_gender')) e('sf_gender', 'sfe_gender', 'Gender is required.');
-  if (!v('sf_designation')) e('sf_designation', 'sfe_designation', 'Designation is required.');
 
   var bps = v('sf_bps');
-  if (!bps) {
-    e('sf_bps', 'sfe_bps', 'BPS is required.');
-  } else if (isNaN(bps) || +bps < 1 || +bps > 22) {
+  if (bps && (isNaN(bps) || +bps < 1 || +bps > 22))
     e('sf_bps', 'sfe_bps', 'BPS must be 1–22.');
-  }
 
   var pps = v('sf_pps');
   if (pps && (isNaN(pps) || +pps < 1 || +pps > 22))
     e('sf_pps', 'sfe_pps', 'PPS must be 1–22.');
 
-  if (!v('sf_govtEntry')) e('sf_govtEntry', 'sfe_govtEntry', 'Date of Entry in Govt. Service is required.');
+  // Optional — see note above; format isn't checked either since it's
+  // a plain date input (browser already constrains it to a valid date).
 
   var cell = v('sf_cellNo');
   if (cell && !/^\d{11}$/.test(cell)) e('sf_cellNo', 'sfe_cellNo', 'Must be exactly 11 digits.');
