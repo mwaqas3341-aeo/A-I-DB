@@ -104,6 +104,13 @@ const HR_SHEET_META = {
 };
 const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','Promotions_History'];
 
+// Must match the `changes_made_by` / `created_by` value written by BOTH
+// automation paths: the client-side check in openStaffFormModal('view', …)
+// AND the Supabase pg_cron job (see supabase/auto_retirement.sql). Keeping
+// one shared label lets the frontend recognize "the system did this" no
+// matter which of the two paths actually made the change.
+const HR_AUTO_ACTOR_LABEL = 'System (Auto — Age 60)';
+
 const SF_MAP = {
   sf_emis:                 'SCHOOL EMIS CODE',
   sf_markaz:               'MARKAZ NAME',
@@ -963,7 +970,15 @@ function renderHrTable() {
   const head = '<tr><th class="hr-actions-col">☰</th>' +
     hrCurrentHeaders.map(h => `<th>${h}</th>`).join('') + '</tr>';
   const body = pageRows.map((row, idx) => {
-    const cells = hrCurrentHeaders.map(h => `<td>${row[h] !== undefined && row[h] !== null ? row[h] : ''}</td>`).join('');
+    const cells = hrCurrentHeaders.map(h => {
+      let v = row[h] !== undefined && row[h] !== null ? row[h] : '';
+      if (h === 'Changes Made by' && v === HR_AUTO_ACTOR_LABEL) {
+        v = `<span title="Automatically changed by the system — no manual action taken" ` +
+              `style="display:inline-flex;align-items:center;gap:4px;background:#FEF3C7;color:#92400E;` +
+              `padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">🤖 ${v}</span>`;
+      }
+      return `<td>${v}</td>`;
+    }).join('');
     return `<tr><td class="hr-actions-col"><button type="button" class="hr-btn-ghost action-menu-btn" style="padding:3px 8px;" onclick="openHrMenu(this,${start+idx})">⋮</button></td>${cells}</tr>`;
   }).join('');
 
@@ -1097,6 +1112,7 @@ function openStaffFormModal(mode, row) {
       const el = document.getElementById(id);
       if (el) el.setAttribute('disabled', 'true');
     });
+    _hrCheckAutoRetirement(row);
   }
 
   // ── EMIS data guard: lazy-load hrSchoolCache if not yet populated ──
@@ -1144,6 +1160,46 @@ function _sfmFillForm(row) {
   });
   calcRetirementDate();
   toggleRegularizationField();
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  AUTO-RETIREMENT CHECK (fires whenever "View Staff Details" opens)
+//  Safety net for staff who reach age 60 without anyone having run the
+//  manual "🎓 Retirement" action on them — the backend recomputes their
+//  retirement date from DOB and, if it's due, flips status to 'retired'
+//  and logs it, exactly as if HR had submitted the Retirement action.
+// ──────────────────────────────────────────────────────────────────
+function _hrCheckAutoRetirement(row) {
+  if (!row) return;
+  const pno = row['PERSONAL NO.'];
+  if (!pno) return;
+
+  const status = (row['Status'] || row['STATUS'] || 'active').toString().trim().toLowerCase();
+  if (status !== 'active') return; // already separated — nothing to check
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res || !res.retired) return;
+
+      hrShowToast(res.message || 'Employee automatically marked Retired (age 60 reached).', true);
+      row['Status'] = 'Retired';
+      row['Changes Made by'] = HR_AUTO_ACTOR_LABEL;
+
+      // Flag it visibly on the still-open modal.
+      const chip = document.getElementById('sfmModeChip');
+      if (chip && !document.getElementById('sfmAutoRetiredFlag')) {
+        chip.insertAdjacentHTML('afterend',
+          '<span id="sfmAutoRetiredFlag" style="margin-left:8px;font-size:12px;color:#DC2626;font-weight:600;">⚠ Auto-retired — reached age 60</span>');
+      }
+
+      // Refresh the underlying list/cache so the record drops out of
+      // Active Staff without needing a manual reload.
+      hrInvalidateCache('Staff');
+      hrInvalidateCache('Retirement');
+      if (typeof applyHrFilter === 'function') applyHrFilter();
+    })
+    .withFailureHandler(() => { /* best-effort background check — stay silent on failure */ })
+    .checkAndAutoRetire({ personalNo: pno });
 }
 
 // ──────────────────────────────────────────────────────────────────

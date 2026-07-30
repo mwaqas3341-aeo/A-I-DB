@@ -1454,6 +1454,73 @@ async function apiCall(action, payload) {
       return { success: true, message: 'Action completed.', targetSheet };
     }
 
+    // Called by the HR "View Staff Details" modal every time it's opened.
+    // Safety net for the case an employee reaches retirement age but
+    // nobody remembered to run the manual "🎓 Retirement" separation
+    // action on them — this catches it the next time anyone views their
+    // record and flips status to 'retired' automatically, logging the
+    // same staff_events trail the manual action would.
+    //
+    // Retirement age is recomputed fresh from DOB (not read from the
+    // stored date_of_retirement column) using the same "day before the
+    // 60th birthday" rule as calcRetirementDate() in hr_view.js, so this
+    // self-heals even for older records where that column is blank/wrong.
+    case 'checkAndAutoRetire': {
+      const p   = Array.isArray(payload) ? payload[0] : payload;
+      const pno = p.personalNo || p.personal_no || p['PERSONAL NO.'];
+      if (!pno) return { success: false, retired: false, error: 'Missing personal number.' };
+
+      const { data: s } = await _sb.from('staff')
+        .select('personal_no, name_of_teacher, date_of_birth, status')
+        .eq('personal_no', pno).maybeSingle();
+      if (!s) return { success: false, retired: false, error: 'Staff record not found.' };
+
+      // Only active staff are eligible — already-separated records
+      // (resigned/terminated/deceased/retired) are left untouched.
+      if (s.status !== 'active') return { success: true, retired: false };
+
+      const dob = s.date_of_birth ? new Date(s.date_of_birth) : null;
+      if (!dob || isNaN(dob.getTime())) return { success: true, retired: false };
+
+      // Mirrors calcRetirementDate(): retirement date = the day before
+      // the employee's 60th birthday.
+      let retYear  = dob.getUTCFullYear() + 60;
+      let retMonth = dob.getUTCMonth();       // 0-based
+      let retDay   = dob.getUTCDate() - 1;
+      if (retDay === 0) {
+        retMonth -= 1;
+        if (retMonth < 0) { retMonth = 11; retYear -= 1; }
+        retDay = new Date(Date.UTC(retYear, retMonth + 1, 0)).getUTCDate();
+      }
+      const retirementDate = new Date(Date.UTC(retYear, retMonth, retDay));
+
+      const today = new Date();
+      const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      if (todayUtc < retirementDate) return { success: true, retired: false };
+
+      const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
+        status:           'retired',
+        changes_made_by:  'System (Auto — Age 60)',
+        changes_made_at:  new Date().toISOString(),
+      }));
+      if (!r.ok) return { success: false, retired: false, error: r.message };
+
+      await _sb.from('staff_events').insert([{
+        personal_no:     pno,
+        employee_name:   s.name_of_teacher || '',
+        event_type:      'retired',
+        notification_no: 'AUTO — Age 60',
+        effective_date:  retirementDate.toISOString().slice(0, 10),
+        created_by:      'System (Auto — Age 60)',
+      }]);
+
+      return {
+        success: true,
+        retired: true,
+        message: `${s.name_of_teacher || 'This employee'} has reached age 60 and was automatically moved to Retired status.`,
+      };
+    }
+
     case 'revertToActiveStaff': {
       const p = Array.isArray(payload) ? payload[0] : payload;
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
