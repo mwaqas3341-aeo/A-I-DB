@@ -22,6 +22,12 @@ const AP_REASON_LABELS = {
   manual:                'Manual',
 };
 
+const AP_STATUS_LABELS = {
+  awaiting:           'Awaiting Posting',
+  on_temporary_duty:  'On Temporary Duty',
+  assigned:            'Assigned',
+};
+
 // ── OPEN VIEW ─────────────────────────────────────────────────────────
 function openAwaitingPostingView() {
   switchGlobalTab('awaitingPostingView', null);
@@ -156,14 +162,14 @@ function apRenderTable() {
 
   const bodyRows = pageRows.map(r => {
     const staff = r.staff || {};
-    const isAwaiting = r.status === 'awaiting';
+    const canAssign = r.status === 'awaiting' || r.status === 'on_temporary_duty';
     return `<tr>
       <td>${escHtmlAp(staff.name_of_teacher || '')}</td>
       <td>${escHtmlAp(r.personal_no || '')}</td>
       <td>${escHtmlAp(staff.cnic || '')}</td>
       <td>${escHtmlAp(staff.designation || '')}</td>
       <td>${escHtmlAp(staff.bps != null ? String(staff.bps) : '')}</td>
-      <td><span class="ap-status-badge ap-status-${r.status}">${r.status === 'awaiting' ? 'Awaiting Posting' : 'Assigned'}</span></td>
+      <td><span class="ap-status-badge ap-status-${r.status}">${AP_STATUS_LABELS[r.status] || r.status}</span></td>
       <td>${escHtmlAp(r.previous_school_name || '')}</td>
       <td>${escHtmlAp(r.previous_tehsil || '')}</td>
       <td>${escHtmlAp(r.previous_markaz || '')}</td>
@@ -172,7 +178,7 @@ function apRenderTable() {
       <td>${escHtmlAp(AP_REASON_LABELS[r.reason] || r.reason || '')}</td>
       <td>${escHtmlAp(r.remarks || '')}</td>
       <td class="actions-col">
-        ${isAwaiting
+        ${canAssign
           ? `<button class="hr-btn-primary" style="padding:6px 12px;font-size:.78rem" onclick="apOpenAssignModal('${r.id}')">
                <span class="material-icons-round" style="font-size:.95rem">how_to_reg</span> Assign
              </button>`
@@ -282,15 +288,30 @@ function apOpenAssignModal(awaitingId) {
   document.getElementById('apAssignEmpName').textContent = staff.name_of_teacher || apAssignTargetRow.personal_no;
   document.getElementById('apAssignEmpMeta').textContent =
     `${staff.designation || ''} · BPS-${staff.bps || '—'} · Previously at ${apAssignTargetRow.previous_school_name || '—'}`;
+  document.getElementById('apAssignOrderType').value = '';
   document.getElementById('apAssignSchoolSearch').value = '';
   document.getElementById('apAssignSchoolResults').innerHTML = '';
   document.getElementById('apAssignTargetEmis').value = '';
+  document.getElementById('apAssignOrderNumber').value = '';
+  document.getElementById('apAssignOrderDate').value = '';
+  document.getElementById('apAssignTdStart').value = '';
+  document.getElementById('apAssignTdEnd').value = '';
+  document.getElementById('apAssignTdDates').style.display = 'none';
   document.getElementById('apAssignConfirmBtn').disabled = true;
   document.getElementById('apAssignModal').classList.remove('hidden');
 }
 function apCloseAssignModal() {
   document.getElementById('apAssignModal').classList.add('hidden');
   apAssignTargetRow = null;
+}
+function apOnOrderTypeChange() {
+  const type = document.getElementById('apAssignOrderType').value;
+  document.getElementById('apAssignTdDates').style.display = type === 'temporary_duty' ? 'block' : 'none';
+  document.getElementById('apAssignRulesNote').textContent = type === 'permanent_adjustment'
+    ? 'Permanent Adjustment: normal transfer rules (vacant post, designation, grade) are checked automatically before this assignment is confirmed.'
+    : type === 'temporary_duty'
+      ? 'Temporary Duty: no vacancy, SNE, or transfer eligibility checks apply. The employee stays visible at both schools and remains in Awaiting Posting, marked "On Temporary Duty".'
+      : 'Select an order type above — Permanent Adjustment checks normal transfer rules (vacant post, designation, grade). Temporary Duty skips those checks.';
 }
 let apSchoolSearchDebounce = null;
 function apSearchAssignSchool() {
@@ -325,10 +346,49 @@ function apSelectAssignSchool(emis, name) {
   document.getElementById('apAssignConfirmBtn').disabled = false;
 }
 function apConfirmAssign() {
-  const targetEmis = document.getElementById('apAssignTargetEmis').value;
+  const targetEmis   = document.getElementById('apAssignTargetEmis').value;
+  const orderType    = document.getElementById('apAssignOrderType').value;
+  const orderNumber  = document.getElementById('apAssignOrderNumber').value.trim();
+  const orderDate    = document.getElementById('apAssignOrderDate').value;
   if (!apAssignTargetRow || !targetEmis) return;
+  if (!orderType) { showToast('Please select an Order Type.', 'warning'); return; }
+  if (!orderNumber) { showToast('Order Number is required.', 'warning'); return; }
+  if (!orderDate)   { showToast('Order Date is required.', 'warning'); return; }
+
   const staff = apAssignTargetRow.staff || {};
-  if (!confirm(`Assign ${staff.name_of_teacher || apAssignTargetRow.personal_no} to this school?\n\n` +
+  const empLabel = staff.name_of_teacher || apAssignTargetRow.personal_no;
+
+  if (orderType === 'temporary_duty') {
+    const startDate = document.getElementById('apAssignTdStart').value;
+    const endDate   = document.getElementById('apAssignTdEnd').value; // optional
+    if (!startDate) { showToast('Start Date is required for Temporary Duty.', 'warning'); return; }
+    if (!confirm(`Assign Temporary Duty for ${empLabel} to this school?\n\nNo vacancy/transfer checks apply.`)) return;
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(res => {
+        hideLoading();
+        if (res.success) {
+          showToast(res.message || 'Temporary Duty created.', 'success');
+          apCloseAssignModal();
+          applyAwaitingPostingFilter();
+        } else {
+          showToast('Error: ' + res.message, 'error');
+        }
+      })
+      .withFailureHandler(err => { hideLoading(); showToast('Server error: ' + err.message, 'error'); })
+      .createTemporaryDuty({
+        personalNo: apAssignTargetRow.personal_no,
+        tempEmis: targetEmis,
+        startDate, endDate: endDate || null,
+        orderNumber, orderDate,
+        awaitingId: apAssignTargetRow.id,
+      });
+    return;
+  }
+
+  // permanent_adjustment
+  if (!confirm(`Permanently assign ${empLabel} to this school?\n\n` +
                `Normal transfer rules (vacancy, grade match) still apply and will be checked.`)) return;
 
   showLoading();
@@ -344,7 +404,7 @@ function apConfirmAssign() {
       }
     })
     .withFailureHandler(err => { hideLoading(); showToast('Server error: ' + err.message, 'error'); })
-    .assignAwaitingStaffToSchool({ awaitingId: apAssignTargetRow.id, targetEmis });
+    .assignAwaitingStaffToSchool({ awaitingId: apAssignTargetRow.id, targetEmis, orderNumber, orderDate });
 }
 
 function escHtmlAp(str) {

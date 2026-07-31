@@ -2640,6 +2640,8 @@ function _hierarchyScopeDbFields(p) {
       const { data, error } = await _sb.rpc('assign_awaiting_staff_to_school', {
         p_awaiting_id: p.awaitingId,
         p_target_emis: p.targetEmis,
+        p_order_number: p.orderNumber || null,
+        p_order_date: p.orderDate || null,
       });
       if (error) return { success: false, message: error.message };
       return data; // RPC already returns {success, message}
@@ -2652,10 +2654,16 @@ function _hierarchyScopeDbFields(p) {
         .select('*, staff(name_of_teacher, designation, bps)')
         .order('start_date', { ascending: false });
       if (p.status) q = q.eq('status', p.status);
-      else q = q.eq('status', 'active');
       const { data, error } = await q;
       if (error) return { success: false, message: error.message };
-      return { success: true, rows: data || [] };
+      let rows = data || [];
+      if (p.keyword) {
+        const kw = p.keyword.trim().toLowerCase();
+        rows = rows.filter(r =>
+          (r.staff?.name_of_teacher || '').toLowerCase().includes(kw) ||
+          (r.personal_no || '').toLowerCase().includes(kw));
+      }
+      return { success: true, rows };
     }
 
     case 'createTemporaryDuty': {
@@ -2664,9 +2672,12 @@ function _hierarchyScopeDbFields(p) {
         p_personal_no: p.personalNo,
         p_temp_emis: p.tempEmis,
         p_start_date: p.startDate,
-        p_end_date: p.endDate,
+        p_end_date: p.endDate || null,
         p_reason: p.reason || null,
         p_remarks: p.remarks || null,
+        p_order_number: p.orderNumber || null,
+        p_order_date: p.orderDate || null,
+        p_awaiting_id: p.awaitingId || null,
       });
       if (error) return { success: false, message: error.message };
       return data;

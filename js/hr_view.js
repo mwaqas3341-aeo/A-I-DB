@@ -1040,6 +1040,7 @@ function openHrMenu(btn, idx) {
       <button type="button" class="hr-action-item" onclick="openStaffFormModal('edit', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✏️ Edit Record</button>
       <button type="button" class="hr-action-item" onclick="openTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Transfer</button>
       <button type="button" class="hr-action-item" onclick="openMutualTransferModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔁 Mutual Transfer</button>
+      <button type="button" class="hr-action-item" onclick="openTdAssignModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🕒 Temporary Duty</button>
       <button type="button" class="hr-action-item" onclick="openPromotionModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">⬆️ Promotion</button>
       <button type="button" class="hr-action-item" onclick="openSeparationModal('retirement', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🎓 Retirement</button>
       <button type="button" class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>

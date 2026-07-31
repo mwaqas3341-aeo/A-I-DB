@@ -25,9 +25,9 @@ let privFHeaders = { district: '', tehsil: '', markaz: '', status: '', name: '',
 // ═══════════════════════════════════════════════════════════════════
 const PRIVATE_FIELD_CONFIG = [
   { header: 'Unique ID', col: 'unique_id',                                                                                    id: 'priv_uid',         readonly: true,  placeholder: 'Auto-generated' },
-  { header: 'District', col: 'district',                                                                                     id: 'priv_district',    readonly: true  },
-  { header: 'Tehsil', col: 'tehsil',                                                                                      id: 'priv_tehsil',      readonly: true  },
-  { header: 'Markaz Name', col: 'markaz_name',                                                                                  id: 'priv_markaz',      readonly: true  },
+  { header: 'District', col: 'district',                                                                                     id: 'priv_district',    type: 'select', options: [], onchange: 'onPrivFormDistrictChange()' },
+  { header: 'Tehsil', col: 'tehsil',                                                                                      id: 'priv_tehsil',      type: 'select', options: [], onchange: 'onPrivFormTehsilChange()' },
+  { header: 'Markaz Name', col: 'markaz_name',                                                                                  id: 'priv_markaz',      type: 'select', options: [] },
   { header: 'School Category', col: 'school_category',   hint: 'School Category',                       id: 'priv_cat',         type: 'select', options: [] },
   { header: 'School Name', col: 'school_name',                                                                                  id: 'priv_name',        wide: true },
   { header: 'Registeration Status', col: 'registration_status', hint: 'Registeration Status (Registered/Non Registered/Expired)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
@@ -454,6 +454,81 @@ function buildPrivateForm() {
         <div class="field-error">Invalid</div>
       </div>`;
   });
+
+  _pfPopulateJurisdictionSelects();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  JURISDICTION CASCADE (Add/Edit form) — District → Tehsil → Markaz
+//  Sourced from privSchoolHierarchy, which getSchoolHierarchyForUser()
+//  already scopes to the signed-in user's assigned jurisdiction via RLS
+//  (same source the filter panel above uses). This never hardcodes a
+//  jurisdiction list — whatever the backend allows is what shows here.
+// ══════════════════════════════════════════════════════════════════════
+function _pfFillSelect(id, items, keepValue) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const cur = keepValue !== undefined ? keepValue : el.value;
+  el.innerHTML = '<option value="">Select</option>' +
+    items.map(v => `<option value="${_privEsc(v)}">${_privEsc(v)}</option>`).join('');
+  if (items.includes(cur)) el.value = cur;
+}
+
+function _pfPopulateJurisdictionSelects(presetDistrict, presetTehsil, presetMarkaz) {
+  const pool = privSchoolHierarchy || [];
+  const dists = [...new Set(pool.map(s => s.d).filter(Boolean))].sort();
+  _pfFillSelect('priv_district', dists, presetDistrict);
+
+  const d = document.getElementById('priv_district')?.value || '';
+  const tehsils = [...new Set(pool.filter(s => !d || s.d === d).map(s => s.t).filter(Boolean))].sort();
+  _pfFillSelect('priv_tehsil', tehsils, presetTehsil);
+
+  const t = document.getElementById('priv_tehsil')?.value || '';
+  const markazs = [...new Set(
+    pool.filter(s => (!d || s.d === d) && (!t || s.t === t)).map(s => s.m).filter(Boolean)
+  )].sort();
+  _pfFillSelect('priv_markaz', markazs, presetMarkaz);
+
+  // Auto-select when the user's scope only allows a single option at a
+  // level — same convenience the Staff module offers, just not locked
+  // to editing (applyJurisdictionLock below handles graying it out).
+  if (dists.length === 1 && !document.getElementById('priv_district').value) {
+    document.getElementById('priv_district').value = dists[0];
+    onPrivFormDistrictChange(true);
+  } else if (tehsils.length === 1 && !document.getElementById('priv_tehsil').value) {
+    document.getElementById('priv_tehsil').value = tehsils[0];
+    onPrivFormTehsilChange(true);
+  } else if (markazs.length === 1 && !document.getElementById('priv_markaz').value) {
+    document.getElementById('priv_markaz').value = markazs[0];
+  }
+
+  const activeUser = (typeof currentUser !== 'undefined') ? currentUser : null;
+  if (typeof applyJurisdictionLock === 'function') {
+    applyJurisdictionLock({ district: 'priv_district', tehsil: 'priv_tehsil', markaz: 'priv_markaz' }, activeUser);
+  }
+}
+
+function onPrivFormDistrictChange(skipMarkazReset) {
+  const d = document.getElementById('priv_district').value;
+  const pool = privSchoolHierarchy || [];
+  const tehsils = [...new Set(pool.filter(s => !d || s.d === d).map(s => s.t).filter(Boolean))].sort();
+  _pfFillSelect('priv_tehsil', tehsils, '');
+  if (!skipMarkazReset) _pfFillSelect('priv_markaz', [], '');
+  if (tehsils.length === 1) {
+    document.getElementById('priv_tehsil').value = tehsils[0];
+    onPrivFormTehsilChange();
+  }
+}
+
+function onPrivFormTehsilChange() {
+  const d = document.getElementById('priv_district').value;
+  const t = document.getElementById('priv_tehsil').value;
+  const pool = privSchoolHierarchy || [];
+  const markazs = [...new Set(
+    pool.filter(s => (!d || s.d === d) && (!t || s.t === t)).map(s => s.m).filter(Boolean)
+  )].sort();
+  _pfFillSelect('priv_markaz', markazs, '');
+  if (markazs.length === 1) document.getElementById('priv_markaz').value = markazs[0];
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -519,19 +594,12 @@ function proceedWithNewSchool() {
 
 function openPrivateModal() {
   document.getElementById('privEditId').value = '';
-  const protect_ = ['priv_uid', 'priv_name', 'priv_district', 'priv_tehsil', 'priv_markaz'];
+  const protect_ = ['priv_uid', 'priv_name'];
   PRIVATE_FIELD_CONFIG.forEach(f => {
     const el = document.getElementById(f.id);
     if (el && !protect_.includes(f.id)) el.value = '';
   });
-  if (typeof currentUser !== 'undefined' && currentUser) {
-    const distEl   = document.getElementById('priv_district');
-    const tehEl    = document.getElementById('priv_tehsil');
-    const markazEl = document.getElementById('priv_markaz');
-    if (distEl)   distEl.value   = currentUser.district || '';
-    if (tehEl)    tehEl.value    = currentUser.tehsil   || '';
-    if (markazEl) markazEl.value = currentUser.markaz   || '';
-  }
+  _pfPopulateJurisdictionSelects();
   document.getElementById('ki_cascade_container').innerHTML = '';
   document.getElementById('kiTitle').style.display = 'none';
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
@@ -549,6 +617,7 @@ function editPrivate(keyVal) {
   PRIVATE_FIELD_CONFIG.forEach(f => {
     const el = document.getElementById(f.id);
     if (!el) return;
+    if (['priv_district', 'priv_tehsil', 'priv_markaz'].includes(f.id)) return; // handled by cascade below
     el.value = row[f.header] || '';
     // If this record's saved value isn't in the (possibly since-edited)
     // select options, keep it visible/selected instead of silently
@@ -558,6 +627,11 @@ function editPrivate(keyVal) {
       el.value = row[f.header];
     }
   });
+  _pfPopulateJurisdictionSelects(
+    row[PRIVATE_FIELD_CONFIG.find(f => f.id === 'priv_district').header] || '',
+    row[PRIVATE_FIELD_CONFIG.find(f => f.id === 'priv_tehsil').header] || '',
+    row[PRIVATE_FIELD_CONFIG.find(f => f.id === 'priv_markaz').header] || ''
+  );
 
   handleRegStatus(true);
   generateKICascades();
@@ -743,6 +817,13 @@ function generateKICascades() {
 
 function validatePrivateForm() {
   let isValid = true;
+  ['priv_district', 'priv_tehsil', 'priv_markaz'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.value) {
+      markInvalid(el, 'Required');
+      isValid = false;
+    }
+  });
   ['priv_own_cnic', 'priv_prin_cnic'].forEach(id => {
     const el = document.getElementById(id);
     if (el && el.value.length > 0 && el.value.length !== 13) {
