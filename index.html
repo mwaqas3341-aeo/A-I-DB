@@ -256,6 +256,13 @@
               <div class="mc-arrow" style="color:#0d9488"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </div>
 
+            <div class="module-card" onclick="openAwaitingPostingView()">
+              <i class="bi bi-person-walking mc-icon" style="color:#d97706"></i>
+              <div class="mc-title">Posting Awaiting Staff</div>
+              <div class="mc-desc">Employees without a permanent school posting</div>
+              <div class="mc-arrow" style="color:#d97706"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+            </div>
+
           </div>
 
           <!-- ══ DYNAMIC KPI / MODULE CARDS (from Admin → Dashboard Cards) ══ -->
@@ -650,6 +657,105 @@
           <button class="btn btn-primary" id="si_previewBtn" style="display:none" onclick="schoolImportGoToPreview()">Next: Preview</button>
           <button class="btn btn-success" id="si_confirmBtn" style="display:none" onclick="confirmSchoolImport()"><i class="bi bi-check2-circle"></i> Import These Records</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── POSTING AWAITING STAFF VIEW ────────────────────────── -->
+  <div id="awaitingPostingView" class="app-view">
+    <div class="hr-page-header" style="margin-bottom:18px">
+      <div>
+        <div class="hr-page-title">Posting Awaiting Staff</div>
+        <div class="hr-page-subtitle">Employees with no permanent school posting — assign them once a destination is confirmed.</div>
+      </div>
+      <button class="hr-btn-ghost" onclick="switchGlobalTab('homeView', null)">
+        <span class="material-icons-round">arrow_back</span> Back to Dashboard
+      </button>
+    </div>
+
+    <div class="hr-filter-panel">
+      <div class="hr-filter-panel-header"><span class="material-icons-round">filter_alt</span> FILTERS</div>
+      <div class="hr-filter-grid">
+        <div class="hr-filter-field">
+          <label>District</label>
+          <select id="apFilterDistrict" onchange="onApDistrictChange()"><option value="">All Districts</option></select>
+        </div>
+        <div class="hr-filter-field">
+          <label>Wing</label>
+          <select id="apFilterWing" onchange="onApWingChange()"><option value="">All Wings</option></select>
+        </div>
+        <div class="hr-filter-field">
+          <label>Tehsil</label>
+          <select id="apFilterTehsil" onchange="onApTehsilChange()"><option value="">All Tehsils</option></select>
+        </div>
+        <div class="hr-filter-field">
+          <label>Markaz</label>
+          <select id="apFilterMarkaz"><option value="">All Markazs</option></select>
+        </div>
+        <div class="hr-filter-field">
+          <label>Reason</label>
+          <select id="apFilterReason">
+            <option value="">All Reasons</option>
+            <option value="outsourced_school">Outsourced School</option>
+            <option value="school_closed">School Closed</option>
+            <option value="removed">Removed</option>
+            <option value="transfer_completed">Transfer Completed</option>
+            <option value="manual">Manual</option>
+          </select>
+        </div>
+        <div class="hr-filter-field">
+          <label>Status</label>
+          <select id="apFilterStatus">
+            <option value="awaiting" selected>Awaiting Posting</option>
+            <option value="assigned">Assigned</option>
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="hr-filter-field" style="grid-column:span 2">
+          <label>Search (Name, Personal No., CNIC)</label>
+          <input type="text" id="apFilterKeyword" placeholder="Type to search…" onkeydown="if(event.key==='Enter')applyAwaitingPostingFilter()">
+        </div>
+      </div>
+      <div class="hr-filter-footer">
+        <div class="hr-filter-actions-left">
+          <button class="hr-btn-primary" onclick="applyAwaitingPostingFilter()">
+            <span class="material-icons-round">search</span> Apply Filter
+          </button>
+          <button class="hr-btn-ghost" onclick="clearAwaitingPostingFilters()">
+            <span class="material-icons-round">close</span> Clear
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="apResultsContainer" style="margin-top:18px">
+      <div class="hr-empty-state">Select filters above and click Apply Filter, or just Apply Filter to see everyone currently awaiting posting.</div>
+    </div>
+  </div>
+
+  <!-- ── ASSIGN TO SCHOOL MODAL ────────────────────────── -->
+  <div id="apAssignModal" class="modal hidden">
+    <div class="modal-content" style="max-width:520px">
+      <button class="close-btn" onclick="apCloseAssignModal()" title="Close">&times;</button>
+      <h3 style="margin-bottom:4px">Assign to School</h3>
+      <div id="apAssignEmpName" style="font-weight:700;font-size:1.05rem;margin-top:10px"></div>
+      <div id="apAssignEmpMeta" style="color:var(--t3);font-size:.85rem;margin-bottom:16px"></div>
+
+      <div class="form-row">
+        <label>Search destination school (name or EMIS code)</label>
+        <input type="text" id="apAssignSchoolSearch" placeholder="Start typing a school name or EMIS…"
+               oninput="apSearchAssignSchool()" autocomplete="off">
+        <input type="hidden" id="apAssignTargetEmis">
+      </div>
+      <div id="apAssignSchoolResults" class="ap-school-result-list"></div>
+
+      <p style="font-size:.8rem;color:var(--t3);margin-top:14px">
+        Normal transfer rules (vacant post, designation, grade) are checked automatically before this assignment is confirmed.
+      </p>
+
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button class="btn btn-outline-secondary" style="flex:1" onclick="apCloseAssignModal()">Cancel</button>
+        <button class="primary-btn" id="apAssignConfirmBtn" style="flex:1" disabled onclick="apConfirmAssign()">Confirm Assignment</button>
       </div>
     </div>
   </div>
@@ -2613,6 +2719,7 @@
   <!-- ── Module JS ── -->
   <script src="js/core.js"></script>
   <script src="js/hr_view.js"></script>
+  <script src="js/awaiting-posting.js"></script>
   <script src="js/staffform.js"></script>
   <script src="js/admin.js"></script>
   <script src="js/public_schools.js"></script>
