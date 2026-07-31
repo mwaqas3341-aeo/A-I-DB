@@ -875,6 +875,17 @@ function _hrDownloadCsv(rows, cols) {
 //  DOWNLOAD SNE (Sanctioned / Filled / Vacant, grade-wise per school)
 // ──────────────────────────────────────────────────────────────────
 function downloadSNE() {
+  const proceed = confirm(
+    'Sanctioned Post Summary (SNE)\n\n' +
+    'The "Sanctioned" totals in this report come from official SIS data, ' +
+    'not from live verification. Please double-check the figures against ' +
+    'the current record before sharing this download with officers, and ' +
+    'feel free to edit any cell in the exported file if you find a ' +
+    'discrepancy.\n\n' +
+    'Continue and download the report?'
+  );
+  if (!proceed) return;
+
   const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name: 'Admin' };
   const filters = {
     district: document.getElementById('hrFilterDistrict')?.value || '',

@@ -2609,6 +2609,98 @@ function _hierarchyScopeDbFields(p) {
       return { success: true, message: 'Deleted.' };
     }
 
+    // ── POSTING AWAITING STAFF ──────────────────────────────────────────
+    case 'loadAwaitingPosting': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      let q = _sb.from('staff_awaiting_posting')
+        .select('*, staff(name_of_teacher, cnic, designation, bps)')
+        .order('entry_date', { ascending: false });
+      if (p.status) q = q.eq('status', p.status);
+      else q = q.eq('status', 'awaiting');
+      if (p.reason) q = q.eq('reason', p.reason);
+      if (p.district) q = q.eq('previous_district', p.district);
+      if (p.wing) q = q.eq('previous_wing', p.wing);
+      if (p.tehsil) q = q.eq('previous_tehsil', p.tehsil);
+      if (p.markaz) q = q.eq('previous_markaz', p.markaz);
+      const { data, error } = await q;
+      if (error) return { success: false, message: error.message };
+      let rows = data || [];
+      if (p.keyword) {
+        const kw = p.keyword.trim().toLowerCase();
+        rows = rows.filter(r =>
+          (r.staff?.name_of_teacher || '').toLowerCase().includes(kw) ||
+          (r.personal_no || '').toLowerCase().includes(kw) ||
+          (r.staff?.cnic || '').toLowerCase().includes(kw));
+      }
+      return { success: true, rows };
+    }
+
+    case 'assignAwaitingStaffToSchool': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const { data, error } = await _sb.rpc('assign_awaiting_staff_to_school', {
+        p_awaiting_id: p.awaitingId,
+        p_target_emis: p.targetEmis,
+      });
+      if (error) return { success: false, message: error.message };
+      return data; // RPC already returns {success, message}
+    }
+
+    // ── TEMPORARY DUTY ───────────────────────────────────────────────────
+    case 'loadTemporaryDuty': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      let q = _sb.from('staff_temporary_duty')
+        .select('*, staff(name_of_teacher, designation, bps)')
+        .order('start_date', { ascending: false });
+      if (p.status) q = q.eq('status', p.status);
+      else q = q.eq('status', 'active');
+      const { data, error } = await q;
+      if (error) return { success: false, message: error.message };
+      return { success: true, rows: data || [] };
+    }
+
+    case 'createTemporaryDuty': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const { data, error } = await _sb.rpc('create_temporary_duty', {
+        p_personal_no: p.personalNo,
+        p_temp_emis: p.tempEmis,
+        p_start_date: p.startDate,
+        p_end_date: p.endDate,
+        p_reason: p.reason || null,
+        p_remarks: p.remarks || null,
+      });
+      if (error) return { success: false, message: error.message };
+      return data;
+    }
+
+    case 'completeTemporaryDuty':
+    case 'cancelTemporaryDuty': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const fn = action === 'completeTemporaryDuty' ? 'complete_temporary_duty' : 'cancel_temporary_duty';
+      const { data, error } = await _sb.rpc(fn, { p_td_id: p.tdId });
+      if (error) return { success: false, message: error.message };
+      return data;
+    }
+
+    case 'searchSchoolsForAssignment': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const kw = (p.keyword || '').trim();
+      if (kw.length < 2) return { success: true, rows: [] };
+      const isEmis = /^\d+$/.test(kw);
+      const [pubRes, privRes] = await Promise.all([
+        isEmis
+          ? _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').eq('emis', kw).limit(10)
+          : _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
+        isEmis
+          ? _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').eq('emis', kw).limit(10)
+          : _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
+      ]);
+      const rows = [
+        ...(pubRes.data || []).map(r => ({ ...r, wing: r.wing || '' })),
+        ...(privRes.data || []).map(r => ({ ...r, wing: '' })),
+      ];
+      return { success: true, rows };
+    }
+
     // ── FALLTHROUGH ───────────────────────────────────────────────────
     default:
       console.warn(`[api.js] Unknown action: "${action}"`);
