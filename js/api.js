@@ -2720,28 +2720,30 @@ function _hierarchyScopeDbFields(p) {
       const kw = (p.keyword || '').trim();
       if (kw.length < 2) return { success: true, rows: [] };
       const isEmis = /^\d+$/.test(kw);
+      // Awaiting-posting assignment (both Temporary Duty and Permanent
+      // Adjustment) can only ever place an employee at a public school —
+      // private schools are never a valid posting target here, so they
+      // must not appear as search results for either order type.
+      // Outsourced public schools aren't real government postings either
+      // (status = 'Out Sourced'), so they're excluded the same way the
+      // dashboard's active-school counts exclude them.
       // EMIS search uses a partial/"starts with" match (like the name search
       // does with ilike) instead of an exact eq() match — previously you had
       // to type the *entire* EMIS code before anything showed up, which is
       // why searching felt broken while typing digit by digit.
-      const [pubRes, privRes] = await Promise.all([
-        isEmis
-          ? _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').ilike('emis', `${kw}%`).limit(10)
-          : _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
-        isEmis
-          ? _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').ilike('emis', `${kw}%`).limit(10)
-          : _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
-      ]);
-      // Previously any query error here was silently ignored (pubRes.data
-      // would just be undefined -> treated as "no matches"), so a real DB
-      // error looked identical to "nothing found". Surface it now.
-      if (pubRes.error || privRes.error) {
-        return { success: false, message: (pubRes.error || privRes.error).message };
+      let q = _sb.from('public_schools')
+        .select('emis, school_name, district, wing, tehsil, markaz_name, status')
+        .neq('status', 'Out Sourced')
+        .limit(10);
+      q = isEmis ? q.ilike('emis', `${kw}%`) : q.ilike('school_name', `%${kw}%`);
+      const { data, error } = await q;
+      // Previously any query error here was silently ignored (data would
+      // just be undefined -> treated as "no matches"), so a real DB error
+      // looked identical to "nothing found". Surface it now.
+      if (error) {
+        return { success: false, message: error.message };
       }
-      const rows = [
-        ...(pubRes.data || []).map(r => ({ ...r, wing: r.wing || '' })),
-        ...(privRes.data || []).map(r => ({ ...r, wing: '' })),
-      ];
+      const rows = (data || []).map(r => ({ ...r, wing: r.wing || '' }));
       return { success: true, rows };
     }
 
