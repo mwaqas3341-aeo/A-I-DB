@@ -177,6 +177,14 @@
     </div>
     <div class="contact-divider"></div>
 
+    <div class="nav-notif-wrap" id="navNotifWrap">
+      <button class="nav-notif-btn" id="navNotifBtn" onclick="toggleNotificationsPanel()" title="Notifications" aria-label="Notifications">
+        <i class="bi bi-bell-fill"></i>
+        <span class="nav-notif-badge hidden" id="navNotifBadge">0</span>
+      </button>
+      <div class="nav-notif-panel hidden" id="navNotifPanel"></div>
+    </div>
+
     <div class="nav-avatar" id="navAvatar">--</div>
     <div class="nav-info">
       <div class="name" id="userName"></div>
@@ -2175,11 +2183,11 @@
           <span class="material-icons-round hr-nav-icon">group</span>
           <span class="hr-nav-label">Active Staff</span>
         </button>
-        <button class="hr-nav-item hr-sub-nav-item" onclick="openAwaitingPostingView()">
+        <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="AwaitingPosting">
           <span class="material-icons-round hr-nav-icon">person_search</span>
           <span class="hr-nav-label">Awaiting Posting</span>
         </button>
-        <button class="hr-nav-item hr-sub-nav-item" onclick="openTemporaryDutyView()">
+        <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="TemporaryDuty">
           <span class="material-icons-round hr-nav-icon">schedule</span>
           <span class="hr-nav-label">Temporary Duty</span>
         </button>
@@ -2904,6 +2912,7 @@
   <!-- ── App shell JS (runs last) ── -->
   <script src="js/index.js"></script>
   <script src="js/expiry-alerts.js"></script>
+  <script src="js/notifications.js"></script>
   <script src="js/login-feed.js"></script>
 
 </body>
