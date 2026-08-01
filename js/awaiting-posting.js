@@ -312,12 +312,25 @@ function apOnOrderTypeChange() {
     : type === 'temporary_duty'
       ? 'Temporary Duty: no vacancy, SNE, or transfer eligibility checks apply. The employee stays visible at both schools and remains in Awaiting Posting, marked "On Temporary Duty".'
       : 'Select an order type above — Permanent Adjustment checks normal transfer rules (vacant post, designation, grade). Temporary Duty skips those checks.';
+  // After picking from the dropdown, focus stays on the <select> in most
+  // browsers — typing right away (a very natural next move) then goes
+  // nowhere instead of into the EMIS search box below. Move focus there
+  // explicitly so typing immediately after selecting an order type works.
+  if (type) {
+    const searchBox = document.getElementById('apAssignSchoolSearch');
+    if (searchBox) setTimeout(() => searchBox.focus(), 0);
+  }
 }
 let apSchoolSearchDebounce = null;
 function apSearchAssignSchool() {
   const kw = document.getElementById('apAssignSchoolSearch').value.trim();
   const resultsEl = document.getElementById('apAssignSchoolResults');
   clearTimeout(apSchoolSearchDebounce);
+  // Any previous selection is now stale until the user (re)picks a school —
+  // without this, editing the text after selecting one school silently kept
+  // the OLD emis as the target while the box showed different text.
+  document.getElementById('apAssignTargetEmis').value = '';
+  document.getElementById('apAssignConfirmBtn').disabled = true;
   if (kw.length < 2) { resultsEl.innerHTML = ''; return; }
   resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>';
   apSchoolSearchDebounce = setTimeout(() => {
@@ -329,19 +342,27 @@ function apSearchAssignSchool() {
           resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
           return;
         }
+        // Exactly one match (e.g. the full, exact EMIS code was typed) —
+        // select it automatically instead of forcing an extra click before
+        // "Confirm Assignment" will do anything.
+        if (matches.length === 1) {
+          apSelectAssignSchool(matches[0].emis, matches[0].school_name || '');
+          return;
+        }
         resultsEl.innerHTML = matches.map(s => `
           <div class="ap-school-result" onclick="apSelectAssignSchool('${s.emis}', '${escHtmlAp(s.school_name || '').replace(/'/g, "\\'")}')">
             <strong>${escHtmlAp(s.school_name || '')}</strong>
             <span style="color:var(--t3);font-size:.78rem"> — EMIS ${escHtmlAp(s.emis || '')} · ${escHtmlAp(s.tehsil || '')}, ${escHtmlAp(s.district || '')}</span>
-          </div>`).join('');
+          </div>`).join('')
+          + '<div style="padding:6px 10px 2px;color:var(--t3);font-size:.74rem">Tap a school above to select it.</div>';
       })
-      .withFailureHandler(() => { resultsEl.innerHTML = '<div style="padding:8px;color:var(--bad);font-size:.82rem">Search failed.</div>'; })
+      .withFailureHandler(err => { console.error('[apSearchAssignSchool]', err); resultsEl.innerHTML = `<div style="padding:8px;color:var(--bad);font-size:.82rem">Search failed: ${escHtmlAp(err && err.message || 'unknown error')}</div>`; })
       .searchSchoolsForAssignment({ keyword: kw });
   }, 300);
 }
 function apSelectAssignSchool(emis, name) {
   document.getElementById('apAssignSchoolSearch').value = `${name} (EMIS ${emis})`;
-  document.getElementById('apAssignSchoolResults').innerHTML = '';
+  document.getElementById('apAssignSchoolResults').innerHTML = `<div style="padding:8px;color:var(--good,#166534);font-size:.82rem">✓ Selected — EMIS ${escHtmlAp(emis)}</div>`;
   document.getElementById('apAssignTargetEmis').value = emis;
   document.getElementById('apAssignConfirmBtn').disabled = false;
 }
@@ -350,7 +371,8 @@ function apConfirmAssign() {
   const orderType    = document.getElementById('apAssignOrderType').value;
   const orderNumber  = document.getElementById('apAssignOrderNumber').value.trim();
   const orderDate    = document.getElementById('apAssignOrderDate').value;
-  if (!apAssignTargetRow || !targetEmis) return;
+  if (!apAssignTargetRow) { showToast('Something went wrong — please close and reopen this form.', 'error'); return; }
+  if (!targetEmis) { showToast('Please select a destination school from the search results first.', 'warning'); return; }
   if (!orderType) { showToast('Please select an Order Type.', 'warning'); return; }
   if (!orderNumber) { showToast('Order Number is required.', 'warning'); return; }
   if (!orderDate)   { showToast('Order Date is required.', 'warning'); return; }
