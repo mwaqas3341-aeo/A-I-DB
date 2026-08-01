@@ -132,14 +132,14 @@ function openSchoolImportModal(kind) {
   let instructions = cfg.instructions || '';
   if (kind === 'private') {
     if (_siJurMode.mode === 'admin') {
-      instructions = 'Download the template below, fill in whatever historical records you have (leave columns blank if unknown), then upload it here. Rows whose School Name already exists are skipped automatically so nothing gets duplicated.';
+      instructions = "Download the template below, fill in whatever historical records you have (leave columns blank if unknown), then upload it here. New School Names are added as new records; rows whose School Name already exists won't create a duplicate — instead, any DB cell that's currently empty gets filled in from the file (fields that already have a value are never overwritten).";
       scopeNote.style.display = 'none';
     } else if (_siJurMode.mode === 'single') {
       const j = _siJurMode.jur[0];
-      instructions = `District/Tehsil/Markaz aren't in the template — every row you upload will automatically be saved under your own jurisdiction (${_siJurLabel(j)}). Just fill in the school details. Rows whose School Name already exists are skipped automatically.`;
+      instructions = `District/Tehsil/Markaz aren't in the template — every row you upload will automatically be saved under your own jurisdiction (${_siJurLabel(j)}). Just fill in the school details. Rows whose School Name already exists won't create a duplicate — instead, any empty DB cell gets filled in from the file, without overwriting fields that already have a value.`;
       scopeNote.style.display = 'none';
     } else {
-      instructions = "You're assigned to more than one jurisdiction, so District/Tehsil/Markaz can't be guessed automatically — on the Review step you'll pick which of your assigned jurisdictions each row belongs to from a dropdown. Rows whose School Name already exists are skipped automatically.";
+      instructions = "You're assigned to more than one jurisdiction, so District/Tehsil/Markaz can't be guessed automatically — on the Review step you'll pick which of your assigned jurisdictions each row belongs to from a dropdown. Rows whose School Name already exists won't create a duplicate — instead, any empty DB cell gets filled in from the file, without overwriting fields that already have a value.";
       scopeNote.innerHTML = `<i class="bi bi-shield-lock"></i> Your assigned jurisdictions: <b>${_siJurMode.jur.map(_siJurLabel).map(escHtml).join(' &nbsp;|&nbsp; ')}</b>`;
       scopeNote.style.display = '';
     }
@@ -299,16 +299,22 @@ function _siComputeDiffs(row, existing, reverseMap, targetHeaders, excludeHeader
 
 async function _siBuildPrivatePreview(cfg, targetHeaders) {
   const get = (raw, h) => _siMapping[h] ? String(raw[_siMapping[h]] || '').trim() : '';
+  const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
 
   const norm = s => s.trim().toLowerCase();
-  const { data: existingRows } = await _sb.from(cfg.table).select('school_name');
-  const existingNames = new Set((existingRows || []).map(r => norm(r.school_name || '')));
+  // Fetch full existing rows (not just the name) so duplicates can be
+  // diffed field-by-field and their blank cells filled in, instead of
+  // just being flagged and skipped.
+  const { data: existingRows } = await _sb.from(cfg.table).select('*');
+  const existingByName = new Map();
+  (existingRows || []).forEach(r => existingByName.set(norm(r.school_name || ''), r));
 
   _siPreviewRows = _siRawRows.map((raw) => {
     const row = {};
     targetHeaders.forEach(h => { row[h] = get(raw, h); });
     const missing = cfg.requiredHeaders.filter(h => !row[h]);
-    const isDuplicate = row['School Name'] && existingNames.has(norm(row['School Name']));
+    const existing = row['School Name'] ? existingByName.get(norm(row['School Name'])) : null;
+    const isDuplicate = !!existing;
 
     let location, jurIndex = null;
     if (_siJurMode.mode === 'single') {
@@ -322,15 +328,35 @@ async function _siBuildPrivatePreview(cfg, targetHeaders) {
     }
 
     const locMissing = [];
-    if (_siJurMode.mode === 'admin' && !location.district) locMissing.push('District');
-    if (_siJurMode.mode === 'admin' && !location.tehsil) locMissing.push('Tehsil');
-    if (!location.markaz_name) locMissing.push('Markaz Name');
+    if (!isDuplicate) {
+      if (_siJurMode.mode === 'admin' && !location.district) locMissing.push('District');
+      if (_siJurMode.mode === 'admin' && !location.tehsil) locMissing.push('Tehsil');
+      if (!location.markaz_name) locMissing.push('Markaz Name');
+    }
 
     let status = 'ok';
     if (missing.length || locMissing.length) status = 'missing';
     else if (isDuplicate) status = 'duplicate';
 
-    return { row, status, missing: missing.concat(locMissing), uniqueVal: row['School Name'], location, jurIndex };
+    // For duplicates: figure out which existing DB columns are blank
+    // and would get filled in from this row, plus any fields where
+    // both sides are non-blank but differ (a real conflict - those are
+    // left untouched, never silently overwritten).
+    let blankFields = [], diffs = [];
+    if (isDuplicate) {
+      targetHeaders.forEach(h => {
+        if (h === 'School Name' || SI_LOCATION_HEADERS.includes(h)) return;
+        const col = reverseMap[h];
+        if (!col) return;
+        const incoming = (row[h] || '').toString().trim();
+        if (!incoming) return; // nothing uploaded for this cell -> nothing to do
+        const existingVal = (existing[col] != null) ? String(existing[col]).trim() : '';
+        if (!existingVal) blankFields.push(col);          // DB cell empty -> fill it in
+        else if (existingVal !== incoming) diffs.push({ header: h, existing: existingVal, incoming }); // both set, differ -> leave alone
+      });
+    }
+
+    return { row, status, missing: missing.concat(locMissing), uniqueVal: row['School Name'], location, jurIndex, existing, blankFields, diffs };
   });
 }
 
@@ -357,12 +383,12 @@ function _siResolveJurEntry(j, row) {
 
 function siOnRowJurisdictionChange(idx, newJurIndex) {
   const r = _siPreviewRows[idx];
+  const wasDuplicate = r.status === 'duplicate' || !!r.existing;
   r.jurIndex = Number(newJurIndex);
   r.location = _siResolveJurEntry(_siJurMode.jur[r.jurIndex], r.row);
-  const locMissing = r.location.markaz_name ? [] : ['Markaz Name'];
+  const locMissing = wasDuplicate ? [] : (r.location.markaz_name ? [] : ['Markaz Name']);
   const baseMissing = SCHOOL_IMPORT_CONFIG.private.requiredHeaders.filter(h => !r.row[h]);
   r.missing = baseMissing.concat(locMissing);
-  const wasDuplicate = r.status === 'duplicate';
   r.status = (baseMissing.length || locMissing.length) ? 'missing' : (wasDuplicate ? 'duplicate' : 'ok');
   _siRenderPreview(SCHOOL_IMPORT_CONFIG.private);
 }
@@ -371,18 +397,28 @@ function _siRenderPreview(cfg) {
   const counts = _siPreviewRows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
   document.getElementById('si_previewCount').textContent = _siPreviewRows.length;
 
+  const fillableDupes = _siPreviewRows.filter(r => r.status === 'duplicate' && r.blankFields && r.blankFields.length).length;
+  const emptyDupes = counts.duplicate ? counts.duplicate - fillableDupes : 0;
+
   const parts = [`<span style="color:var(--ok)"><i class="bi bi-check-circle"></i> ${counts.ok || 0} ready to ${cfg.updateOnly ? 'update' : 'import'}</span>`];
   if (cfg.updateOnly) {
     parts.push(`<span style="color:var(--warn)"><i class="bi bi-question-circle"></i> ${counts.notfound || 0} Emis not found</span>`);
     parts.push(`<span style="color:var(--warn)"><i class="bi bi-geo-alt"></i> ${counts.outside || 0} outside your jurisdiction</span>`);
   } else {
-    parts.push(`<span style="color:var(--warn)"><i class="bi bi-copy"></i> ${counts.duplicate || 0} already exist</span>`);
+    parts.push(`<span style="color:var(--warn)"><i class="bi bi-pencil-square"></i> ${fillableDupes} existing school(s) — will fill empty cells only</span>`);
+    if (emptyDupes) parts.push(`<span style="color:var(--t3)"><i class="bi bi-copy"></i> ${emptyDupes} already exist, nothing new to fill in</span>`);
   }
   parts.push(`<span style="color:var(--bad)"><i class="bi bi-exclamation-triangle"></i> ${counts.missing || 0} missing required info</span>`);
-  document.getElementById('si_previewSummary').innerHTML = parts.join(' &nbsp;·&nbsp; ') + ' <span style="color:var(--t3)">(non-ready rows are skipped, not errored)</span>';
+  document.getElementById('si_previewSummary').innerHTML = parts.join(' &nbsp;·&nbsp; ') + ' <span style="color:var(--t3)">(rows marked missing are skipped, not errored)</span>';
 
   const badge = { ok: 'var(--ok)', duplicate: 'var(--warn)', notfound: 'var(--warn)', outside: 'var(--warn)', missing: 'var(--bad)' };
-  const statusLabel = { ok: cfg.updateOnly ? '✓ Will update' : '✓ Ready', duplicate: 'Duplicate name', notfound: 'Emis not found', outside: 'Outside jurisdiction' };
+  const statusLabel = {
+    ok: cfg.updateOnly ? '✓ Will update' : '✓ Ready',
+    notfound: 'Emis not found', outside: 'Outside jurisdiction',
+  };
+  const dupLabel = (r) => (r.blankFields && r.blankFields.length)
+    ? `✓ Existing — filling ${r.blankFields.length} empty cell(s)`
+    : 'Existing — nothing new to fill';
   const showJurPicker = _siKind === 'private' && _siJurMode.mode === 'multi';
 
   document.getElementById('si_previewBody').innerHTML = `
@@ -394,10 +430,12 @@ function _siRenderPreview(cfg) {
         ${showJurPicker ? '<th style="padding:6px;min-width:220px">Your Jurisdiction</th>' : '<th style="padding:6px">District</th><th style="padding:6px">Tehsil</th><th style="padding:6px">Markaz</th>'}
       </tr></thead>
       <tbody>
-        ${_siPreviewRows.map((r, idx) => `
-          <tr style="border-bottom:1px solid var(--b0);${r.status === 'ok' ? '' : 'opacity:.7'}">
+        ${_siPreviewRows.map((r, idx) => {
+          const willChange = r.status === 'ok' || (r.status === 'duplicate' && r.blankFields && r.blankFields.length);
+          return `
+          <tr style="border-bottom:1px solid var(--b0);${willChange ? '' : 'opacity:.7'}">
             <td style="padding:6px;color:${badge[r.status]};font-weight:700;white-space:nowrap">
-              ${statusLabel[r.status] || ('Missing: ' + r.missing.join(', '))}
+              ${r.status === 'duplicate' ? dupLabel(r) : (statusLabel[r.status] || ('Missing: ' + r.missing.join(', ')))}
             </td>
             ${cfg.updateOnly ? `<td style="padding:6px">${escHtml(r.row['Emis'])}</td>` : ''}
             <td style="padding:6px">${escHtml(r.row['School Name'])}</td>
@@ -408,7 +446,8 @@ function _siRenderPreview(cfg) {
                    </select>
                  </td>`
               : `<td style="padding:6px">${escHtml(r.location.district || '')}</td><td style="padding:6px">${escHtml(r.location.tehsil || '')}</td><td style="padding:6px">${escHtml(r.location.markaz_name || '')}</td>`}
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
 
@@ -439,13 +478,20 @@ function _siGenId() {
 async function confirmSchoolImport() {
   const cfg = SCHOOL_IMPORT_CONFIG[_siKind];
   const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
-  const toApply = _siPreviewRows.filter(r => r.status === 'ok');
-  const total = toApply.length;
+  const toInsert = _siPreviewRows.filter(r => r.status === 'ok');
+  // Duplicates (private only) that have at least one blank DB cell this
+  // file can fill in. Any field that already has a value in the DB is
+  // left alone — only genuinely empty cells get written.
+  const toFillBlanks = (_siKind === 'private')
+    ? _siPreviewRows.filter(r => r.status === 'duplicate' && r.blankFields && r.blankFields.length)
+    : [];
+  const total = toInsert.length + toFillBlanks.length;
 
   const btn = document.getElementById('si_confirmBtn');
   btn.disabled = true;
-  let done = 0, failed = 0;
-  const paint = () => { btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${cfg.updateOnly ? 'Updating' : 'Importing'}… ${done + failed} / ${total}`; };
+  let inserted = 0, updated = 0, failed = 0;
+  const verbing = cfg.updateOnly ? 'Updating' : 'Importing';
+  const paint = () => { btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${verbing}… ${inserted + updated + failed} / ${total}`; };
   paint();
 
   const buildRow = (item) => {
@@ -464,10 +510,10 @@ async function confirmSchoolImport() {
     // request shape, but a real bulk "update many with different values"
     // isn't a single REST call, so these run many-at-once instead of
     // one-at-a-time, which is still a large speedup over fully sequential.
-    await _siRunWithConcurrency(toApply, async (item) => {
+    await _siRunWithConcurrency(toInsert, async (item) => {
       const dbRow = buildRow(item);
       const { error } = await _sb.from(cfg.table).update(dbRow).eq(cfg.uniqueCol, item.uniqueVal);
-      if (error) failed++; else done++;
+      if (error) failed++; else updated++;
       paint();
     }, 20);
   } else {
@@ -477,8 +523,8 @@ async function confirmSchoolImport() {
     // unlikely unique_id collision), fall back to inserting that chunk's
     // rows one at a time so a single bad row can't sink the whole batch.
     const CHUNK = 300;
-    for (let i = 0; i < toApply.length; i += CHUNK) {
-      const chunkItems = toApply.slice(i, i + CHUNK);
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const chunkItems = toInsert.slice(i, i + CHUNK);
       const chunkRows = chunkItems.map(item => {
         const dbRow = buildRow(item);
         dbRow.district = item.location.district;
@@ -490,7 +536,7 @@ async function confirmSchoolImport() {
       });
       const { error } = await _sb.from(cfg.table).insert(chunkRows);
       if (!error) {
-        done += chunkRows.length;
+        inserted += chunkRows.length;
       } else {
         for (const row of chunkRows) {
           let { error: rowErr } = await _sb.from(cfg.table).insert([row]);
@@ -498,20 +544,43 @@ async function confirmSchoolImport() {
             row.unique_id = _siGenId();
             ({ error: rowErr } = await _sb.from(cfg.table).insert([row]));
           }
-          if (rowErr) failed++; else done++;
+          if (rowErr) failed++; else inserted++;
         }
       }
       paint();
     }
+
+    // Duplicates: patch ONLY the columns that were blank in the DB and
+    // non-blank in the uploaded file for that row. Never touches School
+    // Name, District, Tehsil, Markaz, or any column that already had a
+    // value — this is a fill-in-the-blanks, not an overwrite.
+    await _siRunWithConcurrency(toFillBlanks, async (item) => {
+      const patch = {};
+      item.blankFields.forEach(col => {
+        const header = cfg.colMap()[col];
+        const val = (item.row[header] || '').toString().trim();
+        if (val !== '') patch[col] = val;
+      });
+      if (!Object.keys(patch).length) { paint(); return; }
+      patch.updated_at = new Date().toISOString();
+      const { error } = await _sb.from(cfg.table).update(patch).eq('school_name', item.existing.school_name);
+      if (error) failed++; else updated++;
+      paint();
+    }, 20);
   }
 
   btn.disabled = false;
   btn.innerHTML = `<i class="bi bi-check2-circle"></i> ${cfg.confirmLabel}`;
 
-  const skipped = _siPreviewRows.length - toApply.length;
-  const verb = cfg.updateOnly ? 'Updated' : 'Imported';
-  showToast(`${verb} ${done} record(s)${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped` : ''}.`, failed === 0);
-  if (done > 0) {
+  const skipped = _siPreviewRows.length - toInsert.length - toFillBlanks.length;
+  const verb = cfg.updateOnly ? 'Updated' : (toFillBlanks.length ? 'Imported/updated' : 'Imported');
+  const parts = [];
+  if (inserted) parts.push(`${inserted} new`);
+  if (updated) parts.push(`${updated} ${cfg.updateOnly ? 'updated' : 'existing filled in'}`);
+  if (failed) parts.push(`${failed} failed`);
+  if (skipped) parts.push(`${skipped} skipped`);
+  showToast(`${verb}: ${parts.join(', ') || 'nothing to do'}.`, failed === 0);
+  if (inserted > 0 || updated > 0) {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('schoolImportModal')).hide();
     cfg.reload();
   }
