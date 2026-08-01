@@ -322,6 +322,7 @@ function apOnOrderTypeChange() {
   }
 }
 let apSchoolSearchDebounce = null;
+let apLastSchoolMatches = [];
 function apSearchAssignSchool() {
   const kw = document.getElementById('apAssignSchoolSearch').value.trim();
   const resultsEl = document.getElementById('apAssignSchoolResults');
@@ -352,11 +353,13 @@ function apSearchAssignSchool() {
         // select it automatically instead of forcing an extra click before
         // "Confirm Assignment" will do anything.
         if (matches.length === 1) {
-          apSelectAssignSchool(matches[0].emis, matches[0].school_name || '');
+          apLastSchoolMatches = matches;
+          apSelectAssignSchool(matches[0].emis, matches[0].school_name || '', matches[0]);
           return;
         }
-        resultsEl.innerHTML = matches.map(s => `
-          <div class="ap-school-result" onclick="apSelectAssignSchool('${s.emis}', '${escHtmlAp(s.school_name || '').replace(/'/g, "\\'")}')">
+        apLastSchoolMatches = matches;
+        resultsEl.innerHTML = matches.map((s, i) => `
+          <div class="ap-school-result" onclick="apSelectAssignSchoolIdx(${i})">
             <strong>EMIS ${escHtmlAp(s.emis || '')}</strong>
             <div style="color:var(--t3);font-size:.78rem">
               ${escHtmlAp(s.school_name || '')}<br>
@@ -369,9 +372,17 @@ function apSearchAssignSchool() {
       .searchSchoolsForAssignment({ keyword: kw });
   }, 300);
 }
-function apSelectAssignSchool(emis, name) {
-  document.getElementById('apAssignSchoolSearch').value = `${name} (EMIS ${emis})`;
-  document.getElementById('apAssignSchoolResults').innerHTML = `<div style="padding:8px;color:var(--good,#166534);font-size:.82rem">✓ Selected — EMIS ${escHtmlAp(emis)}</div>`;
+function apSelectAssignSchoolIdx(i) {
+  const s = apLastSchoolMatches[i];
+  if (!s) return;
+  apSelectAssignSchool(s.emis, s.school_name || '', s);
+}
+function apSelectAssignSchool(emis, name, details) {
+  document.getElementById('apAssignSchoolSearch').value = emis;
+  const detailLine = details
+    ? `${escHtmlAp(name)} — ${[details.markaz_name, details.wing, details.tehsil, details.district].filter(Boolean).map(escHtmlAp).join(' · ')}`
+    : escHtmlAp(name);
+  document.getElementById('apAssignSchoolResults').innerHTML = `<div style="padding:8px;color:var(--good,#166534);font-size:.82rem">✓ Selected — ${detailLine}</div>`;
   document.getElementById('apAssignTargetEmis').value = emis;
   document.getElementById('apAssignConfirmBtn').disabled = false;
 }

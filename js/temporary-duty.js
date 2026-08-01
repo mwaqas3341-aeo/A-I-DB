@@ -159,6 +159,7 @@ function closeTdAssignModal() {
 }
 
 let tdSchoolSearchDebounce = null;
+let tdLastSchoolMatches = [];
 function tdSearchSchool() {
   const kw = document.getElementById('tdAssignSchoolSearch').value.trim();
   const resultsEl = document.getElementById('tdAssignSchoolResults');
@@ -180,8 +181,9 @@ function tdSearchSchool() {
           resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
           return;
         }
-        resultsEl.innerHTML = matches.map(s => `
-          <div class="ap-school-result" onclick="tdSelectSchool('${s.emis}', '${escHtmlAp(s.school_name || '').replace(/'/g, "\\'")}')">
+        tdLastSchoolMatches = matches;
+        resultsEl.innerHTML = matches.map((s, i) => `
+          <div class="ap-school-result" onclick="tdSelectSchoolIdx(${i})">
             <strong>EMIS ${escHtmlAp(s.emis || '')}</strong>
             <div style="color:var(--t3);font-size:.78rem">
               ${escHtmlAp(s.school_name || '')}<br>
@@ -193,9 +195,17 @@ function tdSearchSchool() {
       .searchSchoolsForAssignment({ keyword: kw });
   }, 300);
 }
-function tdSelectSchool(emis, name) {
-  document.getElementById('tdAssignSchoolSearch').value = `${name} (EMIS ${emis})`;
-  document.getElementById('tdAssignSchoolResults').innerHTML = '';
+function tdSelectSchoolIdx(i) {
+  const s = tdLastSchoolMatches[i];
+  if (!s) return;
+  tdSelectSchool(s.emis, s.school_name || '', s);
+}
+function tdSelectSchool(emis, name, details) {
+  document.getElementById('tdAssignSchoolSearch').value = emis;
+  const detailLine = details
+    ? `${escHtmlAp(name)} — ${[details.markaz_name, details.wing, details.tehsil, details.district].filter(Boolean).map(escHtmlAp).join(' · ')}`
+    : escHtmlAp(name);
+  document.getElementById('tdAssignSchoolResults').innerHTML = `<div style="padding:8px;color:var(--good,#166534);font-size:.82rem">✓ Selected — ${detailLine}</div>`;
   document.getElementById('tdAssignTargetEmis').value = emis;
 }
 
