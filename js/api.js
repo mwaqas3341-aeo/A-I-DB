@@ -339,6 +339,154 @@ async function _staffEventHistoryRows(eventTypes, reqUser) {
   return { headers, rows };
 }
 
+/**
+ * "Awaiting Posting Issues" history — every permanent assignment made
+ * through the Awaiting Posting module (event_type='awaiting_posting_
+ * assigned'), plus the revert records for those that were undone
+ * (event_type='awaiting_posting_reverted'). Nothing here is ever
+ * deleted; a revert adds a second row rather than removing the first.
+ * Only Temporary Duty and regular Transfer/Promotion events are
+ * excluded by construction (different event_types), matching the
+ * "Awaiting Posting only" data-source requirement.
+ */
+async function _awaitingPostingHistoryRows(reqUser) {
+  const events = await _fetchAllRows('staff_events', '*',
+    q => q.in('event_type', ['awaiting_posting_assigned', 'awaiting_posting_reverted']));
+  events.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+  const pnos = [...new Set(events.map(e => e.personal_no).filter(Boolean).map(String))];
+  let staffByPno = {};
+  if (pnos.length) {
+    const staffRows = await _fetchAllRows(
+      'staff',
+      'personal_no, cnic, designation, bps, school_emis_code, school_name, markaz_name, district, wing, tehsil',
+      q => q.in('personal_no', pnos)
+    );
+    staffByPno = Object.fromEntries((staffRows || []).map(r => [String(r.personal_no), r]));
+  }
+
+  // Resolve the assigned/previous school's own jurisdiction (District/
+  // Wing/Tehsil/Markaz columns the grid asks for) rather than the
+  // employee's CURRENT jurisdiction, since a reverted employee's
+  // current record no longer points at that school at all.
+  const emisSet = new Set();
+  events.forEach(e => {
+    const d = e.details || {};
+    if (d.assigned_school_emis) emisSet.add(d.assigned_school_emis);
+    if (d.previous_school_emis) emisSet.add(d.previous_school_emis);
+  });
+  let schoolByEmis = {};
+  if (emisSet.size) {
+    const emisList = [...emisSet];
+    const [{ data: pub }, { data: priv }] = await Promise.all([
+      _sb.from('public_schools').select('emis, district, wing, tehsil, markaz_name').in('emis', emisList),
+      _sb.from('private_schools').select('emis, district, tehsil, markaz_name').in('emis', emisList),
+    ]);
+    (pub || []).forEach(s => schoolByEmis[s.emis] = s);
+    (priv || []).forEach(s => { if (!schoolByEmis[s.emis]) schoolByEmis[s.emis] = s; });
+  }
+
+  // Reverted-status lookup: an assigned event is only revertible if no
+  // reverted event referencing it exists yet.
+  const revertedEventIds = new Set(
+    events.filter(e => e.event_type === 'awaiting_posting_reverted')
+      .map(e => (e.details || {}).reverted_event_id).filter(Boolean)
+  );
+
+  const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
+
+  const rows = [];
+  for (const e of events) {
+    const s = staffByPno[String(e.personal_no)] || {};
+    if (filterFn && staffByPno[String(e.personal_no)] && !filterFn(s)) continue;
+
+    const d = e.details || {};
+    const isAssigned = e.event_type === 'awaiting_posting_assigned';
+    const schoolEmis = isAssigned ? d.assigned_school_emis : d.previous_school_emis;
+    const schoolName = isAssigned ? d.assigned_school_name : d.previous_school_name;
+    const school = schoolEmis ? (schoolByEmis[schoolEmis] || {}) : {};
+    const alreadyReverted = isAssigned && revertedEventIds.has(e.id);
+
+    rows.push({
+      'Action Date & Time':   e.created_at || '',
+      'Employee Name':        e.employee_name || '',
+      'Personal No':          e.personal_no || '',
+      'CNIC':                 s.cnic || '',
+      'Designation':          s.designation || '',
+      'Previous Status':      isAssigned ? 'Awaiting Posting' : 'Assigned (now reverted)',
+      'Assigned School':      schoolName || '',
+      'EMIS Code':            schoolEmis || '',
+      'District':             school.district    || s.district    || '',
+      'Wing':                 school.wing         || s.wing         || '',
+      'Tehsil':               school.tehsil       || s.tehsil       || '',
+      'Markaz':               school.markaz_name  || s.markaz_name  || '',
+      'MARKAZ NAME':          school.markaz_name  || s.markaz_name  || '', // alias: runHrClientFilter reads this key
+      'Assigned By':          e.created_by || '',
+      'Assignment Source':    isAssigned ? 'Awaiting Posting' : 'Awaiting Posting Revert',
+      'Remarks':              isAssigned
+                                 ? (alreadyReverted ? 'Reverted back to Awaiting Posting.' : '')
+                                 : 'Reason: ' + (d.reason || 'Manual Revert'),
+      _row:                    e.id,
+      _canRevert:              isAssigned && !alreadyReverted,
+      'PERSONAL NO.':          e.personal_no || '',
+      'NAME OF TEACHER':       e.employee_name || '',
+    });
+  }
+
+  const headers = [
+    'Action Date & Time', 'Employee Name', 'Personal No', 'CNIC', 'Designation', 'Previous Status',
+    'Assigned School', 'EMIS Code', 'District', 'Wing', 'Tehsil', 'Markaz',
+    'Assigned By', 'Assignment Source', 'Remarks',
+  ];
+  return { headers, rows };
+}
+
+/** Read-only Temporary Duty history — every create/complete/cancel event. */
+async function _tdHistoryRows(reqUser) {
+  const events = await _fetchAllRows('staff_events', '*',
+    q => q.in('event_type', ['td_created', 'td_completed', 'td_cancelled']));
+  events.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+  const pnos = [...new Set(events.map(e => e.personal_no).filter(Boolean).map(String))];
+  let staffByPno = {};
+  if (pnos.length) {
+    const staffRows = await _fetchAllRows(
+      'staff', 'personal_no, cnic, designation, school_emis_code, markaz_name, district, wing, tehsil',
+      q => q.in('personal_no', pnos)
+    );
+    staffByPno = Object.fromEntries((staffRows || []).map(r => [String(r.personal_no), r]));
+  }
+  const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
+
+  const rows = [];
+  for (const e of events) {
+    const s = staffByPno[String(e.personal_no)] || {};
+    if (filterFn && staffByPno[String(e.personal_no)] && !filterFn(s)) continue;
+    const d = e.details || {};
+    rows.push({
+      'Action Date & Time':  e.created_at || '',
+      'Employee Name':       e.employee_name || '',
+      'Personal No':         e.personal_no || '',
+      'CNIC':                s.cnic || '',
+      'Event':               e.event_type === 'td_created' ? 'Temporary Duty Created'
+                            : e.event_type === 'td_completed' ? 'Temporary Duty Completed'
+                            : 'Temporary Duty Cancelled',
+      'Temporary School':    d.temporary_school_name || '',
+      'EMIS Code':           d.temporary_school_emis || '',
+      'Order Number':        d.order_number || '',
+      'Start Date':          d.start_date || '',
+      'Till Date':           d.end_date || '—',
+      'District':            s.district || '', 'Wing': s.wing || '', 'Tehsil': s.tehsil || '', 'Markaz': s.markaz_name || '',
+      'MARKAZ NAME':         s.markaz_name || '', // alias: runHrClientFilter reads this key
+      _row: e.id,
+      'PERSONAL NO.': e.personal_no || '', 'NAME OF TEACHER': e.employee_name || '',
+    });
+  }
+  const headers = ['Action Date & Time', 'Employee Name', 'Personal No', 'CNIC', 'Event',
+    'Temporary School', 'EMIS Code', 'Order Number', 'Start Date', 'Till Date', 'District', 'Wing', 'Tehsil', 'Markaz'];
+  return { headers, rows };
+}
+
 /** Current logged-in user from localStorage. */
 function _getUser() {
   try {
@@ -882,6 +1030,12 @@ async function apiCall(action, payload) {
           ? ['transfer', 'mutual_transfer']
           : ['promotion'];
         return await _staffEventHistoryRows(eventTypes, reqUser);
+      }
+      if (sheetName === 'AwaitingPosting_History') {
+        return await _awaitingPostingHistoryRows(reqUser);
+      }
+      if (sheetName === 'TD_History') {
+        return await _tdHistoryRows(reqUser);
       }
 
       const statusMap = {
@@ -2622,9 +2776,8 @@ function _hierarchyScopeDbFields(p) {
       let q = _sb.from('staff_awaiting_posting')
         .select('*, staff(name_of_teacher, cnic, designation, bps)')
         .order('entry_date', { ascending: false });
-      if (p.status === 'not_assigned') q = q.in('status', ['awaiting', 'on_temporary_duty']);
-      else if (p.status) q = q.eq('status', p.status);
-      else if (!('status' in p)) q = q.in('status', ['awaiting', 'on_temporary_duty']); // default view; explicit '' means "All"
+      if (p.status) q = q.eq('status', p.status);
+      else if (!('status' in p)) q = q.eq('status', 'awaiting'); // default view; explicit '' means "All"
       if (p.reason) q = q.eq('reason', p.reason);
       if (p.district) q = q.eq('previous_district', p.district);
       if (p.wing) q = q.eq('previous_wing', p.wing);
@@ -2641,6 +2794,13 @@ function _hierarchyScopeDbFields(p) {
           (r.staff?.cnic || '').toLowerCase().includes(kw));
       }
       return { success: true, rows };
+    }
+
+    case 'revertAwaitingPostingAssignment': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const { data, error } = await _sb.rpc('revert_awaiting_posting_assignment', { p_event_id: p.eventId });
+      if (error) return { success: false, message: error.message };
+      return data;
     }
 
     case 'assignAwaitingStaffToSchool': {
@@ -2719,35 +2879,20 @@ function _hierarchyScopeDbFields(p) {
     case 'searchSchoolsForAssignment': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const kw = (p.keyword || '').trim();
+      if (kw.length < 2) return { success: true, rows: [] };
       const isEmis = /^\d+$/.test(kw);
-      // EMIS codes are a fixed 8 digits — searching on a partial code (e.g.
-      // the first 2-3 digits someone happens to be typing) returns a huge,
-      // meaningless page of unrelated schools that all start with the same
-      // digits. So numeric input only triggers a search once the full
-      // 8-digit code has been typed; a name search still starts at 2 chars.
-      if (isEmis ? kw.length < 8 : kw.length < 2) return { success: true, rows: [] };
-      // Awaiting-posting assignment (both Temporary Duty and Permanent
-      // Adjustment) can only ever place an employee at a public school —
-      // private schools are never a valid posting target here, so they
-      // must not appear as search results for either order type.
-      // Outsourced public schools aren't real government postings either
-      // (status = 'Out Sourced'), so they're excluded the same way the
-      // dashboard's active-school counts exclude them.
-      let q = _sb.from('public_schools')
-        .select('emis, school_name, district, wing, tehsil, markaz_name, status')
-        .neq('status', 'Out Sourced')
-        .limit(10);
-      // Once the full 8-digit EMIS is typed there's only ever one possible
-      // match, so this is an exact lookup rather than a "starts with" one.
-      q = isEmis ? q.eq('emis', kw) : q.ilike('school_name', `%${kw}%`);
-      const { data, error } = await q;
-      // Previously any query error here was silently ignored (data would
-      // just be undefined -> treated as "no matches"), so a real DB error
-      // looked identical to "nothing found". Surface it now.
-      if (error) {
-        return { success: false, message: error.message };
-      }
-      const rows = (data || []).map(r => ({ ...r, wing: r.wing || '' }));
+      const [pubRes, privRes] = await Promise.all([
+        isEmis
+          ? _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').eq('emis', kw).limit(10)
+          : _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
+        isEmis
+          ? _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').eq('emis', kw).limit(10)
+          : _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
+      ]);
+      const rows = [
+        ...(pubRes.data || []).map(r => ({ ...r, wing: r.wing || '' })),
+        ...(privRes.data || []).map(r => ({ ...r, wing: '' })),
+      ];
       return { success: true, rows };
     }
 

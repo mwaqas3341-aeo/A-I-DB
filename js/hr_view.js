@@ -100,9 +100,11 @@ const HR_SHEET_META = {
   'Termination':        { title:'Terminations',       sub:'Staff whose service was terminated' },
   'Transfer_History':   { title:'Transfer History',   sub:'All transfer records and movement history' },
   'Promotions_History': { title:'Promotions History', sub:'All promotion events and scale changes' },
-  'Deleted_Archive':    { title:'Deleted Archive',    sub:'Soft-deleted records stored for audit' }
+  'TD_History':          { title:'Temporary Duty History', sub:'Every Temporary Duty created, completed, or cancelled' },
+  'AwaitingPosting_History': { title:'Awaiting Posting Issues', sub:'Permanent assignments made from Awaiting Posting — reversible if made in error' },
+  'Deleted_Archive':    { title:'Deleted Archive',      sub:'Soft-deleted records stored for audit' }
 };
-const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','Promotions_History'];
+const REVERT_SHEETS = ['Retirement','Resignation','Deceased','Termination','Deleted_Archive','Transfer_History','Promotions_History','AwaitingPosting_History'];
 
 // Must match the `changes_made_by` / `created_by` value written by BOTH
 // automation paths: the client-side check in openStaffFormModal('view', …)
@@ -188,11 +190,29 @@ function openHrModule() {
     loadKpiCardsForModule('hr', 'hrKpiGrid', 'hrKpiSection');
   }
   refreshHrDashboardCounts();
+  _hrApplyPermissionGating();
   if (hrSchoolCache.length === 0) {
     _hrLoadSchoolHierarchy(1);
   } else {
     buildHrDistrictDropdown();
   }
+}
+
+// Awaiting Posting Issues (and its Temporary Duty History sibling) show
+// who permanently assigned/reverted an employee and let an authorized
+// user undo it — same authorization bar as making the assignment in
+// the first place (admin, or Editor access_type). Everyone else
+// shouldn't even see the menu entry, per spec, not just be blocked on
+// click — RLS on staff_events/staff_awaiting_posting already blocks
+// the underlying data for non-editors regardless of this UI gate.
+function _hrApplyPermissionGating() {
+  const authorized = typeof currentUser !== 'undefined' && currentUser &&
+    (String(currentUser.role || '').toLowerCase() === 'admin' ||
+     String(currentUser.access_type || '').toLowerCase() === 'editor');
+  ['hrNavAwaitingIssues', 'hrNavTdHistory'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = authorized ? '' : 'none';
+  });
 }
 
 // Retries the school-list fetch (which feeds all four filter dropdowns)
@@ -1072,10 +1092,15 @@ function openHrMenu(btn, idx) {
       <button type="button" class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
       ${isAdminUser ? `<button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>` : ''}`;
   } else if (isRevert) {
+    const row = hrFilteredResults[idx];
     const revertLabel = hrCurrentSheetView === 'Transfer_History'  ? '↩ Undo Transfer'
                       : hrCurrentSheetView === 'Promotions_History' ? '↩ Undo Promotion'
+                      : hrCurrentSheetView === 'AwaitingPosting_History' ? '↩ Revert to Awaiting Posting'
                       : '↩ Revert to Active Staff';
-    items += `<button type="button" class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
+    const canRevert = hrCurrentSheetView !== 'AwaitingPosting_History' || row._canRevert;
+    if (canRevert) {
+      items += `<button type="button" class="hr-action-item" onclick="revertHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">${revertLabel}</button>`;
+    }
   }
 
   menu.innerHTML = items;
@@ -1924,8 +1949,27 @@ function confirmDeleteHrRow(row) {
 // REPLACE THE ENTIRE revertHrRow function with this:
 function revertHrRow(row) {
   // Transfer_History uses different column names than Staff sheet
-  const pno  = row['PERSONAL NO.'] || row['Employee Personal No'] || '';
+  const pno  = row['PERSONAL NO.'] || row['Employee Personal No'] || row['Personal No'] || '';
   const name = row['NAME OF TEACHER'] || row['Employee Name'] || pno || 'this record';
+
+  if (hrCurrentSheetView === 'AwaitingPosting_History') {
+    const msg = 'Are you sure?\n\nThis will permanently remove ' + name + ' from the assigned school ' +
+      '(' + (row['Assigned School'] || '—') + ') and move them back into the Awaiting Posting list.\n\n' +
+      'This action will be recorded in history.';
+    if (!confirm(msg)) return;
+    document.getElementById('hrResultsContainer').innerHTML = '<div class="hr-empty-state">Reverting…</div>';
+    google.script.run
+      .withSuccessHandler(res => {
+        hrShowToast(res.success ? (res.message || 'Reverted.') : (res.message || res.error || 'Failed.'), res.success);
+        hrInvalidateCache('AwaitingPosting_History');
+        hrInvalidateCache('Staff');
+        applyHrFilter();
+        if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
+      })
+      .withFailureHandler(err => hrShowToast('Revert failed: ' + err.message, false))
+      .revertAwaitingPostingAssignment({ eventId: row._row });
+    return;
+  }
 
   let msg = 'Revert "' + name + '" back to Active Staff?\nRemoves record from ' + hrCurrentSheetView + '.';
   if (hrCurrentSheetView === 'Transfer_History') {
