@@ -18,9 +18,26 @@ const TD_STATUS_LABELS = {
 };
 
 // ── OPEN VIEW ─────────────────────────────────────────────────────────
+// Per request: this should open just like Active Staff / Retirement /
+// etc. — a tab inside the same HR grid, not a separate page. Reuses
+// the sidebar button's own click handler (title, filter reset, data
+// load) rather than duplicating that logic here.
 function openTemporaryDutyView() {
-  switchGlobalTab('temporaryDutyView', null);
-  applyTemporaryDutyFilter();
+  if (typeof openHrModule === 'function') openHrModule();
+  const btn = document.querySelector('.hr-view-btn[data-sheet="TemporaryDuty"]');
+  if (btn) btn.click();
+}
+
+// Complete/Cancel can be triggered either from the HR grid (normal
+// path now) or, if still reachable, the old dedicated view — refresh
+// whichever one is actually on screen.
+function _tdRefreshAfterAction() {
+  if (typeof hrCurrentSheetView !== 'undefined' && hrCurrentSheetView === 'TemporaryDuty') {
+    hrInvalidateCache('TemporaryDuty');
+    applyHrFilter();
+  } else if (document.getElementById('temporaryDutyView')?.classList.contains('active-view')) {
+    applyTemporaryDutyFilter();
+  }
 }
 
 function applyTemporaryDutyFilter() {
@@ -97,7 +114,7 @@ function tdComplete(tdId) {
       hideLoading();
       if (res.success) {
         showToast(res.message || 'Temporary Duty completed.', 'success');
-        applyTemporaryDutyFilter();
+        _tdRefreshAfterAction();
         if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
       } else showToast('Error: ' + res.message, 'error');
     })
@@ -113,7 +130,7 @@ function tdCancel(tdId) {
       hideLoading();
       if (res.success) {
         showToast(res.message || 'Temporary Duty cancelled.', 'success');
-        applyTemporaryDutyFilter();
+        _tdRefreshAfterAction();
         if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
       } else showToast('Error: ' + res.message, 'error');
     })
@@ -159,53 +176,34 @@ function closeTdAssignModal() {
 }
 
 let tdSchoolSearchDebounce = null;
-let tdLastSchoolMatches = [];
 function tdSearchSchool() {
   const kw = document.getElementById('tdAssignSchoolSearch').value.trim();
   const resultsEl = document.getElementById('tdAssignSchoolResults');
   clearTimeout(tdSchoolSearchDebounce);
-  const isEmisInput = /^\d+$/.test(kw);
-  if (isEmisInput ? kw.length < 8 : kw.length < 2) {
-    resultsEl.innerHTML = (isEmisInput && kw.length > 0)
-      ? `<div style="padding:8px;color:var(--t3);font-size:.82rem">Keep typing — EMIS code is 8 digits (${kw.length}/8).</div>`
-      : '';
-    return;
-  }
+  if (kw.length < 2) { resultsEl.innerHTML = ''; return; }
   resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>';
   tdSchoolSearchDebounce = setTimeout(() => {
     google.script.run
       .withSuccessHandler(res => {
-        if (!res.success) { resultsEl.innerHTML = `<div style="padding:8px;color:var(--bad);font-size:.82rem">${escHtmlAp(res.message || 'Search failed.')}</div>`; return; }
+        if (!res.success) { resultsEl.innerHTML = ''; return; }
         const matches = res.rows || [];
         if (!matches.length) {
           resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
           return;
         }
-        tdLastSchoolMatches = matches;
-        resultsEl.innerHTML = matches.map((s, i) => `
-          <div class="ap-school-result" onclick="tdSelectSchoolIdx(${i})">
-            <strong>EMIS ${escHtmlAp(s.emis || '')}</strong>
-            <div style="color:var(--t3);font-size:.78rem">
-              ${escHtmlAp(s.school_name || '')}<br>
-              ${[s.markaz_name, s.wing, s.tehsil, s.district].filter(Boolean).map(escHtmlAp).join(' · ')}
-            </div>
+        resultsEl.innerHTML = matches.map(s => `
+          <div class="ap-school-result" onclick="tdSelectSchool('${s.emis}', '${escHtmlAp(s.school_name || '').replace(/'/g, "\\'")}')">
+            <strong>${escHtmlAp(s.school_name || '')}</strong>
+            <span style="color:var(--t3);font-size:.78rem"> — EMIS ${escHtmlAp(s.emis || '')} · ${escHtmlAp(s.tehsil || '')}, ${escHtmlAp(s.district || '')}</span>
           </div>`).join('');
       })
       .withFailureHandler(() => { resultsEl.innerHTML = '<div style="padding:8px;color:var(--bad);font-size:.82rem">Search failed.</div>'; })
       .searchSchoolsForAssignment({ keyword: kw });
   }, 300);
 }
-function tdSelectSchoolIdx(i) {
-  const s = tdLastSchoolMatches[i];
-  if (!s) return;
-  tdSelectSchool(s.emis, s.school_name || '', s);
-}
-function tdSelectSchool(emis, name, details) {
-  document.getElementById('tdAssignSchoolSearch').value = emis;
-  const detailLine = details
-    ? `${escHtmlAp(name)} — ${[details.markaz_name, details.wing, details.tehsil, details.district].filter(Boolean).map(escHtmlAp).join(' · ')}`
-    : escHtmlAp(name);
-  document.getElementById('tdAssignSchoolResults').innerHTML = `<div style="padding:8px;color:var(--good,#166534);font-size:.82rem">✓ Selected — ${detailLine}</div>`;
+function tdSelectSchool(emis, name) {
+  document.getElementById('tdAssignSchoolSearch').value = `${name} (EMIS ${emis})`;
+  document.getElementById('tdAssignSchoolResults').innerHTML = '';
   document.getElementById('tdAssignTargetEmis').value = emis;
 }
 
@@ -231,7 +229,7 @@ function submitTdAssign() {
       if (res.success) {
         showToast(res.message || 'Temporary Duty created.', 'success');
         closeTdAssignModal();
-        if (document.getElementById('temporaryDutyView')?.classList.contains('active-view')) applyTemporaryDutyFilter();
+        _tdRefreshAfterAction();
         if (typeof hrInvalidateCache === 'function') hrInvalidateCache('Staff');
         if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
       } else {

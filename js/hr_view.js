@@ -94,6 +94,8 @@ function _getJurisdictionSchools() {
 
 const HR_SHEET_META = {
   'Staff':              { title:'Active Staff',       sub:'Browse and manage all active teaching staff records' },
+  'AwaitingPosting':    { title:'Awaiting Posting',    sub:'Employees with no permanent school posting' },
+  'TemporaryDuty':      { title:'Temporary Duty',      sub:'Employees currently on Temporary Duty at another school' },
   'Retirement':         { title:'Retirements',        sub:'Staff who have retired from service' },
   'Resignation':        { title:'Resignations',       sub:'Staff who have resigned from service' },
   'Deceased':           { title:'Death Cases',        sub:'Deceased staff records' },
@@ -1091,6 +1093,12 @@ function openHrMenu(btn, idx) {
       <button type="button" class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
       <button type="button" class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
       ${isAdminUser ? `<button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>` : ''}`;
+  } else if (hrCurrentSheetView === 'AwaitingPosting') {
+    items += `<button type="button" class="hr-action-item" onclick="apOpenAssignModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✅ Assign</button>`;
+  } else if (hrCurrentSheetView === 'TemporaryDuty') {
+    items += `
+      <button type="button" class="hr-action-item" onclick="tdComplete(hrFilteredResults[${idx}]._row); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✅ Complete</button>
+      <button type="button" class="hr-action-item" onclick="tdCancel(hrFilteredResults[${idx}]._row); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✖ Cancel</button>`;
   } else if (isRevert) {
     const row = hrFilteredResults[idx];
     const revertLabel = hrCurrentSheetView === 'Transfer_History'  ? '↩ Undo Transfer'

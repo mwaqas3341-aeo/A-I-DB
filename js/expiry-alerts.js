@@ -665,13 +665,40 @@
       .getPrivateDashboardData(activeUser, 'Private');
   }
 
+  // ─── Reusable: fetch + scan, for the main notification bell ───────
+  // Exposed so js/notifications.js can pull these same alert groups
+  // into the unified bell panel instead of this file's own floating
+  // bottom-right popup (which used to fire automatically on every
+  // login/session-restore — that auto-popup is now disabled below;
+  // the scan logic itself is kept and reused).
+  window.eaGetAlerts = function (callback) {
+    var activeUser = _getStoredUser();
+    if (!activeUser || !activeUser.cnic) { callback({ regExpired: [], bldgExpired: [], hlthExpired: [] }); return; }
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.success) { callback({ regExpired: [], bldgExpired: [], hlthExpired: [] }); return; }
+        var rows = res.data || res.rows || [];
+        if (rows.length && Array.isArray(rows[0]) && res.headers && res.headers.length) {
+          rows = rows.map(function (row) {
+            var obj = {};
+            res.headers.forEach(function (h, i) { obj[h] = row[i] !== undefined ? row[i] : ''; });
+            return obj;
+          });
+        }
+        callback(scanRows(rows));
+      })
+      .withFailureHandler(function () { callback({ regExpired: [], bldgExpired: [], hlthExpired: [] }); })
+      .getPrivateDashboardData(activeUser, 'Private');
+  };
+
   // ─── Hook: MutationObserver on #appWrapper ────────────────────────
-  // Watches for #appWrapper becoming visible (display:block).
-  // This fires for BOTH:
-  //   • Session restore  (DOMContentLoaded → restoreSession → enterApp)
-  //   • Fresh login      (user submits login form → enterApp)
-  // The old window.load + enterApp-wrap approach missed session restores
-  // because DOMContentLoaded (where restoreSession runs) fires BEFORE load.
+  // DISABLED — the floating bottom-right popup used to fire on every
+  // sign-in / session-restore. Per request, Private School expiry
+  // alerts now live in the main notification bell (js/notifications.js)
+  // instead of appearing on the front end at login. The scan logic
+  // above (scanRows, eaGetAlerts) is still used by that bell; only
+  // this auto-trigger is turned off.
+  /*
   document.addEventListener('DOMContentLoaded', function () {
     var appWrapper = document.getElementById('appWrapper');
     if (!appWrapper) {
@@ -705,5 +732,6 @@
     // before this script runs (e.g. very fast session restore)
     onAppVisible();
   });
+  */
 
 })(); // end IIFE — nothing leaks to global scope except _eaToggle* helpers

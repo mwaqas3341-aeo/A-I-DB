@@ -30,17 +30,23 @@ const AP_STATUS_LABELS = {
 };
 
 // ── OPEN VIEW ─────────────────────────────────────────────────────────
+// Per request: opens as a tab inside the same HR grid Active Staff /
+// Retirement / etc. use, not a separate page.
 function openAwaitingPostingView() {
-  switchGlobalTab('awaitingPostingView', null);
-  if (typeof hrSchoolCache !== 'undefined' && hrSchoolCache.length) {
-    apSchoolCache = hrSchoolCache;   // reuse the HR module's cache if already loaded
-    apBuildDistrictDropdown();
-  } else if (apSchoolCache.length) {
-    apBuildDistrictDropdown();
-  } else {
-    _apLoadSchoolHierarchy();
+  if (typeof openHrModule === 'function') openHrModule();
+  const btn = document.querySelector('.hr-view-btn[data-sheet="AwaitingPosting"]');
+  if (btn) btn.click();
+}
+
+// Refresh whichever context (HR grid vs old dedicated view, if still
+// reachable) is actually on screen after an assignment.
+function _apRefreshAfterAction() {
+  if (typeof hrCurrentSheetView !== 'undefined' && hrCurrentSheetView === 'AwaitingPosting') {
+    hrInvalidateCache('AwaitingPosting');
+    applyHrFilter();
+  } else if (document.getElementById('awaitingPostingView')?.classList.contains('active-view')) {
+    applyAwaitingPostingFilter();
   }
-  applyAwaitingPostingFilter();
 }
 
 function _apLoadSchoolHierarchy() {
@@ -282,8 +288,24 @@ function apPrint() {
 }
 
 // ── ASSIGN TO SCHOOL ────────────────────────────────────────────────────
-function apOpenAssignModal(awaitingId) {
-  apAssignTargetRow = apRows.find(r => String(r.id) === String(awaitingId));
+function apOpenAssignModal(rowOrId) {
+  if (rowOrId && typeof rowOrId === 'object') {
+    // Called from the HR grid's Awaiting Posting tab — row is shaped by
+    // _awaitingPostingSheetRows (headers/rows), not the raw
+    // staff_awaiting_posting record apRows (the old dedicated page) held.
+    apAssignTargetRow = {
+      id: rowOrId._row,
+      personal_no: rowOrId['Personal No'] || rowOrId['PERSONAL NO.'] || '',
+      previous_school_name: rowOrId['Previous School'] || '',
+      staff: {
+        name_of_teacher: rowOrId['Employee Name'] || rowOrId['NAME OF TEACHER'] || '',
+        designation: rowOrId['Designation'] || '',
+        bps: rowOrId['BPS'] || '',
+      },
+    };
+  } else {
+    apAssignTargetRow = apRows.find(r => String(r.id) === String(rowOrId));
+  }
   if (!apAssignTargetRow) return;
   const staff = apAssignTargetRow.staff || {};
   document.getElementById('apAssignEmpName').textContent = staff.name_of_teacher || apAssignTargetRow.personal_no;
@@ -372,7 +394,7 @@ function apConfirmAssign() {
         if (res.success) {
           showToast(res.message || 'Temporary Duty created.', 'success');
           apCloseAssignModal();
-          applyAwaitingPostingFilter();
+          _apRefreshAfterAction();
           if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
         } else {
           showToast('Error: ' + res.message, 'error');
@@ -400,7 +422,7 @@ function apConfirmAssign() {
       if (res.success) {
         showToast(res.message || 'Employee assigned.', 'success');
         apCloseAssignModal();
-        applyAwaitingPostingFilter();
+        _apRefreshAfterAction();
         if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
       } else {
         showToast('Error: ' + res.message, 'error');

@@ -487,6 +487,84 @@ async function _tdHistoryRows(reqUser) {
   return { headers, rows };
 }
 
+/**
+ * Live Awaiting Posting list, shaped for the SAME generic HR table
+ * (headers/rows/renderHrTable/openHrMenu) that Staff, Retirement, etc.
+ * already use — per request, this should open exactly like those
+ * tabs rather than a separate bespoke page. RLS on
+ * staff_awaiting_posting already scopes rows to the signed-in user
+ * (editor/admin + jurisdiction), same as the old dedicated loader did.
+ */
+async function _awaitingPostingSheetRows() {
+  const { data, error } = await _sb.from('staff_awaiting_posting')
+    .select('*, staff(name_of_teacher, cnic, designation, bps)')
+    .in('status', ['awaiting', 'on_temporary_duty'])
+    .order('entry_date', { ascending: false });
+  if (error) return { headers: [], rows: [] };
+
+  const AP_REASON_LABELS = {
+    outsourced_school: 'Outsourced School', school_closed: 'School Closed', removed: 'Removed',
+    transfer_completed: 'Transfer Completed', manual_revert: 'Reverted (Awaiting Posting Issues)', manual: 'Manual',
+  };
+  const rows = (data || []).map(r => {
+    const s = r.staff || {};
+    return {
+      'Employee Name':    s.name_of_teacher || '',
+      'Personal No':       r.personal_no || '',
+      'CNIC':              s.cnic || '',
+      'Designation':       s.designation || '',
+      'BPS':               s.bps != null ? String(s.bps) : '',
+      'Status':            r.status === 'on_temporary_duty' ? 'On Temporary Duty' : 'Awaiting Posting',
+      'Previous School':   r.previous_school_name || '',
+      'Previous Tehsil':   r.previous_tehsil || '',
+      'Previous Markaz':   r.previous_markaz || '',
+      'Previous District': r.previous_district || '',
+      'Entry Date':        r.entry_date || '',
+      'Reason':            AP_REASON_LABELS[r.reason] || r.reason || '',
+      'Remarks':           r.remarks || '',
+      _row:                r.id,
+      _canAssign:          true,
+      'PERSONAL NO.':      r.personal_no || '',
+      'NAME OF TEACHER':   s.name_of_teacher || '',
+      'District':          r.previous_district || '', 'Wing': r.previous_wing || '',
+      'Tehsil':            r.previous_tehsil || '',    'MARKAZ NAME': r.previous_markaz || '',
+    };
+  });
+  const headers = ['Employee Name', 'Personal No', 'CNIC', 'Designation', 'BPS', 'Status',
+    'Previous School', 'Previous Tehsil', 'Previous Markaz', 'Previous District', 'Entry Date', 'Reason', 'Remarks'];
+  return { headers, rows };
+}
+
+/** Live Temporary Duty list, same generic-table treatment as above. */
+async function _temporaryDutySheetRows() {
+  const { data, error } = await _sb.from('staff_temporary_duty')
+    .select('*, staff(name_of_teacher, cnic, designation, bps)')
+    .eq('status', 'active')
+    .order('start_date', { ascending: false });
+  if (error) return { headers: [], rows: [] };
+
+  const rows = (data || []).map(r => {
+    const s = r.staff || {};
+    return {
+      'Employee Name':      s.name_of_teacher || '',
+      'Personal No':         r.personal_no || '',
+      'CNIC':                s.cnic || '',
+      'Designation':         s.designation || '',
+      'Original School':    r.original_school_name || '',
+      'Temporary School':   r.temporary_school_name || '',
+      'Start Date':          r.start_date || '',
+      'Till Date':            r.end_date || '—',
+      'Order Number':        r.order_number || '',
+      _row:                   r.id,
+      'PERSONAL NO.':        r.personal_no || '',
+      'NAME OF TEACHER':     s.name_of_teacher || '',
+    };
+  });
+  const headers = ['Employee Name', 'Personal No', 'CNIC', 'Designation',
+    'Original School', 'Temporary School', 'Start Date', 'Till Date', 'Order Number'];
+  return { headers, rows };
+}
+
 /** Current logged-in user from localStorage. */
 function _getUser() {
   try {
@@ -1036,6 +1114,12 @@ async function apiCall(action, payload) {
       }
       if (sheetName === 'TD_History') {
         return await _tdHistoryRows(reqUser);
+      }
+      if (sheetName === 'AwaitingPosting') {
+        return await _awaitingPostingSheetRows();
+      }
+      if (sheetName === 'TemporaryDuty') {
+        return await _temporaryDutySheetRows();
       }
 
       const statusMap = {
@@ -2821,6 +2905,68 @@ function _hierarchyScopeDbFields(p) {
     // jurisdiction (and to editors/admins only), same as every other
     // read of these two tables, so no extra client-side filtering is
     // needed here.
+    // Main-dashboard notification bell — every user-visible automatic
+    // change the SYSTEM made on its own (not a manual HR action):
+    //   • a school marked outsourced/closed moving its staff into
+    //     Awaiting Posting (staff_awaiting_posting reason column)
+    //   • any other reason a staff member landed in Awaiting Posting
+    //   • staff auto-retired at age 60 by the nightly job
+    // RLS on staff_awaiting_posting/staff_events already scopes results
+    // to what this user is allowed to see (editor/admin + jurisdiction),
+    // same as everywhere else these tables are read.
+    case 'getSystemNotifications': {
+      const sinceIso = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString(); // last 60 days
+
+      const [{ data: awaitingRows }, { data: retiredRows }] = await Promise.all([
+        _sb.from('staff_awaiting_posting')
+          .select('id, personal_no, previous_school_name, previous_district, previous_tehsil, previous_markaz, reason, remarks, entry_date, created_at, staff(name_of_teacher)')
+          .gte('created_at', sinceIso)
+          .order('created_at', { ascending: false }),
+        _sb.from('staff_events')
+          .select('id, personal_no, employee_name, created_at, details')
+          .eq('event_type', 'retired')
+          .eq('created_by', 'System (Auto - Age 60)')
+          .gte('created_at', sinceIso)
+          .order('created_at', { ascending: false }),
+      ]);
+
+      const AP_REASON_LABELS = {
+        outsourced_school: 'School Outsourced', school_closed: 'School Closed', removed: 'Removed',
+        transfer_completed: 'Transfer Completed', manual_revert: 'Manual Revert', manual: 'Manual',
+      };
+      const SYSTEM_REASONS = new Set(['outsourced_school', 'school_closed']); // system-DRIVEN moves specifically
+
+      const notifications = [];
+      (awaitingRows || []).forEach(r => {
+        const isSystemDriven = SYSTEM_REASONS.has(r.reason);
+        notifications.push({
+          id: 'ap_' + r.id,
+          category: isSystemDriven ? 'school_change' : 'awaiting_posting',
+          title: isSystemDriven
+            ? `School ${AP_REASON_LABELS[r.reason] || r.reason}: ${r.previous_school_name || 'a school'}`
+            : `${(r.staff || {}).name_of_teacher || r.personal_no} moved to Awaiting Posting`,
+          detail: `${(r.staff || {}).name_of_teacher || r.personal_no} — was at ${r.previous_school_name || '—'} ` +
+                   `(${[r.previous_markaz, r.previous_tehsil, r.previous_district].filter(Boolean).join(', ') || '—'}). ` +
+                   `Reason: ${AP_REASON_LABELS[r.reason] || r.reason || 'Not specified'}.${r.remarks ? ' ' + r.remarks : ''}`,
+          time: r.created_at || r.entry_date,
+        });
+      });
+      (retiredRows || []).forEach(e => {
+        const d = e.details || {};
+        notifications.push({
+          id: 'rt_' + e.id,
+          category: 'auto_retired',
+          title: `${e.employee_name || e.personal_no} auto-retired by system`,
+          detail: `${e.employee_name || e.personal_no} reached retirement age and was automatically moved to Retired status` +
+                   (d.effective_date ? ` effective ${d.effective_date}.` : '.'),
+          time: e.created_at,
+        });
+      });
+
+      notifications.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+      return { success: true, notifications };
+    }
+
     case 'getHrSummaryCounts': {
       const [{ count: awaitingCount, error: e1 }, { count: tdActiveCount, error: e2 }] = await Promise.all([
         _sb.from('staff_awaiting_posting').select('id', { count: 'exact', head: true })
