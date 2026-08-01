@@ -323,7 +323,7 @@ function apSearchAssignSchool() {
   apSchoolSearchDebounce = setTimeout(() => {
     google.script.run
       .withSuccessHandler(res => {
-        if (!res.success) { resultsEl.innerHTML = ''; return; }
+        if (!res.success) { resultsEl.innerHTML = `<div style="padding:8px;color:var(--bad);font-size:.82rem">${escHtmlAp(res.message || 'Search failed.')}</div>`; return; }
         const matches = res.rows || [];
         if (!matches.length) {
           resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
