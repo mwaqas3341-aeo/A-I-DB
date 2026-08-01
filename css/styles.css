@@ -669,7 +669,8 @@
 
 #staffFormModal,
 #transferModal,
-#promotionModal {
+#promotionModal,
+#apAssignModal {
   display: none;
   position: fixed;
   inset: 0;
@@ -683,13 +684,15 @@
 #staffFormModal:not(.hidden),
 #transferModal:not(.hidden),
 #promotionModal:not(.hidden),
-#mutualTransferModal:not(.hidden) {
+#mutualTransferModal:not(.hidden),
+#apAssignModal:not(.hidden) {
   display: flex !important;
 }
 #staffFormModal .modal-content,
 #transferModal .modal-content,
 #promotionModal .modal-content,
-#mutualTransferModal .modal-content {
+#mutualTransferModal .modal-content,
+#apAssignModal .modal-content {
   background: white;
   border-radius: 16px;
   width: 100%;
