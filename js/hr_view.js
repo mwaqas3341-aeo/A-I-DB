@@ -187,6 +187,7 @@ function openHrModule() {
   if (typeof loadKpiCardsForModule === 'function') {
     loadKpiCardsForModule('hr', 'hrKpiGrid', 'hrKpiSection');
   }
+  refreshHrDashboardCounts();
   if (hrSchoolCache.length === 0) {
     _hrLoadSchoolHierarchy(1);
   } else {
@@ -441,6 +442,7 @@ function runHrClientFilter(sheet) {
   if (sheet === 'Staff') {
     document.getElementById('hrSummaryCards').style.display = '';
     updateSummaryCards(hrFilteredResults);
+    refreshHrDashboardCounts();
   }
 
   renderHrTable();
@@ -457,9 +459,29 @@ function resetSummaryCards() {
   document.getElementById('scRetiring1Yr').textContent = '—';
   document.getElementById('scNoHead').textContent      = '—';
   document.getElementById('scHeadCount').textContent   = '—';
-  document.getElementById('scEmisMismatch').textContent = '—';
-  document.getElementById('scEmisMismatchSub').textContent = 'Check list';
-  window._hrEmisMismatchRows = null;  // force a fresh backend check next time it's opened
+  document.getElementById('scAwaitingPosting').textContent   = '—';
+  document.getElementById('scTempAdjustments').textContent   = '—';
+}
+
+// Awaiting Posting / Temporary Adjustments cards are NOT scoped to the
+// current Staff-tab filter selection — they reflect the true current
+// total (RLS-scoped to the signed-in user), same as the dedicated
+// Awaiting Posting / Temporary Duty views themselves. Called on HR
+// module load, on every Staff filter apply/refresh, and after any
+// action that can change either count (assignment, transfer,
+// promotion, Temporary Duty create/complete/cancel).
+function refreshHrDashboardCounts() {
+  const awaitEl = document.getElementById('scAwaitingPosting');
+  const tdEl    = document.getElementById('scTempAdjustments');
+  if (!awaitEl || !tdEl) return;
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res || !res.success) return;
+      awaitEl.textContent = (res.awaitingCount || 0).toLocaleString();
+      tdEl.textContent    = (res.tdActiveCount || 0).toLocaleString();
+    })
+    .withFailureHandler(() => { /* leave last-known value / em-dash rather than erroring the whole dashboard */ })
+    .getHrSummaryCounts();
 }
 
 function updateSummaryCards(filteredRows) {
@@ -673,8 +695,10 @@ function openEmisMismatchModal() {
         return;
       }
       window._hrEmisMismatchRows = res.rows || [];
-      document.getElementById('scEmisMismatch').textContent = res.count || 0;
-      document.getElementById('scEmisMismatchSub').textContent =
+      const mismatchCountEl = document.getElementById('scEmisMismatch');
+      const mismatchSubEl   = document.getElementById('scEmisMismatchSub');
+      if (mismatchCountEl) mismatchCountEl.textContent = res.count || 0;
+      if (mismatchSubEl) mismatchSubEl.textContent =
         (res.count || 0) > 0 ? 'Check list (' + res.count + ')' : 'No mismatches found';
       _renderEmisMismatchModal(window._hrEmisMismatchRows);
     })

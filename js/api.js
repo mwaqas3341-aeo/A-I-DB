@@ -209,7 +209,14 @@ function _buildUserSchoolFilter(user, opts) {
     if (schoolIds && row[idKey] && schoolIds.has(String(row[idKey]).trim().toLowerCase())) return true;
     return groups.some(g =>
       (!g.district || row.district === g.district) &&
-      (!g.wing     || row.wing === g.wing) &&
+      // row.wing is undefined on tables with no wing column at all
+      // (private_schools) — treat that as "not applicable" rather than
+      // a forced mismatch, same as the SQL RLS functions do (staff_wing
+      // is null OR staff_wing = p_wing). Without this, every Tehsil-
+      // or Wing-scoped user sees zero private schools, since their
+      // scope tag always carries a wing even though private_schools
+      // rows never do.
+      (!g.wing || row.wing == null || row.wing === g.wing) &&
       (!g.tehsil   || row.tehsil === g.tehsil) &&
       (!g.markaz   || row.markaz_name === g.markaz)
     );
@@ -2616,7 +2623,7 @@ function _hierarchyScopeDbFields(p) {
         .select('*, staff(name_of_teacher, cnic, designation, bps)')
         .order('entry_date', { ascending: false });
       if (p.status) q = q.eq('status', p.status);
-      else q = q.eq('status', 'awaiting');
+      else if (!('status' in p)) q = q.eq('status', 'awaiting'); // default view; explicit '' means "All"
       if (p.reason) q = q.eq('reason', p.reason);
       if (p.district) q = q.eq('previous_district', p.district);
       if (p.wing) q = q.eq('previous_wing', p.wing);
@@ -2648,6 +2655,22 @@ function _hierarchyScopeDbFields(p) {
     }
 
     // ── TEMPORARY DUTY ───────────────────────────────────────────────────
+    // Lightweight counts for the HR dashboard summary cards — RLS on
+    // both tables already scopes these to the signed-in user's own
+    // jurisdiction (and to editors/admins only), same as every other
+    // read of these two tables, so no extra client-side filtering is
+    // needed here.
+    case 'getHrSummaryCounts': {
+      const [{ count: awaitingCount, error: e1 }, { count: tdActiveCount, error: e2 }] = await Promise.all([
+        _sb.from('staff_awaiting_posting').select('id', { count: 'exact', head: true })
+          .in('status', ['awaiting', 'on_temporary_duty']),
+        _sb.from('staff_temporary_duty').select('id', { count: 'exact', head: true })
+          .eq('status', 'active'),
+      ]);
+      if (e1 || e2) return { success: false, message: (e1 || e2).message };
+      return { success: true, awaitingCount: awaitingCount || 0, tdActiveCount: tdActiveCount || 0 };
+    }
+
     case 'loadTemporaryDuty': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       let q = _sb.from('staff_temporary_duty')

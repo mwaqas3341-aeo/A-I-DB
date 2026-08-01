@@ -95,8 +95,11 @@ function tdComplete(tdId) {
   google.script.run
     .withSuccessHandler(res => {
       hideLoading();
-      if (res.success) { showToast(res.message || 'Temporary Duty completed.', 'success'); applyTemporaryDutyFilter(); }
-      else showToast('Error: ' + res.message, 'error');
+      if (res.success) {
+        showToast(res.message || 'Temporary Duty completed.', 'success');
+        applyTemporaryDutyFilter();
+        if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
+      } else showToast('Error: ' + res.message, 'error');
     })
     .withFailureHandler(err => { hideLoading(); showToast('Server error: ' + err.message, 'error'); })
     .completeTemporaryDuty({ tdId });
@@ -108,8 +111,11 @@ function tdCancel(tdId) {
   google.script.run
     .withSuccessHandler(res => {
       hideLoading();
-      if (res.success) { showToast(res.message || 'Temporary Duty cancelled.', 'success'); applyTemporaryDutyFilter(); }
-      else showToast('Error: ' + res.message, 'error');
+      if (res.success) {
+        showToast(res.message || 'Temporary Duty cancelled.', 'success');
+        applyTemporaryDutyFilter();
+        if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
+      } else showToast('Error: ' + res.message, 'error');
     })
     .withFailureHandler(err => { hideLoading(); showToast('Server error: ' + err.message, 'error'); })
     .cancelTemporaryDuty({ tdId });
@@ -208,6 +214,7 @@ function submitTdAssign() {
         closeTdAssignModal();
         if (document.getElementById('temporaryDutyView')?.classList.contains('active-view')) applyTemporaryDutyFilter();
         if (typeof hrInvalidateCache === 'function') hrInvalidateCache('Staff');
+        if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
       } else {
         showToast('Error: ' + res.message, 'error');
       }

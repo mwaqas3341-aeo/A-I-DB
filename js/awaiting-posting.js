@@ -132,7 +132,7 @@ function applyAwaitingPostingFilter() {
     tehsil:   document.getElementById('apFilterTehsil')?.value   || '',
     markaz:   document.getElementById('apFilterMarkaz')?.value   || '',
     reason:   document.getElementById('apFilterReason')?.value   || '',
-    status:   document.getElementById('apFilterStatus')?.value   || 'awaiting',
+    status:   (function(){ const el = document.getElementById('apFilterStatus'); return el ? el.value : 'awaiting'; })(),
     keyword:  document.getElementById('apFilterKeyword')?.value  || '',
   };
   const container = document.getElementById('apResultsContainer');
@@ -372,6 +372,7 @@ function apConfirmAssign() {
           showToast(res.message || 'Temporary Duty created.', 'success');
           apCloseAssignModal();
           applyAwaitingPostingFilter();
+          if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
         } else {
           showToast('Error: ' + res.message, 'error');
         }
@@ -399,6 +400,7 @@ function apConfirmAssign() {
         showToast(res.message || 'Employee assigned.', 'success');
         apCloseAssignModal();
         applyAwaitingPostingFilter();
+        if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
       } else {
         showToast('Error: ' + res.message, 'error');
       }
