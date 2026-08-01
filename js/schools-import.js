@@ -16,7 +16,13 @@
  * PRIVATE SCHOOLS: inserts new records. No "Unique ID" column in the
  * template — that ID is system-generated on save, same as the manual
  * Add Private School form, so asking for it would just confuse people.
- * Duplicates are detected by School Name (not an ID nobody has yet).
+ * Duplicates are detected by School Name AND Registeration No (either
+ * one matching an existing record — or another row earlier in the same
+ * file — is enough to flag it); names are compared with whitespace
+ * collapsed so stray tabs/double-spaces in messy source files don't
+ * slip past the check. Flagged rows default to filling in blank DB
+ * cells only; the reviewer can tick "Add as new anyway" per row to
+ * insert it as a separate record regardless.
  * District/Tehsil/Markaz handling depends on the uploader's own
  * assigned jurisdiction(s):
  *   • Admin (no restriction)         → typed freely in the sheet.
@@ -53,7 +59,7 @@ const SCHOOL_IMPORT_CONFIG = {
     colMap: () => getPrivColMap(),
     hasWing: false, // private_schools has no Wing column in this system
     updateOnly: false,
-    dupCheckHeader: 'School Name',
+    dupCheckHeader: 'School Name', // also cross-checked against Registeration No — see _siBuildPrivatePreview
     requiredHeaders: ['School Name'],
     confirmLabel: 'Import These Records',
     templateFile: 'Private_Schools_Import_Template.xlsx',
@@ -132,14 +138,14 @@ function openSchoolImportModal(kind) {
   let instructions = cfg.instructions || '';
   if (kind === 'private') {
     if (_siJurMode.mode === 'admin') {
-      instructions = "Download the template below, fill in whatever historical records you have (leave columns blank if unknown), then upload it here. New School Names are added as new records; rows whose School Name already exists won't create a duplicate — instead, any DB cell that's currently empty gets filled in from the file (fields that already have a value are never overwritten).";
+      instructions = "Download the template below, fill in whatever historical records you have (leave columns blank if unknown), then upload it here. New schools are added as new records; a row that matches an existing school by School Name OR Registration No is flagged as a possible duplicate — its empty DB cells get filled in from the file (fields that already have a value are never overwritten), and it's not inserted as a second record unless you tick \"Add anyway\" on the Review step.";
       scopeNote.style.display = 'none';
     } else if (_siJurMode.mode === 'single') {
       const j = _siJurMode.jur[0];
-      instructions = `District/Tehsil/Markaz aren't in the template — every row you upload will automatically be saved under your own jurisdiction (${_siJurLabel(j)}). Just fill in the school details. Rows whose School Name already exists won't create a duplicate — instead, any empty DB cell gets filled in from the file, without overwriting fields that already have a value.`;
+      instructions = `District/Tehsil/Markaz aren't in the template — every row you upload will automatically be saved under your own jurisdiction (${_siJurLabel(j)}). Just fill in the school details. A row matching an existing school by School Name OR Registration No is flagged as a possible duplicate — its empty DB cells get filled in from the file, and it's not inserted as a second record unless you tick "Add anyway" on the Review step.`;
       scopeNote.style.display = 'none';
     } else {
-      instructions = "You're assigned to more than one jurisdiction, so District/Tehsil/Markaz can't be guessed automatically — on the Review step you'll pick which of your assigned jurisdictions each row belongs to from a dropdown. Rows whose School Name already exists won't create a duplicate — instead, any empty DB cell gets filled in from the file, without overwriting fields that already have a value.";
+      instructions = "You're assigned to more than one jurisdiction, so District/Tehsil/Markaz can't be guessed automatically — on the Review step you'll pick which of your assigned jurisdictions each row belongs to from a dropdown. A row matching an existing school by School Name OR Registration No is flagged as a possible duplicate — its empty DB cells get filled in from the file, and it's not inserted as a second record unless you tick \"Add anyway\".";
       scopeNote.innerHTML = `<i class="bi bi-shield-lock"></i> Your assigned jurisdictions: <b>${_siJurMode.jur.map(_siJurLabel).map(escHtml).join(' &nbsp;|&nbsp; ')}</b>`;
       scopeNote.style.display = '';
     }
@@ -301,20 +307,57 @@ async function _siBuildPrivatePreview(cfg, targetHeaders) {
   const get = (raw, h) => _siMapping[h] ? String(raw[_siMapping[h]] || '').trim() : '';
   const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
 
-  const norm = s => s.trim().toLowerCase();
+  // Collapse internal whitespace (stray tabs, double spaces from messy
+  // source files) so "Foo  Bar" and "Foo Bar" are recognized as the
+  // same school instead of silently creating a second record.
+  const normName = s => (s || '').toString().replace(/\s+/g, ' ').trim().toLowerCase();
+  const REGNO_BLANKS = new Set(['', 'na', 'n/a', 'none', 'nil', '-', '--']);
+  const normReg = s => {
+    const v = (s || '').toString().replace(/\s+/g, ' ').trim().toLowerCase();
+    return REGNO_BLANKS.has(v) ? '' : v;
+  };
+
   // Fetch full existing rows (not just the name) so duplicates can be
   // diffed field-by-field and their blank cells filled in, instead of
   // just being flagged and skipped.
   const { data: existingRows } = await _sb.from(cfg.table).select('*');
   const existingByName = new Map();
-  (existingRows || []).forEach(r => existingByName.set(norm(r.school_name || ''), r));
+  const existingByReg = new Map();
+  (existingRows || []).forEach(r => {
+    const n = normName(r.school_name);
+    if (n) existingByName.set(n, r);
+    const g = normReg(r.registration_no);
+    if (g) existingByReg.set(g, r);
+  });
 
-  _siPreviewRows = _siRawRows.map((raw) => {
+  // Two rows in the SAME upload that share a name or reg no would both
+  // sail through as "new" under a DB-only check — track what's already
+  // been claimed earlier in this file so the second one gets flagged too.
+  const seenNameInFile = new Map();
+  const seenRegInFile = new Map();
+
+  _siPreviewRows = _siRawRows.map((raw, rowIdx) => {
     const row = {};
     targetHeaders.forEach(h => { row[h] = get(raw, h); });
     const missing = cfg.requiredHeaders.filter(h => !row[h]);
-    const existing = row['School Name'] ? existingByName.get(norm(row['School Name'])) : null;
-    const isDuplicate = !!existing;
+
+    const nName = normName(row['School Name']);
+    const nReg = normReg(row['Registeration No']);
+
+    const dbNameHit = nName ? existingByName.get(nName) : null;
+    const dbRegHit = nReg ? existingByReg.get(nReg) : null;
+    const fileNameHitIdx = nName ? seenNameInFile.get(nName) : undefined;
+    const fileRegHitIdx = nReg ? seenRegInFile.get(nReg) : undefined;
+
+    const existing = dbNameHit || dbRegHit || null; // best DB record to diff/fill against
+    const isDbDuplicate = !!(dbNameHit || dbRegHit);
+    const isFileDuplicate = fileNameHitIdx !== undefined || fileRegHitIdx !== undefined;
+    const isDuplicate = isDbDuplicate || isFileDuplicate;
+
+    const dupReasons = [];
+    if (dbNameHit) dupReasons.push('School Name matches an existing record');
+    if (dbRegHit && dbRegHit !== dbNameHit) dupReasons.push(`Registration No "${row['Registeration No']}" matches an existing record`);
+    if (isFileDuplicate) dupReasons.push(`Also appears earlier in this file (row ${((fileNameHitIdx ?? fileRegHitIdx)) + 2})`);
 
     let location, jurIndex = null;
     if (_siJurMode.mode === 'single') {
@@ -327,23 +370,27 @@ async function _siBuildPrivatePreview(cfg, targetHeaders) {
       location = { district: row['District'] || '', tehsil: row['Tehsil'] || '', markaz_name: row['Markaz Name'] || '' };
     }
 
-    const locMissing = [];
-    if (!isDuplicate) {
-      if (_siJurMode.mode === 'admin' && !location.district) locMissing.push('District');
-      if (_siJurMode.mode === 'admin' && !location.tehsil) locMissing.push('Tehsil');
-      if (!location.markaz_name) locMissing.push('Markaz Name');
-    }
+    // Location is only required for rows that will actually be inserted
+    // as new records. Duplicates default to a "fill blank cells" action
+    // (or, for a same-file-only duplicate with no DB match, to being
+    // skipped) — neither needs location. It becomes required again the
+    // moment the reviewer ticks "Add as new anyway" (see forceAdd toggle).
+    const locMissingRaw = [];
+    if (_siJurMode.mode === 'admin' && !location.district) locMissingRaw.push('District');
+    if (_siJurMode.mode === 'admin' && !location.tehsil) locMissingRaw.push('Tehsil');
+    if (!location.markaz_name) locMissingRaw.push('Markaz Name');
+    const locMissing = isDuplicate ? [] : locMissingRaw;
 
     let status = 'ok';
     if (missing.length || locMissing.length) status = 'missing';
     else if (isDuplicate) status = 'duplicate';
 
-    // For duplicates: figure out which existing DB columns are blank
-    // and would get filled in from this row, plus any fields where
-    // both sides are non-blank but differ (a real conflict - those are
+    // For duplicates matched to a real existing DB record: figure out
+    // which existing columns are blank and would get filled in, plus any
+    // fields where both sides are non-blank but differ (a real conflict —
     // left untouched, never silently overwritten).
     let blankFields = [], diffs = [];
-    if (isDuplicate) {
+    if (existing) {
       targetHeaders.forEach(h => {
         if (h === 'School Name' || SI_LOCATION_HEADERS.includes(h)) return;
         const col = reverseMap[h];
@@ -356,7 +403,14 @@ async function _siBuildPrivatePreview(cfg, targetHeaders) {
       });
     }
 
-    return { row, status, missing: missing.concat(locMissing), uniqueVal: row['School Name'], location, jurIndex, existing, blankFields, diffs };
+    if (nName && !seenNameInFile.has(nName)) seenNameInFile.set(nName, rowIdx);
+    if (nReg && !seenRegInFile.has(nReg)) seenRegInFile.set(nReg, rowIdx);
+
+    return {
+      row, status, missing: missing.concat(locMissing), uniqueVal: row['School Name'], location, jurIndex,
+      existing, blankFields, diffs, dupReasons, locMissingRaw,
+      forceAdd: false, // reviewer can flip this on to insert a flagged row as a brand-new record anyway
+    };
   });
 }
 
@@ -383,13 +437,14 @@ function _siResolveJurEntry(j, row) {
 
 function siOnRowJurisdictionChange(idx, newJurIndex) {
   const r = _siPreviewRows[idx];
-  const wasDuplicate = r.status === 'duplicate' || !!r.existing;
+  const isDuplicate = r.status === 'duplicate';
   r.jurIndex = Number(newJurIndex);
   r.location = _siResolveJurEntry(_siJurMode.jur[r.jurIndex], r.row);
-  const locMissing = wasDuplicate ? [] : (r.location.markaz_name ? [] : ['Markaz Name']);
+  r.locMissingRaw = r.location.markaz_name ? [] : ['Markaz Name'];
+  const locMissing = isDuplicate ? [] : r.locMissingRaw;
   const baseMissing = SCHOOL_IMPORT_CONFIG.private.requiredHeaders.filter(h => !r.row[h]);
   r.missing = baseMissing.concat(locMissing);
-  r.status = (baseMissing.length || locMissing.length) ? 'missing' : (wasDuplicate ? 'duplicate' : 'ok');
+  r.status = (baseMissing.length || locMissing.length) ? 'missing' : (isDuplicate ? 'duplicate' : 'ok');
   _siRenderPreview(SCHOOL_IMPORT_CONFIG.private);
 }
 
@@ -397,16 +452,19 @@ function _siRenderPreview(cfg) {
   const counts = _siPreviewRows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
   document.getElementById('si_previewCount').textContent = _siPreviewRows.length;
 
-  const fillableDupes = _siPreviewRows.filter(r => r.status === 'duplicate' && r.blankFields && r.blankFields.length).length;
-  const emptyDupes = counts.duplicate ? counts.duplicate - fillableDupes : 0;
+  const isPrivate = _siKind === 'private';
+  const fillableDupes = _siPreviewRows.filter(r => r.status === 'duplicate' && !r.forceAdd && r.blankFields && r.blankFields.length).length;
+  const forcedDupes = _siPreviewRows.filter(r => r.status === 'duplicate' && r.forceAdd).length;
+  const noopDupes = (counts.duplicate || 0) - fillableDupes - forcedDupes;
 
   const parts = [`<span style="color:var(--ok)"><i class="bi bi-check-circle"></i> ${counts.ok || 0} ready to ${cfg.updateOnly ? 'update' : 'import'}</span>`];
   if (cfg.updateOnly) {
     parts.push(`<span style="color:var(--warn)"><i class="bi bi-question-circle"></i> ${counts.notfound || 0} Emis not found</span>`);
     parts.push(`<span style="color:var(--warn)"><i class="bi bi-geo-alt"></i> ${counts.outside || 0} outside your jurisdiction</span>`);
   } else {
-    parts.push(`<span style="color:var(--warn)"><i class="bi bi-pencil-square"></i> ${fillableDupes} existing school(s) — will fill empty cells only</span>`);
-    if (emptyDupes) parts.push(`<span style="color:var(--t3)"><i class="bi bi-copy"></i> ${emptyDupes} already exist, nothing new to fill in</span>`);
+    parts.push(`<span style="color:var(--warn)"><i class="bi bi-pencil-square"></i> ${fillableDupes} possible duplicate(s) — will fill empty cells only</span>`);
+    if (forcedDupes) parts.push(`<span style="color:var(--ok)"><i class="bi bi-plus-circle"></i> ${forcedDupes} added anyway (your override)</span>`);
+    if (noopDupes) parts.push(`<span style="color:var(--t3)"><i class="bi bi-copy"></i> ${noopDupes} already exist, nothing new to fill in</span>`);
   }
   parts.push(`<span style="color:var(--bad)"><i class="bi bi-exclamation-triangle"></i> ${counts.missing || 0} missing required info</span>`);
   document.getElementById('si_previewSummary').innerHTML = parts.join(' &nbsp;·&nbsp; ') + ' <span style="color:var(--t3)">(rows marked missing are skipped, not errored)</span>';
@@ -416,10 +474,20 @@ function _siRenderPreview(cfg) {
     ok: cfg.updateOnly ? '✓ Will update' : '✓ Ready',
     notfound: 'Emis not found', outside: 'Outside jurisdiction',
   };
-  const dupLabel = (r) => (r.blankFields && r.blankFields.length)
-    ? `✓ Existing — filling ${r.blankFields.length} empty cell(s)`
-    : 'Existing — nothing new to fill';
-  const showJurPicker = _siKind === 'private' && _siJurMode.mode === 'multi';
+  const dupLabel = (r) => {
+    if (r.forceAdd) return '✓ Adding as new (override)';
+    if (r.blankFields && r.blankFields.length) return `Possible duplicate — filling ${r.blankFields.length} empty cell(s)`;
+    return 'Possible duplicate — nothing new to fill';
+  };
+  const dupDetail = (r) => {
+    const bits = (r.dupReasons || []).map(escHtml);
+    if (r.existing) {
+      const ex = r.existing;
+      bits.push(`Existing record: ${escHtml([ex.district, ex.tehsil, ex.markaz_name].filter(Boolean).join(' → ') || '—')}${ex.registration_no ? `, Reg No ${escHtml(String(ex.registration_no))}` : ''}`);
+    }
+    return bits.join('<br>');
+  };
+  const showJurPicker = isPrivate && _siJurMode.mode === 'multi';
 
   document.getElementById('si_previewBody').innerHTML = `
     <table style="width:100%;border-collapse:collapse;font-size:.78rem">
@@ -428,10 +496,11 @@ function _siRenderPreview(cfg) {
         ${cfg.updateOnly ? '<th style="padding:6px">Emis</th>' : ''}
         <th style="padding:6px">School Name</th>
         ${showJurPicker ? '<th style="padding:6px;min-width:220px">Your Jurisdiction</th>' : '<th style="padding:6px">District</th><th style="padding:6px">Tehsil</th><th style="padding:6px">Markaz</th>'}
+        ${isPrivate ? '<th style="padding:6px">Details</th><th style="padding:6px;text-align:center">Add anyway</th>' : ''}
       </tr></thead>
       <tbody>
         ${_siPreviewRows.map((r, idx) => {
-          const willChange = r.status === 'ok' || (r.status === 'duplicate' && r.blankFields && r.blankFields.length);
+          const willChange = r.status === 'ok' || (r.status === 'duplicate' && (r.forceAdd || (r.blankFields && r.blankFields.length)));
           return `
           <tr style="border-bottom:1px solid var(--b0);${willChange ? '' : 'opacity:.7'}">
             <td style="padding:6px;color:${badge[r.status]};font-weight:700;white-space:nowrap">
@@ -446,6 +515,9 @@ function _siRenderPreview(cfg) {
                    </select>
                  </td>`
               : `<td style="padding:6px">${escHtml(r.location.district || '')}</td><td style="padding:6px">${escHtml(r.location.tehsil || '')}</td><td style="padding:6px">${escHtml(r.location.markaz_name || '')}</td>`}
+            ${isPrivate ? `
+            <td style="padding:6px;color:var(--t3);font-size:.72rem">${r.status === 'duplicate' ? dupDetail(r) : ''}</td>
+            <td style="padding:6px;text-align:center">${r.status === 'duplicate' ? `<input type="checkbox" ${r.forceAdd ? 'checked' : ''} onchange="siToggleForcePrivateAdd(${idx}, this.checked)">` : ''}</td>` : ''}
           </tr>`;
         }).join('')}
       </tbody>
@@ -456,6 +528,25 @@ function _siRenderPreview(cfg) {
   document.getElementById('si_previewBtn').style.display = 'none';
   document.getElementById('si_confirmBtn').style.display = 'inline-block';
   document.getElementById('si_confirmBtn').innerHTML = `<i class="bi bi-check2-circle"></i> ${cfg.confirmLabel}`;
+}
+
+// Reviewer explicitly wants a flagged (possible-duplicate) row inserted
+// as its own new record anyway — e.g. two genuinely different schools
+// that happen to share a name, or a stale/reused registration number.
+// This bypasses the fill-blanks path entirely for that row.
+function siToggleForcePrivateAdd(idx, checked) {
+  const r = _siPreviewRows[idx];
+  if (checked) {
+    // Forcing an insert means this row now needs everything a normal
+    // new row needs, including location — which duplicates are normally
+    // exempt from since they don't need it for a blanks-only fill.
+    if (r.locMissingRaw && r.locMissingRaw.length) {
+      showToast(`Can't add as new — missing: ${r.locMissingRaw.join(', ')}`, false);
+      return;
+    }
+  }
+  r.forceAdd = checked;
+  _siRenderPreview(SCHOOL_IMPORT_CONFIG.private);
 }
 
 // ── Step 4: confirm — update (public) or insert (private) the "ok" rows ──
@@ -478,12 +569,14 @@ function _siGenId() {
 async function confirmSchoolImport() {
   const cfg = SCHOOL_IMPORT_CONFIG[_siKind];
   const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
-  const toInsert = _siPreviewRows.filter(r => r.status === 'ok');
-  // Duplicates (private only) that have at least one blank DB cell this
-  // file can fill in. Any field that already has a value in the DB is
-  // left alone — only genuinely empty cells get written.
+  // "ok" rows plus any duplicate the reviewer explicitly overrode with
+  // "Add anyway" — both go through the normal insert path.
+  const toInsert = _siPreviewRows.filter(r => r.status === 'ok' || (r.status === 'duplicate' && r.forceAdd));
+  // Duplicates left un-overridden that have at least one blank DB cell
+  // this file can fill in. Any field that already has a value in the DB
+  // is left alone — only genuinely empty cells get written.
   const toFillBlanks = (_siKind === 'private')
-    ? _siPreviewRows.filter(r => r.status === 'duplicate' && r.blankFields && r.blankFields.length)
+    ? _siPreviewRows.filter(r => r.status === 'duplicate' && !r.forceAdd && r.blankFields && r.blankFields.length)
     : [];
   const total = toInsert.length + toFillBlanks.length;
 
@@ -563,7 +656,10 @@ async function confirmSchoolImport() {
       });
       if (!Object.keys(patch).length) { paint(); return; }
       patch.updated_at = new Date().toISOString();
-      const { error } = await _sb.from(cfg.table).update(patch).eq('school_name', item.existing.school_name);
+      const q = _sb.from(cfg.table).update(patch);
+      const { error } = item.existing.unique_id
+        ? await q.eq('unique_id', item.existing.unique_id)
+        : await q.eq('school_name', item.existing.school_name);
       if (error) failed++; else updated++;
       paint();
     }, 20);
