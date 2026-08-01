@@ -611,6 +611,30 @@
   </style>
 
 
+  <!-- ══ SHARED: Import conflict resolution (Staff / Public / Private importers) ══ -->
+  <div id="impConflictModal" class="modal hidden">
+    <div class="modal-content" style="max-width:640px">
+      <h3 style="margin-bottom:4px">Some uploaded values differ from the database</h3>
+      <p id="impConflictSummary" style="color:var(--t3);font-size:.88rem;margin-bottom:4px"></p>
+      <p style="font-size:.78rem;color:var(--t3);margin-bottom:14px">
+        <span id="impConflictCount"></span> differ — everything else in this file (new records, and blank cells on existing records) will be applied either way.
+      </p>
+      <button type="button" id="impConflictReviewBtn" class="hr-btn-ghost" style="margin-bottom:10px" onclick="impToggleReview()">Review Differences</button>
+      <div id="impConflictList" style="display:none;max-height:280px;overflow:auto;border:1px solid var(--b0);border-radius:8px;padding:10px;margin-bottom:14px;font-size:.8rem"></div>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        <button class="btn btn-outline-secondary" style="flex:1" onclick="impResolve('skip')">Skip All <span style="font-weight:400">(keep database values)</span></button>
+        <button class="primary-btn" style="flex:1" onclick="impResolve('update')">Update All <span style="font-weight:400">(use uploaded file)</span></button>
+      </div>
+    </div>
+  </div>
+  <style>
+    .imp-conflict-row { margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--b0); }
+    .imp-conflict-row:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+    .imp-conflict-row ul { margin:4px 0 0 18px; padding:0; }
+    .imp-conflict-row .imp-field { color:var(--t3); }
+    .imp-conflict-row s { color:var(--bad); text-decoration:line-through; }
+  </style>
+
   <!-- ══ SHARED: Public/Private Schools historical-data import (template system) ══ -->
   <div class="modal fade" id="schoolImportModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -2865,6 +2889,7 @@
   <script src="js/admin.js"></script>
   <script src="js/public_schools.js"></script>
   <script src="js/private_schools.js"></script>
+  <script src="js/import-sync.js"></script>
   <script src="js/schools-import.js"></script>
   <script src="js/hr-staff-import.js"></script>
   <script src="js/user-import.js"></script>
