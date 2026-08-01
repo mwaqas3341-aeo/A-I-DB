@@ -2272,15 +2272,27 @@
             </div>
           </div>
 
-          <!-- Card: Staff with EMIS not in Public Schools -->
-          <div class="hr-summary-card hr-card-red">
+          <!-- Card: Awaiting Posting -->
+          <div class="hr-summary-card hr-card-red" style="cursor:pointer;" onclick="openAwaitingPostingView()">
             <div class="hr-card-icon-wrap" style="background:rgba(239,68,68,0.12);">
-              <span class="material-icons-round" style="color:#DC2626;">report_problem</span>
+              <span class="material-icons-round" style="color:#DC2626;">person_search</span>
             </div>
             <div class="hr-card-body">
-              <div class="hr-card-value" id="scEmisMismatch">—</div>
-              <div class="hr-card-label">Teachers without Schools</div>
-              <div class="hr-card-sub" id="scEmisMismatchSub" style="cursor:pointer;text-decoration:underline;color:#991B1B;" onclick="openEmisMismatchModal()">Check list</div>
+              <div class="hr-card-value" id="scAwaitingPosting">—</div>
+              <div class="hr-card-label">Awaiting Posting</div>
+              <div class="hr-card-sub" style="color:#991B1B;">Click to view list</div>
+            </div>
+          </div>
+
+          <!-- Card: Temporary Adjustments -->
+          <div class="hr-summary-card hr-card-amber" style="cursor:pointer;" onclick="openTemporaryDutyView()">
+            <div class="hr-card-icon-wrap" style="background:rgba(245,158,11,0.12);">
+              <span class="material-icons-round" style="color:#D97706;">schedule</span>
+            </div>
+            <div class="hr-card-body">
+              <div class="hr-card-value" id="scTempAdjustments">—</div>
+              <div class="hr-card-label">Temporary Adjustments</div>
+              <div class="hr-card-sub" style="color:#92400E;">Click to view list</div>
             </div>
           </div>
 
