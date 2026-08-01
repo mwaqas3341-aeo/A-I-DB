@@ -119,7 +119,7 @@ function apPopulateSelect(id, values, placeholder) {
 function clearAwaitingPostingFilters() {
   document.getElementById('apFilterKeyword').value = '';
   document.getElementById('apFilterReason').value   = '';
-  document.getElementById('apFilterStatus').value   = 'awaiting';
+  document.getElementById('apFilterStatus').value   = 'not_assigned';
   apBuildDistrictDropdown();
   applyAwaitingPostingFilter();
 }
@@ -132,7 +132,7 @@ function applyAwaitingPostingFilter() {
     tehsil:   document.getElementById('apFilterTehsil')?.value   || '',
     markaz:   document.getElementById('apFilterMarkaz')?.value   || '',
     reason:   document.getElementById('apFilterReason')?.value   || '',
-    status:   (function(){ const el = document.getElementById('apFilterStatus'); return el ? el.value : 'awaiting'; })(),
+    status:   (function(){ const el = document.getElementById('apFilterStatus'); return el ? el.value : 'not_assigned'; })(),
     keyword:  document.getElementById('apFilterKeyword')?.value  || '',
   };
   const container = document.getElementById('apResultsContainer');

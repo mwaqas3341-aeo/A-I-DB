@@ -2622,8 +2622,9 @@ function _hierarchyScopeDbFields(p) {
       let q = _sb.from('staff_awaiting_posting')
         .select('*, staff(name_of_teacher, cnic, designation, bps)')
         .order('entry_date', { ascending: false });
-      if (p.status) q = q.eq('status', p.status);
-      else if (!('status' in p)) q = q.eq('status', 'awaiting'); // default view; explicit '' means "All"
+      if (p.status === 'not_assigned') q = q.in('status', ['awaiting', 'on_temporary_duty']);
+      else if (p.status) q = q.eq('status', p.status);
+      else if (!('status' in p)) q = q.in('status', ['awaiting', 'on_temporary_duty']); // default view; explicit '' means "All"
       if (p.reason) q = q.eq('reason', p.reason);
       if (p.district) q = q.eq('previous_district', p.district);
       if (p.wing) q = q.eq('previous_wing', p.wing);
