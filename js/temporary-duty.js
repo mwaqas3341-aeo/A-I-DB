@@ -163,7 +163,13 @@ function tdSearchSchool() {
   const kw = document.getElementById('tdAssignSchoolSearch').value.trim();
   const resultsEl = document.getElementById('tdAssignSchoolResults');
   clearTimeout(tdSchoolSearchDebounce);
-  if (kw.length < 2) { resultsEl.innerHTML = ''; return; }
+  const isEmisInput = /^\d+$/.test(kw);
+  if (isEmisInput ? kw.length < 8 : kw.length < 2) {
+    resultsEl.innerHTML = (isEmisInput && kw.length > 0)
+      ? `<div style="padding:8px;color:var(--t3);font-size:.82rem">Keep typing — EMIS code is 8 digits (${kw.length}/8).</div>`
+      : '';
+    return;
+  }
   resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>';
   tdSchoolSearchDebounce = setTimeout(() => {
     google.script.run
@@ -176,8 +182,11 @@ function tdSearchSchool() {
         }
         resultsEl.innerHTML = matches.map(s => `
           <div class="ap-school-result" onclick="tdSelectSchool('${s.emis}', '${escHtmlAp(s.school_name || '').replace(/'/g, "\\'")}')">
-            <strong>${escHtmlAp(s.school_name || '')}</strong>
-            <span style="color:var(--t3);font-size:.78rem"> — EMIS ${escHtmlAp(s.emis || '')} · ${escHtmlAp(s.tehsil || '')}, ${escHtmlAp(s.district || '')}</span>
+            <strong>EMIS ${escHtmlAp(s.emis || '')}</strong>
+            <div style="color:var(--t3);font-size:.78rem">
+              ${escHtmlAp(s.school_name || '')}<br>
+              ${[s.markaz_name, s.wing, s.tehsil, s.district].filter(Boolean).map(escHtmlAp).join(' · ')}
+            </div>
           </div>`).join('');
       })
       .withFailureHandler(() => { resultsEl.innerHTML = '<div style="padding:8px;color:var(--bad);font-size:.82rem">Search failed.</div>'; })

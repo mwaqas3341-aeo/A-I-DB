@@ -2718,8 +2718,13 @@ function _hierarchyScopeDbFields(p) {
     case 'searchSchoolsForAssignment': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const kw = (p.keyword || '').trim();
-      if (kw.length < 2) return { success: true, rows: [] };
       const isEmis = /^\d+$/.test(kw);
+      // EMIS codes are a fixed 8 digits — searching on a partial code (e.g.
+      // the first 2-3 digits someone happens to be typing) returns a huge,
+      // meaningless page of unrelated schools that all start with the same
+      // digits. So numeric input only triggers a search once the full
+      // 8-digit code has been typed; a name search still starts at 2 chars.
+      if (isEmis ? kw.length < 8 : kw.length < 2) return { success: true, rows: [] };
       // Awaiting-posting assignment (both Temporary Duty and Permanent
       // Adjustment) can only ever place an employee at a public school —
       // private schools are never a valid posting target here, so they
@@ -2727,15 +2732,13 @@ function _hierarchyScopeDbFields(p) {
       // Outsourced public schools aren't real government postings either
       // (status = 'Out Sourced'), so they're excluded the same way the
       // dashboard's active-school counts exclude them.
-      // EMIS search uses a partial/"starts with" match (like the name search
-      // does with ilike) instead of an exact eq() match — previously you had
-      // to type the *entire* EMIS code before anything showed up, which is
-      // why searching felt broken while typing digit by digit.
       let q = _sb.from('public_schools')
         .select('emis, school_name, district, wing, tehsil, markaz_name, status')
         .neq('status', 'Out Sourced')
         .limit(10);
-      q = isEmis ? q.ilike('emis', `${kw}%`) : q.ilike('school_name', `%${kw}%`);
+      // Once the full 8-digit EMIS is typed there's only ever one possible
+      // match, so this is an exact lookup rather than a "starts with" one.
+      q = isEmis ? q.eq('emis', kw) : q.ilike('school_name', `%${kw}%`);
       const { data, error } = await q;
       // Previously any query error here was silently ignored (data would
       // just be undefined -> treated as "no matches"), so a real DB error
