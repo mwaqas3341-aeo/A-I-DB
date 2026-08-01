@@ -234,10 +234,19 @@ async function schoolImportGoToPreview() {
 async function _siBuildPublicPreview(cfg, targetHeaders) {
   const get = (raw, h) => _siMapping[h] ? String(raw[_siMapping[h]] || '').trim() : '';
   const uploadedKeys = _siRawRows.map(r => get(r, 'Emis')).filter(Boolean);
+  const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
 
   let existingByEmis = new Map();
   if (uploadedKeys.length) {
-    const cols = ['emis', 'district', 'tehsil', 'markaz_name'].concat(cfg.hasWing ? ['wing'] : []);
+    // Select every column the template can possibly map to (not just
+    // the location columns) so real per-field diffing is possible —
+    // previously only district/tehsil/markaz/wing were fetched, so
+    // every other mapped column was blind-overwritten with whatever
+    // was in the file, with no "keep existing" / "flag the conflict"
+    // check at all.
+    const cols = [...new Set(['emis', 'district', 'tehsil', 'markaz_name']
+      .concat(cfg.hasWing ? ['wing'] : [])
+      .concat(targetHeaders.map(h => reverseMap[h]).filter(Boolean)))];
     const { data } = await _sb.from(cfg.table).select(cols.join(',')).in('emis', uploadedKeys);
     (data || []).forEach(r => existingByEmis.set(String(r.emis), r));
   }
@@ -260,8 +269,32 @@ async function _siBuildPublicPreview(cfg, targetHeaders) {
       return true;
     })) status = 'outside';
 
-    return { row, status, missing, uniqueVal: key, location: existing || {} };
+    const diffs = (status === 'ok') ? _siComputeDiffs(row, existing, reverseMap, targetHeaders, []) : [];
+
+    return { row, status, missing, uniqueVal: key, location: existing || {}, mode: 'update', existing, diffs };
   });
+}
+
+// Compares the uploaded (sanitized) row against the existing DB row,
+// field by field, and returns only the fields whose imported value is
+// non-blank AND differs from a non-blank existing value — i.e. the
+// set that needs a human decision (Update All / Skip All) before
+// being written. Blank imported cells and cells that already match
+// are never included here; those are applied/skipped automatically.
+function _siComputeDiffs(row, existing, reverseMap, targetHeaders, excludeHeaders) {
+  const diffs = [];
+  targetHeaders.forEach(h => {
+    if (excludeHeaders.includes(h)) return;
+    const col = reverseMap[h];
+    if (!col) return;
+    const incoming = (row[h] || '').toString().trim();
+    if (!incoming) return; // blank upload -> never a conflict, existing value is kept
+    const existingVal = (existing && existing[col] != null) ? String(existing[col]).trim() : '';
+    if (!existingVal) return;               // existing blank -> fill in automatically, not a conflict
+    if (existingVal === incoming) return;    // identical -> no-op
+    diffs.push({ header: h, existing: existingVal, incoming });
+  });
+  return diffs;
 }
 
 async function _siBuildPrivatePreview(cfg, targetHeaders) {
