@@ -34,6 +34,7 @@ async function openInspectionAllowanceView() {
   const isAdmin = String(currentUser?.role).toLowerCase() === 'admin';
   const isTr = Array.isArray(currentUser?.tr_scopes) && currentUser.tr_scopes.length > 0;
   document.getElementById('iaTabBudgetPrepBtn').style.display = (isAdmin || isTr) ? 'inline-flex' : 'none';
+  document.getElementById('iaTabAeoBillBtn').style.display    = (isAdmin || isTr) ? 'inline-flex' : 'none';
   iaSwitchTab('myBill');
 
   await iaLoadRate();
@@ -46,12 +47,15 @@ function iaSwitchTab(tab) {
   document.getElementById('iaMyBillTab').style.display      = tab === 'myBill'      ? 'block' : 'none';
   document.getElementById('iaPerformanceTab').style.display = tab === 'performance' ? 'block' : 'none';
   document.getElementById('iaBudgetPrepTab').style.display  = tab === 'budgetprep'  ? 'block' : 'none';
+  document.getElementById('iaAeoBillTab').style.display     = tab === 'aeobill'     ? 'block' : 'none';
   document.getElementById('iaTabMyBillBtn').classList.toggle('active', tab === 'myBill');
   document.getElementById('iaTabPerfBtn').classList.toggle('active', tab === 'performance');
   document.getElementById('iaTabBudgetPrepBtn').classList.toggle('active', tab === 'budgetprep');
+  document.getElementById('iaTabAeoBillBtn').classList.toggle('active', tab === 'aeobill');
 
   if (tab === 'performance') perfInit();
   if (tab === 'budgetprep' && typeof bpInit === 'function') bpInit();
+  if (tab === 'aeobill') aeoBillInit();
 }
 
 // ─── Rate & Profile ─────────────────────────────────────────────────
@@ -1093,6 +1097,223 @@ async function iaBuildBillPdfBytes(pagesHtml, fitModes) {
   target.style.zIndex = '';
 
   return pdf.output('arraybuffer');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DOWNLOAD FOR AEO (TRs + Admins) — generate/download any eligible
+//  AEO's Inspection Allowance Bill. "Eligible" = their tehsil+wing has
+//  at least one completed Budget Preparation; the actual months
+//  offered per AEO are whatever budget_preparations has on file for
+//  their tehsil+wing (same source getMyPendingCollectiveBill uses).
+//  Bill generation itself reuses iaBuildAndDownloadBill verbatim —
+//  same calculations, same validations, same PDF — just with
+//  iaState.profile temporarily pointed at the target AEO instead of
+//  the caller.
+// ═══════════════════════════════════════════════════════════════════
+let aeoBillState = {
+  scopes: [],
+  aeos: [],
+  selectedAeo: null,
+  months: [],
+  checked: new Set(),
+};
+
+async function aeoBillInit() {
+  const scopeSel = document.getElementById('aeobill_scope');
+  scopeSel.innerHTML = '<option value="">Loading…</option>';
+  const res = await apiCall('getBillEligibleTehsilWings');
+  if (!res || !res.success) {
+    scopeSel.innerHTML = '<option value="">Could not load</option>';
+    return;
+  }
+  aeoBillState.scopes = res.scopes || [];
+  if (!aeoBillState.scopes.length) {
+    scopeSel.innerHTML = '<option value="">No tehsil/wing available</option>';
+    document.getElementById('aeobill_listWrap').innerHTML =
+      `<div style="padding:30px;text-align:center;color:var(--t3)">No Budget Preparation has been completed for any tehsil/wing you're authorized for yet.</div>`;
+    return;
+  }
+  scopeSel.innerHTML = '<option value="">Select tehsil / wing…</option>' +
+    aeoBillState.scopes.map(s => `<option value="${s.tehsil}|||${s.wing}">${s.tehsil} — ${s.wing}</option>`).join('');
+  if (aeoBillState.scopes.length === 1) {
+    scopeSel.value = `${aeoBillState.scopes[0].tehsil}|||${aeoBillState.scopes[0].wing}`;
+    aeoBillOnScopeChange();
+  }
+}
+
+async function aeoBillOnScopeChange() {
+  const val = document.getElementById('aeobill_scope').value;
+  const listWrap = document.getElementById('aeobill_listWrap');
+  if (!val) { listWrap.innerHTML = `<div style="padding:30px;text-align:center;color:var(--t3)">Select a tehsil/wing to see eligible AEOs.</div>`; return; }
+  const [tehsil, wing] = val.split('|||');
+
+  listWrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading AEOs…</div>`;
+  const res = await apiCall('getEligibleAeosForBill', { tehsil, wing });
+  if (!res || !res.success) {
+    listWrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--bad)">${res?.message || 'Could not load AEOs.'}</div>`;
+    return;
+  }
+  aeoBillState.aeos = res.aeos || [];
+  if (!aeoBillState.aeos.length) {
+    listWrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--t3)">${res.message || 'No AEOs found for this tehsil/wing.'}</div>`;
+    return;
+  }
+  aeoBillRenderList();
+}
+
+function aeoBillRenderList() {
+  const listWrap = document.getElementById('aeobill_listWrap');
+  const kw = (document.getElementById('aeobill_search').value || '').trim().toLowerCase();
+  const rows = aeoBillState.aeos.filter(a =>
+    !kw || (a.name || '').toLowerCase().includes(kw) || (a.personal_no || '').toLowerCase().includes(kw)
+  );
+  if (!rows.length) {
+    listWrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--t3)">No AEOs match "${kw}".</div>`;
+    return;
+  }
+  listWrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Personal No.</th><th>Designation</th><th>Markaz</th><th>Action</th></tr></thead>
+      <tbody>
+        ${rows.map(a => `
+          <tr>
+            <td style="font-weight:600">${a.name || ''}</td>
+            <td>${a.personal_no || ''}</td>
+            <td>${a.designation || ''}</td>
+            <td>${a.markaz_name || ''}</td>
+            <td><button class="hr-btn-primary" style="padding:6px 12px;font-size:.78rem" onclick="aeoBillOpenModal('${a.id}')">
+              <i class="bi bi-download"></i> Download Bill
+            </button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function aeoBillOpenModal(userId) {
+  const aeo = aeoBillState.aeos.find(a => a.id === userId);
+  if (!aeo) return;
+
+  document.getElementById('aeobill_modalEmpName').textContent = aeo.name || aeo.personal_no;
+  document.getElementById('aeobill_modalEmpMeta').textContent = `${aeo.designation || ''} · P.No ${aeo.personal_no || ''} · ${aeo.markaz_name || ''}`;
+  document.getElementById('aeobill_monthsWrap').innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading…</div>`;
+  document.getElementById('aeobill_totalDisplay').textContent = '';
+  document.getElementById('aeobill_cumulativeBtn').disabled = true;
+  document.getElementById('aeobillModal').classList.remove('hidden');
+
+  const [profileRes, monthsRes] = await Promise.all([
+    apiCall('getAeoProfileForBill', { userId }),
+    apiCall('getAeoPendingCollectiveBill', { userId }),
+  ]);
+  if (!profileRes || !profileRes.success) {
+    document.getElementById('aeobill_monthsWrap').innerHTML = `<div style="padding:20px;color:var(--bad)">${profileRes?.message || 'Could not load profile.'}</div>`;
+    return;
+  }
+  aeoBillState.selectedAeo = { id: userId, profile: profileRes };
+  aeoBillState.months = (monthsRes && monthsRes.success) ? (monthsRes.months || []) : [];
+  aeoBillState.checked = new Set();
+
+  if (!aeoBillState.months.length) {
+    document.getElementById('aeobill_monthsWrap').innerHTML =
+      `<div style="padding:20px;text-align:center;color:var(--t3)">No prepared months found for this AEO's tehsil/wing.</div>`;
+    return;
+  }
+  aeoBillRenderMonths();
+}
+
+function aeoBillRenderMonths() {
+  const wrap = document.getElementById('aeobill_monthsWrap');
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th></th><th>Month</th><th>Deduction</th><th>Due</th><th>Action</th></tr></thead>
+      <tbody>
+        ${aeoBillState.months.map((m, i) => {
+          const key = `${m.year}-${m.month}`;
+          return `<tr>
+            <td><input type="checkbox" onchange="aeoBillToggleMonth('${key}', this)" ${aeoBillState.checked.has(key) ? 'checked' : ''}></td>
+            <td>${IA_MONTH_NAMES[m.month - 1]} ${m.year}</td>
+            <td>PKR ${Number(m.deduction).toLocaleString()}</td>
+            <td style="font-weight:600;color:#0d9488">PKR ${Number(m.due).toLocaleString()}</td>
+            <td><button class="hr-btn-ghost" style="padding:4px 10px;font-size:.74rem" onclick="aeoBillDownloadIndividual(${i})">Download Individually</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  aeoBillUpdateTotal();
+}
+
+function aeoBillToggleMonth(key, checkboxEl) {
+  if (checkboxEl.checked) {
+    if (aeoBillState.checked.size >= IA_MAX_SELECTED) {
+      showToast(`You can pick at most ${IA_MAX_SELECTED} months for a Cumulative bill.`, false);
+      checkboxEl.checked = false;
+      return;
+    }
+    aeoBillState.checked.add(key);
+  } else {
+    aeoBillState.checked.delete(key);
+  }
+  aeoBillUpdateTotal();
+}
+
+function aeoBillUpdateTotal() {
+  const picked = aeoBillState.months.filter(m => aeoBillState.checked.has(`${m.year}-${m.month}`));
+  const total = picked.reduce((s, m) => s + Number(m.due || 0), 0);
+  document.getElementById('aeobill_totalDisplay').textContent = picked.length ? `Selected total: PKR ${total.toLocaleString()}` : '';
+  document.getElementById('aeobill_cumulativeBtn').disabled = picked.length === 0;
+}
+
+// Runs a bill download for the currently-selected AEO through the
+// SAME iaBuildAndDownloadBill used by "My Bill" — iaState.profile is
+// swapped to the target AEO just for this call, then restored, so the
+// AEO's own tab (if the caller is also an AEO) isn't affected.
+async function _aeoBillRunDownload(claims) {
+  const savedProfile = iaState.profile;
+  iaState.profile = aeoBillState.selectedAeo.profile;
+  try {
+    await iaBuildAndDownloadBill(claims);
+    const ids = claims.map(c => c._rowId).filter(Boolean);
+    if (ids.length) await apiCall('markInspectionAllowanceDownloadedAs', { ids, userId: aeoBillState.selectedAeo.id });
+    showToast('Bill downloaded.', true);
+  } finally {
+    iaState.profile = savedProfile;
+  }
+}
+
+async function aeoBillDownloadIndividual(index) {
+  const m = aeoBillState.months[index];
+  if (!m) return;
+  const claim = { month: m.month, year: m.year, allowance_rate: Number(m.allowance_rate) || iaState.rate, deduction: Number(m.deduction) || 0, due: Number(m.due) || 0, _rowId: m.id };
+  try {
+    await _aeoBillRunDownload([claim]);
+  } catch (err) {
+    showToast('Error generating bill: ' + err.message, false);
+  }
+}
+
+async function aeoBillDownloadCumulative() {
+  const picked = aeoBillState.months.filter(m => aeoBillState.checked.has(`${m.year}-${m.month}`));
+  if (!picked.length) return;
+  const btn = document.getElementById('aeobill_cumulativeBtn');
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
+  try {
+    const claims = picked.map(m => ({ month: m.month, year: m.year, allowance_rate: Number(m.allowance_rate) || iaState.rate, deduction: Number(m.deduction) || 0, due: Number(m.due) || 0, _rowId: m.id }));
+    await _aeoBillRunDownload(claims);
+    aeoBillCloseModal();
+  } catch (err) {
+    showToast('Error generating bill: ' + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+function aeoBillCloseModal() {
+  document.getElementById('aeobillModal').classList.add('hidden');
+  aeoBillState.selectedAeo = null;
+  aeoBillState.months = [];
+  aeoBillState.checked = new Set();
 }
 
 // ─── Entry point: "Download Bill (PDF)" button (index.html) ────────

@@ -258,6 +258,42 @@ function _checkRevertWindow(user, actionTimestamp) {
  * same idea as the Staff sheet itself: an HR rep sees the transfer/
  * promotion history of people currently in their jurisdiction.
  */
+// Resolves the months a given AEO (targetUserId, in tehsil/wing) can
+// bill: every month budget_preparations has on file for their
+// tehsil+wing (the source of truth for "prepared"), left-joined
+// against any actual inspection_allowance_deductions row for that
+// specific AEO. Since 0-deduction rows are no longer stored, a
+// missing row means "no deduction that month" = full rate due. Used
+// by both the self-service Collective flow and the TR/Admin
+// download-for-any-AEO flow, so both stay in sync.
+async function _resolveCollectiveMonthsForUser(targetUserId, tehsil, wing) {
+  if (!tehsil || !wing) return [];
+  const { data: preps } = await _sb.from('budget_preparations')
+    .select('year, month')
+    .eq('tehsil', tehsil).eq('wing', wing)
+    .order('year', { ascending: true }).order('month', { ascending: true })
+    .limit(18);
+  if (!preps || !preps.length) return [];
+
+  const { data: dedRows } = await _sb.from('inspection_allowance_deductions')
+    .select('id, year, month, allowance_rate, deduction, due, downloaded_at')
+    .eq('user_id', targetUserId)
+    .in('year', [...new Set(preps.map(p => p.year))]);
+  const dedByKey = {};
+  (dedRows || []).forEach(d => { dedByKey[`${d.year}-${d.month}`] = d; });
+
+  const { data: rateRow } = await _sb.from('inspection_allowance_settings').select('allowance_rate').eq('id', 1).single();
+  const rate = Number(rateRow?.allowance_rate) || 25000;
+
+  return preps.map(p => {
+    const existing = dedByKey[`${p.year}-${p.month}`];
+    return existing || {
+      id: null, year: p.year, month: p.month,
+      allowance_rate: rate, deduction: 0, due: rate, downloaded_at: null,
+    };
+  });
+}
+
 async function _staffEventHistoryRows(eventTypes, reqUser) {
   const events = await _fetchAllRows('staff_events', '*', q => q.in('event_type', eventTypes));
   events.sort((a, b) => new Date(b.created_at || b.effective_date || 0) - new Date(a.created_at || a.effective_date || 0));
@@ -2220,13 +2256,10 @@ async function apiCall(action, payload) {
     // depth shown elsewhere.
     case 'getMyPendingCollectiveBill': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
-      const { data, error } = await _sb.from('inspection_allowance_deductions')
-        .select('id, year, month, allowance_rate, deduction, due, downloaded_at')
-        .eq('user_id', user.id)
-        .order('year', { ascending: true }).order('month', { ascending: true })
-        .limit(18);
-      if (error) return { success: false, message: error.message };
-      return { success: true, months: data || [] };
+      const { data: me, error: meErr } = await _sb.from('app_users').select('tehsil, wing').eq('id', user.id).single();
+      if (meErr) return { success: false, message: 'Could not load your profile: ' + meErr.message };
+      const months = await _resolveCollectiveMonthsForUser(user.id, me.tehsil, me.wing);
+      return { success: true, months };
     }
 
     // Individual mode: self-submit 1-4 (year, month, deduction) entries.
@@ -2245,9 +2278,120 @@ async function apiCall(action, payload) {
     case 'markInspectionAllowanceDownloaded': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      const ids = Array.isArray(p.ids) ? p.ids : [];
+      const ids = Array.isArray(p.ids) ? p.ids.filter(Boolean) : [];
       if (!ids.length) return { success: true };
       const { error } = await _sb.rpc('mark_inspection_allowance_downloaded', { p_ids: ids });
+      if (error) return { success: false, message: error.message };
+      return { success: true };
+    }
+
+    // ── INSPECTION ALLOWANCE — DOWNLOAD FOR ANY AEO (TR / Admin) ────────
+    // Lets a Tehsil Rep or Admin generate/download an AEO's bill on
+    // their behalf, using the exact same collective-mode data (and PDF
+    // generation logic client-side) as the AEO's own "My Bill" screen.
+    // Only AEOs whose tehsil+wing already has budget_preparations for
+    // the requested period are eligible, per spec.
+    case 'getBillEligibleTehsilWings': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const isAdmin = String(user.role).toLowerCase() === 'admin';
+      let scopes;
+      if (isAdmin) {
+        const { data } = await _sb.from('budget_preparations').select('tehsil, wing');
+        scopes = data || [];
+      } else {
+        const { data } = await _sb.from('tehsil_representatives').select('tehsil, wing').eq('user_id', user.id);
+        scopes = data || [];
+      }
+      const seen = new Set();
+      const unique = [];
+      scopes.forEach(s => {
+        const key = `${s.tehsil}||${s.wing}`;
+        if (!seen.has(key)) { seen.add(key); unique.push({ tehsil: s.tehsil, wing: s.wing }); }
+      });
+      unique.sort((a, b) => (a.tehsil + a.wing).localeCompare(b.tehsil + b.wing));
+      return { success: true, scopes: unique };
+    }
+
+    case 'getEligibleAeosForBill': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const tehsil = (p.tehsil || '').trim();
+      const wing = (p.wing || '').trim();
+      if (!tehsil || !wing) return { success: false, message: 'Select a tehsil and wing.' };
+
+      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: tehsil, p_wing: wing });
+      if (!authOk) return { success: false, message: 'Not authorized for this tehsil/wing.' };
+
+      // "Eligible" = at least one budget_preparations row exists at all
+      // for this tehsil+wing (any period) — the per-AEO, per-period
+      // picker inside the bill screen then narrows to actual prepared
+      // months for whichever AEO is chosen.
+      const { data: anyPrep } = await _sb.from('budget_preparations')
+        .select('year').eq('tehsil', tehsil).eq('wing', wing).limit(1);
+      if (!anyPrep || !anyPrep.length) {
+        return { success: true, aeos: [], message: 'No Budget Preparation completed yet for this tehsil/wing.' };
+      }
+
+      const { data: aeos, error } = await _sb.from('app_users')
+        .select('id, personal_no, name, designation, markaz_name, tehsil, wing')
+        .eq('tehsil', tehsil).eq('wing', wing).order('name');
+      if (error) return { success: false, message: error.message };
+      return { success: true, aeos: aeos || [] };
+    }
+
+    // Any AEO's profile, for building their bill — same fields
+    // getMyProfile returns, just for an arbitrary target instead of
+    // the caller.
+    case 'getAeoProfileForBill': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const targetId = p.userId;
+      if (!targetId) return { success: false, message: 'Missing AEO.' };
+
+      const { data, error } = await _sb.from('app_users').select('*').eq('id', targetId).single();
+      if (error || !data) return { success: false, message: 'AEO not found.' };
+
+      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: data.tehsil, p_wing: data.wing });
+      if (!authOk) return { success: false, message: 'Not authorized for this AEO.' };
+
+      return {
+        success: true,
+        personal_no: data.personal_no, name: data.name, cnic: data.cnic, cell_no: data.cell_no, email: data.email,
+        designation: data.designation, district: data.district, wing: data.wing, tehsil: data.tehsil,
+        markaz_name: data.markaz_name, markaz_name_ur: data.markaz_name_ur, designation_ur: data.designation_ur,
+        page_no: data.page_no, ddeo_code: data.ddeo_code, bps_scale: data.bps_scale, dy_office_detail: data.dy_office_detail,
+      };
+    }
+
+    // Same shape as getMyPendingCollectiveBill, for an arbitrary target
+    // AEO — reuses the exact same month-resolution logic (prepared
+    // months, missing row = full rate) so figures always match what
+    // the AEO would see downloading their own bill.
+    case 'getAeoPendingCollectiveBill': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const targetId = p.userId;
+      if (!targetId) return { success: false, message: 'Missing AEO.' };
+
+      const { data: target, error } = await _sb.from('app_users').select('tehsil, wing').eq('id', targetId).single();
+      if (error || !target) return { success: false, message: 'AEO not found.' };
+
+      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: target.tehsil, p_wing: target.wing });
+      if (!authOk) return { success: false, message: 'Not authorized for this AEO.' };
+
+      const months = await _resolveCollectiveMonthsForUser(targetId, target.tehsil, target.wing);
+      return { success: true, months };
+    }
+
+    // Mirrors markInspectionAllowanceDownloaded, but for a TR/Admin
+    // acting on an AEO's behalf — checked server-side against that
+    // AEO's own tehsil/wing, not the caller's.
+    case 'markInspectionAllowanceDownloadedAs': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const ids = Array.isArray(p.ids) ? p.ids.filter(Boolean) : [];
+      if (!ids.length || !p.userId) return { success: true };
+      const { error } = await _sb.rpc('mark_inspection_allowance_downloaded_as', { p_ids: ids, p_target_user_id: p.userId });
       if (error) return { success: false, message: error.message };
       return { success: true };
     }
