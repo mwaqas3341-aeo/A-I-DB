@@ -170,6 +170,21 @@ function bpRenderRoster() {
   if (!bpState.selectedMonths.length) { wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)">Select at least one month above.</div>`; return; }
 
   const monthCols = bpState.selectedMonths;
+  const counts = bpState.roster.map(u => bpState.deductionCounts[u.id] || 0);
+  const minCount = counts.length ? Math.min(...counts) : 0;
+  const maxCount = counts.length ? Math.max(...counts) : 0;
+
+  function bpFairnessTier(count) {
+    if (maxCount <= minCount) return 'green'; // everyone tied — no one to single out
+    if (count === maxCount) return 'red';
+    if (count === minCount) return 'green';
+    return 'orange';
+  }
+  const BP_TIER_STYLE = {
+    red:    { bg: '#FEE2E2', border: '#EF4444', text: '#991B1B', hint: '⚠ More deductions than others — you should ignore this person for this month.' },
+    orange: { bg: '#FFEDD5', border: '#F97316', text: '#9A3412', hint: '◐ A moderate number of deductions — prefer someone with fewer first, if possible.' },
+    green:  { bg: '#DCFCE7', border: '#22C55E', text: '#166534', hint: '✓ Lowest deductions — a good candidate to mark for this month.' },
+  };
 
   wrap.innerHTML = `
     <table style="width:100%;border-collapse:collapse;font-size:.85rem">
@@ -194,12 +209,17 @@ function bpRenderRoster() {
             </td>`;
           }).join('');
           const count = bpState.deductionCounts[u.id] || 0;
-          return `<tr style="border-bottom:1px solid var(--s2)" data-user-row="${u.id}">
+          const tier = bpFairnessTier(count);
+          const ts = BP_TIER_STYLE[tier];
+          return `<tr style="border-bottom:1px solid var(--s2);border-left:4px solid ${ts.border}" data-user-row="${u.id}">
             <td style="padding:8px">${i + 1}</td>
             <td style="padding:8px">${u.personal_no}</td>
             <td style="padding:8px">
               <div style="font-weight:600">${u.name}</div>
-              <div style="font-size:.72rem;color:var(--t3)">${count} deduction${count !== 1 ? 's' : ''} this year</div>
+              <span style="display:inline-block;margin-top:3px;padding:2px 8px;border-radius:99px;background:${ts.bg};color:${ts.text};font-size:.7rem;font-weight:700">
+                ${count} deduction${count !== 1 ? 's' : ''} this year
+              </span>
+              <div style="font-size:.68rem;color:${ts.text};margin-top:3px;max-width:220px">${ts.hint}</div>
             </td>
             ${cells}
             <td style="padding:8px;text-align:right;font-weight:700;color:#0d9488" data-total-cell>${totalDue.toLocaleString()}</td>
