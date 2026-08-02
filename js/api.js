@@ -1153,7 +1153,6 @@ async function apiCall(action, payload) {
     case 'getStaffEmisNotInPublicSchools': {
       const reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
       const isAdmin = !reqUser || String(reqUser.role || '').toLowerCase() === 'admin';
-      const district = (reqUser && reqUser.district || '').trim();
 
       const [staffRows, schoolRows] = await Promise.all([
         _fetchAllRows('staff', 'personal_no, name_of_teacher, designation, school_emis_code, school_name, markaz_name, tehsil, district, wing, status',
@@ -1165,9 +1164,12 @@ async function apiCall(action, payload) {
         (schoolRows || []).map(r => String(r.emis || '').trim().toLowerCase()).filter(Boolean)
       );
 
-      const scopedStaff = (isAdmin || !district)
-        ? (staffRows || [])
-        : (staffRows || []).filter(r => (r.district || '').trim() === district);
+      // Full jurisdiction scope (district+wing+tehsil+markaz), same
+      // filter every other notification/read path uses — previously
+      // this only checked district, so a Tehsil-scoped user could see
+      // "incomplete info" alerts for staff outside their own tehsil.
+      const filterFn = isAdmin ? null : _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
+      const scopedStaff = filterFn ? (staffRows || []).filter(filterFn) : (staffRows || []);
 
       const missing = scopedStaff.filter(r => {
         const emis = String(r.school_emis_code || '').trim().toLowerCase();

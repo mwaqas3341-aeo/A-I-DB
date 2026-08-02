@@ -197,7 +197,10 @@ function _renderNotifBody(list) {
   body.innerHTML = html;
 }
 
-// Close on outside click; refresh badge shortly after the app becomes visible.
+// Close the panel on an outside click. Per request, notifications are
+// no longer fetched automatically on login/session-restore — the bell
+// stays visible with no badge until the user actually presses it,
+// which is the only thing that triggers a backend fetch now.
 document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', e => {
     const wrap = document.getElementById('navNotifWrap');
@@ -205,16 +208,4 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!wrap || !panel || panel.classList.contains('hidden')) return;
     if (!wrap.contains(e.target)) panel.classList.add('hidden');
   });
-
-  const appWrapper = document.getElementById('appWrapper');
-  if (!appWrapper) return;
-  let ran = false;
-  function onAppVisible() {
-    if (ran) return;
-    if (appWrapper.style.display === 'none' || appWrapper.style.display === '') return;
-    ran = true;
-    setTimeout(refreshNotificationBadge, 1200);
-  }
-  new MutationObserver(onAppVisible).observe(appWrapper, { attributes: true, attributeFilter: ['style'] });
-  onAppVisible();
 });
