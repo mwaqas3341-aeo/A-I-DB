@@ -2290,7 +2290,20 @@ async function apiCall(action, payload) {
         if (dedErr) return { success: false, message: dedErr.message };
         deductions = dedRows || [];
       }
-      return { success: true, preparedMonths: preps || [], deductions };
+      // Annual "how many times has this employee already had a
+      // deduction this year" counter, for the fairness nudge in the
+      // roster UI. Computed from the SAME dedRows already fetched
+      // above (year is already the whole year, not just the selected
+      // months) — no extra DB round trip, so this doesn't add load
+      // even on a large roster.
+      const deductionCounts = {};
+      (deductions || []).forEach(d => {
+        if (Number(d.deduction) > 0) {
+          deductionCounts[d.user_id] = (deductionCounts[d.user_id] || 0) + 1;
+        }
+      });
+
+      return { success: true, preparedMonths: preps || [], deductions, deductionCounts };
     }
 
     case 'prepareTehsilBudget': {

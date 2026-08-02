@@ -126,13 +126,20 @@ async function bpLoadRoster() {
 
   bpState.deductionsByUser = {};
   bpState.preparedMonths = {};
+  bpState.deductionCounts = {};
   if (statusRes && statusRes.success) {
     (statusRes.deductions || []).forEach(d => {
       bpState.deductionsByUser[d.user_id] = bpState.deductionsByUser[d.user_id] || {};
       bpState.deductionsByUser[d.user_id][d.month] = { deduction: Number(d.deduction), due: Number(d.due) };
     });
     (statusRes.preparedMonths || []).forEach(p => { bpState.preparedMonths[p.month] = p; });
+    bpState.deductionCounts = statusRes.deductionCounts || {};
   }
+
+  // Fewest-deductions-first by default, so TRs naturally see who's
+  // owed a break at the top of the list before entering this month's
+  // deductions — a nudge toward fair distribution, not a restriction.
+  bpState.roster.sort((a, b) => (bpState.deductionCounts[a.id] || 0) - (bpState.deductionCounts[b.id] || 0));
 
   bpRenderMonthStatusStrip();
   bpRenderRoster();
@@ -181,14 +188,19 @@ function bpRenderRoster() {
             const due = bpState.rate - (Number(val) || 0);
             totalDue += due;
             return `<td style="padding:6px 8px;text-align:center">
-              <input type="number" min="0" max="${bpState.rate}" value="${val}" style="width:90px;height:32px;border:1px solid var(--b0);border-radius:6px;padding:0 6px;text-align:center"
-                oninput="bpUpdateDeduction('${u.id}', ${mo}, this.value)">
+              <input type="number" min="0" max="${bpState.rate}" value="${val}" data-prev-val="${val}" style="width:90px;height:32px;border:1px solid var(--b0);border-radius:6px;padding:0 6px;text-align:center"
+                oninput="bpUpdateDeduction('${u.id}', ${mo}, this.value)"
+                onchange="bpCheckDeductionFairness('${u.id}', ${mo}, this)">
             </td>`;
           }).join('');
+          const count = bpState.deductionCounts[u.id] || 0;
           return `<tr style="border-bottom:1px solid var(--s2)" data-user-row="${u.id}">
             <td style="padding:8px">${i + 1}</td>
             <td style="padding:8px">${u.personal_no}</td>
-            <td style="padding:8px;font-weight:600">${u.name}</td>
+            <td style="padding:8px">
+              <div style="font-weight:600">${u.name}</div>
+              <div style="font-size:.72rem;color:var(--t3)">${count} deduction${count !== 1 ? 's' : ''} this year</div>
+            </td>
             ${cells}
             <td style="padding:8px;text-align:right;font-weight:700;color:#0d9488" data-total-cell>${totalDue.toLocaleString()}</td>
           </tr>`;
@@ -212,6 +224,35 @@ function bpUpdateDeduction(userId, month, value) {
     totalDue += bpState.rate - (Number(val) || 0);
   });
   row.querySelector('[data-total-cell]').textContent = totalDue.toLocaleString();
+}
+
+// Warns (does not block) when a TR/Admin is about to give an employee
+// another deduction while peers in the same roster have fewer this
+// year. Only fires on a genuine 0 -> positive change for that month,
+// so re-adjusting an amount that was already non-zero doesn't nag
+// repeatedly.
+function bpCheckDeductionFairness(userId, month, inputEl) {
+  const prevVal = Number(inputEl.dataset.prevVal) || 0;
+  const newVal  = Number(inputEl.value) || 0;
+
+  if (newVal > 0 && prevVal <= 0) {
+    const thisCount  = bpState.deductionCounts[userId] || 0;
+    const otherCounts = bpState.roster.filter(r => r.id !== userId).map(r => bpState.deductionCounts[r.id] || 0);
+    const minOther     = otherCounts.length ? Math.min(...otherCounts) : thisCount;
+
+    if (thisCount > minOther) {
+      const proceed = confirm(
+        `This employee has already been selected for deductions ${thisCount} time(s) this year, ` +
+        `while other employees have fewer deductions. Are you sure you want to assign another deduction to this employee?`
+      );
+      if (!proceed) {
+        inputEl.value = prevVal;
+        bpUpdateDeduction(userId, month, prevVal); // revert the row total / editGrid too
+        return;
+      }
+    }
+  }
+  inputEl.dataset.prevVal = String(newVal);
 }
 
 function bpDeductionFor(userId, month) {
