@@ -413,7 +413,7 @@
             <i class="bi bi-cash-coin"></i> Prepare Budget
           </button>
           <button class="ia-tab-btn" id="iaTabAeoBillBtn" onclick="iaSwitchTab('aeobill')" style="display:none">
-            <i class="bi bi-download"></i> Download for AEO
+            <i class="bi bi-download"></i> AEO Bills &amp; Performance
           </button>
         </div>
 
@@ -578,7 +578,7 @@
         <!-- ══ DOWNLOAD FOR AEO TAB (TRs + Admins) ══ -->
         <div id="iaAeoBillTab" style="display:none">
           <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--r2);padding:12px 16px;margin-bottom:14px;font-size:.8rem;color:#1e40af;line-height:1.7">
-            <strong>Download for AEO</strong> — generate and download an Inspection Allowance Bill on behalf of any AEO whose Budget Preparation has already been completed. Uses the exact same figures, calculations, and PDF format as the AEO's own bill.
+            <strong>AEO Bills &amp; Performance</strong> — generate/download an Inspection Allowance Bill, or prepare a Performance Certificate, on behalf of any AEO whose Budget Preparation has already been completed. Uses the exact same figures, calculations, KPI form, and PDF format as the AEO's own screens.
           </div>
 
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
@@ -645,7 +645,7 @@
 
 
   <!-- ══ SHARED: Import conflict resolution (Staff / Public / Private importers) ══ -->
-  <div id="impConflictModal" class="modal hidden">
+  <div id="impConflictModal" class="modal hr-modal-generic hidden">
     <div class="modal-content" style="max-width:640px">
       <h3 style="margin-bottom:4px">Some uploaded values differ from the database</h3>
       <p id="impConflictSummary" style="color:var(--t3);font-size:.88rem;margin-bottom:4px"></p>
@@ -785,7 +785,7 @@
   </div>
 
   <!-- ── ASSIGN TO SCHOOL MODAL ────────────────────────── -->
-  <div id="apAssignModal" class="modal hidden">
+  <div id="apAssignModal" class="modal hr-modal-generic hidden">
     <div class="modal-content" style="max-width:520px">
       <button class="close-btn" onclick="apCloseAssignModal()" title="Close">&times;</button>
       <h3 style="margin-bottom:4px">Assign Employee</h3>
@@ -886,7 +886,7 @@
 
   <!-- ── ASSIGN TEMPORARY DUTY MODAL (from Active Staff row menu, or from this view) ── -->
   <!-- ── DOWNLOAD-FOR-AEO: month picker modal ─────────────────────── -->
-  <div id="aeobillModal" class="modal hidden">
+  <div id="aeobillModal" class="modal hr-modal-generic hidden">
     <div class="modal-content" style="max-width:600px">
       <button class="close-btn" onclick="aeoBillCloseModal()" title="Close">&times;</button>
       <h3 style="margin-bottom:4px">Download Bill</h3>
@@ -906,10 +906,13 @@
           <i class="bi bi-download"></i> Download Cumulative Bill
         </button>
       </div>
+      <button class="btn btn-outline-secondary" style="width:100%;margin-top:10px" onclick="aeoBillPreparePerformance()">
+        <i class="bi bi-clipboard-data-fill"></i> Prepare Performance Certificate for this AEO
+      </button>
     </div>
   </div>
 
-  <div id="tdAssignModal" class="modal hidden">
+  <div id="tdAssignModal" class="modal hr-modal-generic hidden">
     <div class="modal-content" style="max-width:520px">
       <button class="close-btn" onclick="closeTdAssignModal()" title="Close">&times;</button>
       <h3 style="margin-bottom:4px">Assign Temporary Duty</h3>
