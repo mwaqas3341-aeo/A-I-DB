@@ -2569,6 +2569,51 @@ async function apiCall(action, payload) {
       return { success: true, tehsil, wing, rate: fullRate, months };
     }
 
+    // TR/Admin equivalent of getMyInspectionAllowanceMonths — same
+    // shape, same "prepared" logic, just for an arbitrary target AEO
+    // instead of the caller. Powers "Prepare Performance" inside
+    // Download for AEO — the Performance tab's own rendering/PDF logic
+    // (perfRenderMonthsGrid, perfDownloadCertificate, etc.) is reused
+    // completely unchanged; only the months source differs.
+    case 'getAeoInspectionAllowanceMonths': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const targetId = p.userId;
+      const year = Number(p.year) || new Date().getFullYear();
+      if (!targetId) return { success: false, message: 'Missing AEO.' };
+
+      const { data: target } = await _sb.from('app_users').select('tehsil, wing').eq('id', targetId).single();
+      if (!target?.tehsil) return { success: false, message: 'AEO not found or missing tehsil.' };
+
+      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: target.tehsil, p_wing: target.wing });
+      if (!authOk) return { success: false, message: 'Not authorized for this AEO.' };
+
+      const { tehsil, wing } = target;
+      const { data: preps, error: prepErr } = await _sb.from('budget_preparations')
+        .select('month').eq('tehsil', tehsil).eq('wing', wing).eq('year', year);
+      if (prepErr) return { success: false, message: prepErr.message };
+      const preparedSet = new Set((preps || []).map(p => p.month));
+
+      const { data: rate } = await _sb.from('inspection_allowance_settings').select('allowance_rate').eq('id', 1).single();
+      const fullRate = Number(rate?.allowance_rate) || 25000;
+
+      const { data: theirDeds } = await _sb.from('inspection_allowance_deductions')
+        .select('month, deduction, due').eq('user_id', targetId).eq('year', year);
+      const dedByMonth = Object.fromEntries((theirDeds || []).map(d => [d.month, d]));
+
+      const months = Array.from({ length: 12 }, (_, i) => {
+        const m = i + 1;
+        const prepared = preparedSet.has(m) || !!dedByMonth[m];
+        const ded = dedByMonth[m];
+        return {
+          month: m, prepared,
+          deduction: prepared ? Number(ded?.deduction || 0) : null,
+          due: prepared ? Number(ded?.due ?? fullRate) : null,
+        };
+      });
+      return { success: true, tehsil, wing, rate: fullRate, months };
+    }
+
     // Admin-only: lightweight roster for the batch-generate picker
     case 'saveUser': {
       const p = Array.isArray(payload) ? payload[0] : payload;

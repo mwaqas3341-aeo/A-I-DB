@@ -441,6 +441,7 @@ function perfInjectGateStyles() {
 
 function perfInit() {
   perfInjectGateStyles();
+  perfState.aeoTargetId = null; // self-service — clears any AEO previously being prepared for
   const yearSel = document.getElementById("perf_year");
   const yNow = new Date().getFullYear();
   yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1]
@@ -450,6 +451,28 @@ function perfInit() {
   perfState.config = {};
   perfState.lockedMonths = new Set();
   perfLoadMonths();
+}
+
+// TR/Admin preparing a Performance Certificate on behalf of another
+// AEO (see aeoBillPreparePerformance in inspection-allowance.js).
+// iaState.profile is already pointed at the target by the caller;
+// this just points perfLoadMonths at that AEO's own inspection
+// allowance months instead of the caller's, then everything else
+// (grid rendering, KPI entry, PDF generation) works completely
+// unchanged since none of it reads currentUser directly.
+function perfInitForAeo(targetUserId) {
+  perfInjectGateStyles();
+  perfState.aeoTargetId = targetUserId;
+  const yearSel = document.getElementById("perf_year");
+  const yNow = new Date().getFullYear();
+  yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1]
+    .map((y) => `<option value="${y}" ${y === yNow ? "selected" : ""}>${y}</option>`)
+    .join("");
+  perfState.selected = new Set();
+  perfState.config = {};
+  perfState.lockedMonths = new Set();
+  perfLoadMonths();
+  showToast(`Preparing a Performance Certificate for ${iaState.profile?.name || 'this AEO'}.`, true);
 }
 
 // Called after a successful Inspection Allowance bill download/generation
@@ -513,7 +536,9 @@ async function perfLoadMonths() {
   const warn = document.getElementById("perf_monthWarn");
   grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading months…</div>`;
 
-  const res = await apiCall("getMyInspectionAllowanceMonths", { year });
+  const res = perfState.aeoTargetId
+    ? await apiCall("getAeoInspectionAllowanceMonths", { userId: perfState.aeoTargetId, year })
+    : await apiCall("getMyInspectionAllowanceMonths", { year });
   perfState.selected = new Set();
   perfState.config = {};
   if (!res || !res.success) { grid.innerHTML = ""; warn.style.display = "block"; perfRenderConfigPanels(); return; }

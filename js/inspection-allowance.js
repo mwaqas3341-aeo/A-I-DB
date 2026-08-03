@@ -43,7 +43,9 @@ async function openInspectionAllowanceView() {
   iaLoadHistory();
 }
 
-function iaSwitchTab(tab) {
+function iaSwitchTab(tab, opts) {
+  opts = opts || {};
+  if (tab === 'myBill' && iaState.selfProfile) iaState.profile = iaState.selfProfile;
   document.getElementById('iaMyBillTab').style.display      = tab === 'myBill'      ? 'block' : 'none';
   document.getElementById('iaPerformanceTab').style.display = tab === 'performance' ? 'block' : 'none';
   document.getElementById('iaBudgetPrepTab').style.display  = tab === 'budgetprep'  ? 'block' : 'none';
@@ -53,6 +55,7 @@ function iaSwitchTab(tab) {
   document.getElementById('iaTabBudgetPrepBtn').classList.toggle('active', tab === 'budgetprep');
   document.getElementById('iaTabAeoBillBtn').classList.toggle('active', tab === 'aeobill');
 
+  if (opts.skipInit) return;
   if (tab === 'performance') perfInit();
   if (tab === 'budgetprep' && typeof bpInit === 'function') bpInit();
   if (tab === 'aeobill') aeoBillInit();
@@ -75,6 +78,7 @@ async function iaLoadProfile() {
     return;
   }
   iaState.profile = res;
+  iaState.selfProfile = res; // cached so "Download for AEO" can restore this after viewing another AEO's profile
 
   const items = [
     ['Personal No.', res.personal_no], ['Name', res.name],
@@ -1314,6 +1318,20 @@ function aeoBillCloseModal() {
   aeoBillState.selectedAeo = null;
   aeoBillState.months = [];
   aeoBillState.checked = new Set();
+}
+
+// Reuses the Performance tab's UI/state (perfState, perfRenderMonthsGrid,
+// perfDownloadCertificate, ...) completely unchanged — only the months
+// source and iaState.profile point at the target AEO instead of the
+// caller. iaState.profile is restored to the caller's own the moment
+// they switch back to "My Bill" (see iaSwitchTab).
+function aeoBillPreparePerformance() {
+  if (!aeoBillState.selectedAeo) { showToast('Select an AEO first.', false); return; }
+  iaState.profile = aeoBillState.selectedAeo.profile;
+  const targetId = aeoBillState.selectedAeo.id;
+  aeoBillCloseModal();
+  iaSwitchTab('performance', { skipInit: true });
+  if (typeof perfInitForAeo === 'function') perfInitForAeo(targetId);
 }
 
 // ─── Entry point: "Download Bill (PDF)" button (index.html) ────────
