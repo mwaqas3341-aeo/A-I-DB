@@ -1185,9 +1185,14 @@ function aeoBillRenderList() {
             <td>${a.personal_no || ''}</td>
             <td>${a.designation || ''}</td>
             <td>${a.markaz_name || ''}</td>
-            <td><button class="hr-btn-primary" style="padding:6px 12px;font-size:.78rem" onclick="aeoBillOpenModal('${a.id}')">
-              <i class="bi bi-download"></i> Download Bill
-            </button></td>
+            <td style="white-space:nowrap">
+              <button class="hr-btn-primary" style="padding:6px 10px;font-size:.76rem;margin-right:6px" onclick="aeoBillOpenModal('${a.id}')">
+                <i class="bi bi-download"></i> Download Bill
+              </button>
+              <button class="hr-btn-ghost" style="padding:6px 10px;font-size:.76rem" onclick="aeoBillGoToPerformance('${a.id}')">
+                <i class="bi bi-clipboard-data-fill"></i> Download Performance
+              </button>
+            </td>
           </tr>`).join('')}
       </tbody>
     </table>`;
@@ -1332,6 +1337,26 @@ function aeoBillPreparePerformance() {
   aeoBillCloseModal();
   iaSwitchTab('performance', { skipInit: true });
   if (typeof perfInitForAeo === 'function') perfInitForAeo(targetId);
+}
+
+// Same destination as aeoBillPreparePerformance, but triggered directly
+// from the AEO list row's "Download Performance" button — a peer
+// action next to "Download Bill", not something buried inside the
+// bill modal. Fetches the AEO's profile itself since the bill modal
+// (which normally does that) was never opened.
+async function aeoBillGoToPerformance(userId) {
+  const aeo = aeoBillState.aeos.find(a => a.id === userId);
+  if (!aeo) return;
+  showLoading?.();
+  const profileRes = await apiCall('getAeoProfileForBill', { userId });
+  hideLoading?.();
+  if (!profileRes || !profileRes.success) {
+    showToast(profileRes?.message || 'Could not load this AEO\'s profile.', false);
+    return;
+  }
+  iaState.profile = profileRes;
+  iaSwitchTab('performance', { skipInit: true });
+  if (typeof perfInitForAeo === 'function') perfInitForAeo(userId);
 }
 
 // ─── Entry point: "Download Bill (PDF)" button (index.html) ────────
