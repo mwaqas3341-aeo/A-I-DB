@@ -442,6 +442,9 @@ function perfInjectGateStyles() {
 function perfInit() {
   perfInjectGateStyles();
   perfState.aeoTargetId = null; // self-service — clears any AEO previously being prepared for
+  if (typeof iaState !== 'undefined' && iaState.selfProfile) iaState.profile = iaState.selfProfile;
+  const banner = document.getElementById('perf_aeoTargetBanner');
+  if (banner) banner.classList.add('hidden');
   const yearSel = document.getElementById("perf_year");
   const yNow = new Date().getFullYear();
   yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1]
@@ -463,6 +466,11 @@ function perfInit() {
 function perfInitForAeo(targetUserId) {
   perfInjectGateStyles();
   perfState.aeoTargetId = targetUserId;
+  const banner = document.getElementById('perf_aeoTargetBanner');
+  if (banner) {
+    banner.textContent = `⚠ Preparing performance for: ${iaState.profile?.name || 'AEO'} (P.No ${iaState.profile?.personal_no || '—'}) — NOT your own certificate.`;
+    banner.classList.remove('hidden');
+  }
   const yearSel = document.getElementById("perf_year");
   const yNow = new Date().getFullYear();
   yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1]

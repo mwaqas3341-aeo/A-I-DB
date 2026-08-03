@@ -1330,14 +1330,6 @@ function aeoBillCloseModal() {
 // source and iaState.profile point at the target AEO instead of the
 // caller. iaState.profile is restored to the caller's own the moment
 // they switch back to "My Bill" (see iaSwitchTab).
-function aeoBillPreparePerformance() {
-  if (!aeoBillState.selectedAeo) { showToast('Select an AEO first.', false); return; }
-  iaState.profile = aeoBillState.selectedAeo.profile;
-  const targetId = aeoBillState.selectedAeo.id;
-  aeoBillCloseModal();
-  iaSwitchTab('performance', { skipInit: true });
-  if (typeof perfInitForAeo === 'function') perfInitForAeo(targetId);
-}
 
 // Same destination as aeoBillPreparePerformance, but triggered directly
 // from the AEO list row's "Download Performance" button — a peer
