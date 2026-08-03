@@ -858,7 +858,7 @@ function iaBillFHtml(bill) {
     <tr>
       ${td('Net Amount Payable:-', { size: 11, border: BL_THICK })}
       ${td('', { border: BL_THICK + `border-right:${THIN};` + `border-top:${THICK};border-bottom:${THICK};` })}
-      ${td(b(f.totalGross), { size: 18, bold: true, align: 'center', border: `border-right:${THIN};border-top:${THICK};border-bottom:${THICK};` })}
+      ${td(b(f.monthlyRate), { size: 18, bold: true, align: 'center', border: `border-right:${THIN};border-top:${THICK};border-bottom:${THICK};` })}
       ${td(b(f.netTotal), { size: 18, bold: true, align: 'center', border: BR_THICK + `border-top:${THICK};border-bottom:${THICK};` })}
     </tr>
   `;
