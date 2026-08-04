@@ -112,6 +112,8 @@ window.addEventListener('DOMContentLoaded', () => {
 //  TAB SWITCHER
 // ═══════════════════════════════════════════════
 function switchAdminTab(tab, btn) {
+  const placeholder = document.getElementById('adminNoTabSelected');
+  if (placeholder) placeholder.style.display = 'none';
   document.getElementById('adminPanelUsers').style.display   = tab === 'users'   ? 'block' : 'none';
   document.getElementById('adminPanelLinks').style.display   = tab === 'links'   ? 'block' : 'none';
   document.getElementById('adminPanelTools').style.display   = tab === 'tools'   ? 'block' : 'none';
@@ -120,12 +122,14 @@ function switchAdminTab(tab, btn) {
   document.getElementById('adminPanelIA').style.display      = tab === 'ia'      ? 'block' : 'none';
   document.querySelectorAll('.admin-sub-tab').forEach(b => b.classList.remove('active-admin-tab'));
   if (btn) btn.classList.add('active-admin-tab');
+  if (tab === 'users' && !usersLoadedOnce) { usersLoadedOnce = true; loadUsers(); }
   if (tab === 'links')   loadLinksAppsTable();
   if (tab === 'tools')   loadToolsTableAdmin();
   if (tab === 'kpi')     loadKpiCardsTable();
   if (tab === 'general') loadGeneralList('designation');
   if (tab === 'ia')      loadInspectionAllowanceAdmin();
 }
+let usersLoadedOnce = false;
 
 // ═══════════════════════════════════════════════
 //  INSPECTION ALLOWANCE MANAGEMENT — Tehsil Budget Config + TR assignments
@@ -248,8 +252,9 @@ function loadGeneralList(kind) {
 
 function renderGeneralTable(kind, headers, data) {
   const cfg = GENERAL_LIST_CONFIG[kind];
+  const showOrderCol = kind !== 'designation';
   document.getElementById(cfg.thead).innerHTML =
-    `<tr><th>Actions</th><th>Name</th><th>Display Order</th><th>Active</th></tr>`;
+    `<tr><th>Actions</th><th>Name</th>${showOrderCol ? '<th>Display Order</th>' : ''}<th>Active</th></tr>`;
   document.getElementById(cfg.tbody).innerHTML = data.map(row => `
     <tr>
       <td style="display:flex;gap:4px">
@@ -259,7 +264,7 @@ function renderGeneralTable(kind, headers, data) {
           onclick="confirmDeleteGeneralRow('${kind}','${row._id}')"><i class="bi bi-trash"></i></button>
       </td>
       <td style="font-weight:700;color:var(--t1)">${escHtml(row['Name'])}</td>
-      <td>${row['Display Order']}</td>
+      ${showOrderCol ? `<td>${row['Display Order']}</td>` : ''}
       <td>${row['Active'] === 'No'
         ? '<span style="color:var(--t3)">Hidden</span>'
         : '<span style="color:var(--ok)">Shown</span>'}</td>
@@ -290,6 +295,8 @@ function openGeneralListModal(kind) {
   document.getElementById('gl_active').value = 'Yes';
   document.getElementById('gl_kind').value = kind;
   document.getElementById('gl_rowIndex').value = '';
+  document.getElementById('gl_orderWrap').style.display = kind === 'designation' ? 'none' : '';
+  document.getElementById('gl_alphaNote').classList.toggle('hidden', kind !== 'designation');
   generalListModalInst.show();
 }
 
@@ -304,6 +311,8 @@ function editGeneralListRow(kind, ri) {
   document.getElementById('gl_active').value = row['Active'] || 'Yes';
   document.getElementById('gl_kind').value = kind;
   document.getElementById('gl_rowIndex').value = ri;
+  document.getElementById('gl_orderWrap').style.display = kind === 'designation' ? 'none' : '';
+  document.getElementById('gl_alphaNote').classList.toggle('hidden', kind !== 'designation');
   generalListModalInst.show();
 }
 
@@ -349,9 +358,6 @@ function confirmDeleteGeneralRow(kind, ri) {
 
 function openAdminModule() {
   switchGlobalTab('adminDataView', null);
-  document.getElementById('userTBody').innerHTML =
-    '<tr><td colspan="10" style="padding:20px;text-align:center;color:var(--t3)">Loading users…</td></tr>';
-  loadUsers();
   loadJurisdictionDropdowns();
 }
 
@@ -785,7 +791,7 @@ function renderUserTable() {
     const scope  = row[UH.SCOPE_TYPE]  || 'Markaz';
     const access = row[UH.ACCESS_TYPE] || 'Editor';
     const role   = row[UH.ROLE] || '';
-    return `<tr>
+    return `<tr data-district="${(row[UH.DISTRICT]||'').replace(/"/g,'')}" data-wing="${(row[UH.WING]||'').replace(/"/g,'')}" data-tehsil="${(row[UH.TEHSIL]||'').replace(/"/g,'')}">
       <td>
         <div style="display:flex;gap:4px">
           <button class="tbl-btn btn-edit" title="Edit" onclick="editUser('${cnic}')">
@@ -807,32 +813,62 @@ function renderUserTable() {
       }).join('')}
     </tr>`;
   }).join('');
+  _populateUserFilterDropdowns();
    const searchInput = document.getElementById('userSearchInput');
   if (searchInput) { searchInput.value = ''; }
   const countEl = document.getElementById('userSearchCount');
   if (countEl) countEl.textContent = '';
 }
 
-function filterUserTable(query) {
-  const q = query.trim().toLowerCase();
-  const countEl = document.getElementById('userSearchCount');
+function _populateUserFilterDropdowns() {
+  const distSel = document.getElementById('userFilterDistrict');
+  const tehSel  = document.getElementById('userFilterTehsil');
+  if (!distSel || !tehSel) return;
+  const districts = [...new Set(userData.map(r => r[UH.DISTRICT]).filter(Boolean))].sort();
+  const tehsils   = [...new Set(userData.map(r => r[UH.TEHSIL]).filter(Boolean))].sort();
+  const keepDist = distSel.value, keepTeh = tehSel.value;
+  distSel.innerHTML = '<option value="">All Districts</option>' + districts.map(d => `<option value="${d}">${d}</option>`).join('');
+  tehSel.innerHTML  = '<option value="">All Tehsils</option>'   + tehsils.map(t => `<option value="${t}">${t}</option>`).join('');
+  if (districts.includes(keepDist)) distSel.value = keepDist;
+  if (tehsils.includes(keepTeh))    tehSel.value  = keepTeh;
+}
 
-  if (!q) {
-    document.querySelectorAll('#userTBody tr').forEach(tr => tr.style.display = '');
-    countEl.textContent = '';
-    return;
-  }
+// Combined District + Wing + Tehsil + Keyword filtering, updates
+// instantly with no page refresh, selections persist until changed/
+// cleared (all standard <select>/<input> state, nothing resets them
+// except clearUserFilters or a fresh loadUsers()).
+function applyUserFilters() {
+  const district = (document.getElementById('userFilterDistrict')?.value || '').toLowerCase();
+  const wing     = (document.getElementById('userFilterWing')?.value || '').toLowerCase();
+  const tehsil   = (document.getElementById('userFilterTehsil')?.value || '').toLowerCase();
+  const q        = (document.getElementById('userSearchInput')?.value || '').trim().toLowerCase();
+  const countEl  = document.getElementById('userSearchCount');
 
   let visible = 0;
-  document.querySelectorAll('#userTBody tr').forEach(tr => {
-    const text = tr.textContent.toLowerCase();
-    const show = text.includes(q);
+  const rows = document.querySelectorAll('#userTBody tr');
+  rows.forEach(tr => {
+    const rd = (tr.dataset.district || '').toLowerCase();
+    const rw = (tr.dataset.wing || '').toLowerCase();
+    const rt = (tr.dataset.tehsil || '').toLowerCase();
+    const matchesDropdowns = (!district || rd === district) && (!wing || rw === wing) && (!tehsil || rt === tehsil);
+    const matchesKeyword   = !q || tr.textContent.toLowerCase().includes(q);
+    const show = matchesDropdowns && matchesKeyword;
     tr.style.display = show ? '' : 'none';
     if (show) visible++;
   });
+  if (countEl) countEl.textContent = (district || wing || tehsil || q) ? `${visible} of ${rows.length} users` : '';
+}
 
-  const total = document.querySelectorAll('#userTBody tr').length;
-  countEl.textContent = `${visible} of ${total} users`;
+function clearUserFilters() {
+  ['userFilterDistrict', 'userFilterWing', 'userFilterTehsil'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const searchInput = document.getElementById('userSearchInput');
+  if (searchInput) searchInput.value = '';
+  applyUserFilters();
+}
+
+function filterUserTable(query) {
+  // Legacy name kept for any stray callers — routes through the combined filter now.
+  applyUserFilters();
 }
 
 // ── User modal: add ──────────────────────────────────────────────
@@ -1399,7 +1435,7 @@ function renderKpiCardsTable(headers, data) {
     const aTypeLabel = aType === 'url' ? '<span style="background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:10px;font-size:.68rem;font-weight:700">URL</span>'
                                        : '<span style="background:#d1fae5;color:#065f46;padding:1px 8px;border-radius:10px;font-size:.68rem;font-weight:700">Module</span>';
 
-    return `<tr>
+    return `<tr data-district="${(row['Scope District']||'').replace(/"/g,'')}" data-wing="${(row['Scope Wing']||'').replace(/"/g,'')}" data-tehsil="${(row['Scope Tehsil']||'').replace(/"/g,'')}">
       <td>
         <div style="display:flex;gap:4px">
           <button class="tbl-btn btn-edit" style="border-color:#0f766e;color:#0f766e;background:#f0fdfa"
@@ -1429,6 +1465,49 @@ function renderKpiCardsTable(headers, data) {
       <td>${scopeVisibleToBadge(row)}</td>
     </tr>`;
   }).join('');
+  _populateKpiFilterDropdowns(data);
+}
+
+function _populateKpiFilterDropdowns(data) {
+  const distSel = document.getElementById('kpiFilterDistrict');
+  const tehSel  = document.getElementById('kpiFilterTehsil');
+  if (!distSel || !tehSel) return;
+  const districts = [...new Set(data.map(r => r['Scope District']).filter(Boolean))].sort();
+  const tehsils   = [...new Set(data.map(r => r['Scope Tehsil']).filter(Boolean))].sort();
+  const keepDist = distSel.value, keepTeh = tehSel.value;
+  distSel.innerHTML = '<option value="">All Districts</option>' + districts.map(d => `<option value="${d}">${d}</option>`).join('');
+  tehSel.innerHTML  = '<option value="">All Tehsils</option>'   + tehsils.map(t => `<option value="${t}">${t}</option>`).join('');
+  if (districts.includes(keepDist)) distSel.value = keepDist;
+  if (tehsils.includes(keepTeh))    tehSel.value  = keepTeh;
+}
+
+function applyKpiFilters() {
+  const district = (document.getElementById('kpiFilterDistrict')?.value || '').toLowerCase();
+  const wing     = (document.getElementById('kpiFilterWing')?.value || '').toLowerCase();
+  const tehsil   = (document.getElementById('kpiFilterTehsil')?.value || '').toLowerCase();
+  const q        = (document.getElementById('kpiSearchInput')?.value || '').trim().toLowerCase();
+  const countEl  = document.getElementById('kpiSearchCount');
+
+  let visible = 0;
+  const rows = document.querySelectorAll('#kpiTBody tr');
+  rows.forEach(tr => {
+    const rd = (tr.dataset.district || '').toLowerCase();
+    const rw = (tr.dataset.wing || '').toLowerCase();
+    const rt = (tr.dataset.tehsil || '').toLowerCase();
+    const matchesDropdowns = (!district || rd === district) && (!wing || rw === wing) && (!tehsil || rt === tehsil);
+    const matchesKeyword   = !q || tr.textContent.toLowerCase().includes(q);
+    const show = matchesDropdowns && matchesKeyword;
+    tr.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  if (countEl) countEl.textContent = (district || wing || tehsil || q) ? `${visible} of ${rows.length} cards` : '';
+}
+
+function clearKpiFilters() {
+  ['kpiFilterDistrict', 'kpiFilterWing', 'kpiFilterTehsil'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const searchInput = document.getElementById('kpiSearchInput');
+  if (searchInput) searchInput.value = '';
+  applyKpiFilters();
 }
 
 // ── Generic hierarchical scope picker — District → Wing → Tehsil → Markaz ──

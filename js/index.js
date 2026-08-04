@@ -204,7 +204,14 @@ function enterApp(user) {
 
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
   history.pushState({ route: 'home' }, '', '#home');
-  if (startRoute !== 'home') {
+  if (startRoute.startsWith('route:')) {
+    // Admin-configured Dashboard Card opened via a fresh/new-tab hash —
+    // run its function once; not added to the back/forward-aware
+    // ROUTES map since the function name is arbitrary admin config,
+    // not a fixed app route.
+    const fnName = decodeURIComponent(startRoute.slice(6));
+    setTimeout(() => { if (typeof window[fnName] === 'function') window[fnName](); }, 300);
+  } else if (startRoute !== 'home') {
     navigateTo(startRoute, true);
   }
 }
@@ -582,21 +589,22 @@ function renderKpiCardsInto(cards, gridId, sectionId) {
     const desc    = escHtml(c['Card Description'] || '');
     const aType   = c['Action Type'] || 'module';
     const aVal    = c['Action Value'] || '';
-    const safeVal = String(aVal).replace(/'/g, "\\'");
+    const safeVal = String(aVal).replace(/'/g, "\\'");     // for embedding inside onclick="...'...'..."
+    const hrefVal = String(aVal).replace(/"/g, '&quot;');   // for embedding inside href="..."
 
-    const clickAttr = aType === 'url'
-      ? `onclick="window.open('${safeVal}','_blank')"`
-      : `onclick="if (typeof window['${safeVal}'] === 'function') { window['${safeVal}'](); } else { showToast('Module not available: ${safeVal}', false); }"`;
+    const isUrl = aType === 'url';
+    const href = isUrl ? hrefVal : `#route:${encodeURIComponent(aVal)}`;
+    const extraAttrs = isUrl ? `target="_blank" rel="noopener"` : `onclick="if (typeof window['${safeVal}'] === 'function') { window['${safeVal}'](); } else { showToast('Module not available: ${safeVal}', false); } return false;"`;
 
     return `
-      <div class="module-card" style="border-top-color:${color}" ${clickAttr}>
+      <a class="module-card" style="border-top-color:${color}" href="${href}" ${extraAttrs}>
         <i class="bi bi-${icon} mc-icon" style="color:${color}"></i>
         <div class="mc-title">${title}</div>
         <div class="mc-desc">${desc}</div>
         <div class="mc-arrow" style="color:${color}">
           <i class="bi bi-arrow-right-circle-fill"></i> Open
         </div>
-      </div>`;
+      </a>`;
   }).join('');
 
   section.style.display = 'block';
@@ -652,6 +660,8 @@ const ROUTES = {
   'public-OutSourced': () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('Out Sourced School'); },
   'private-Private':   () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Private'); },
   'private-Inactive':  () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Inactive'); },
+  'school-data':        () => { if (typeof toggleKpiCards === 'function') toggleKpiCards(true); },
+  'inspection-allowance': () => { if (typeof _rawOpenIa === 'function') _rawOpenIa(); },
 };
 
 let _navInFlight = false;
@@ -683,6 +693,7 @@ let _rawOpenPrivate = null;
 let _rawOpenHr      = null;
 let _rawOpenAdmin   = null;
 let _rawOpenTools   = null;
+let _rawOpenIa      = null;
 
 function _installRouterWrappers() {
   _rawOpenPublic  = window.openPublicModule;
@@ -690,6 +701,7 @@ function _installRouterWrappers() {
   _rawOpenHr      = window.openHrModule;
   _rawOpenAdmin   = window.openAdminModule;
   _rawOpenTools   = window.openToolsView;
+  _rawOpenIa      = window.openInspectionAllowanceView;
 
   if (typeof _rawOpenPublic === 'function') {
     window.openPublicModule = function(sheetName) {
@@ -729,6 +741,21 @@ function _installRouterWrappers() {
     window.openToolsView = function() {
       _rawOpenTools();
       if (!_navInFlight) history.pushState({ route: 'tools' }, '', '#tools');
+    };
+  }
+
+  if (typeof _rawOpenIa === 'function') {
+    window.openInspectionAllowanceView = function() {
+      _rawOpenIa();
+      if (!_navInFlight) history.pushState({ route: 'inspection-allowance' }, '', '#inspection-allowance');
+    };
+  }
+
+  const _rawToggleKpiCards = window.toggleKpiCards;
+  if (typeof _rawToggleKpiCards === 'function') {
+    window.toggleKpiCards = function(...args) {
+      _rawToggleKpiCards(...args);
+      if (!_navInFlight && args[0]) history.pushState({ route: 'school-data' }, '', '#school-data');
     };
   }
 

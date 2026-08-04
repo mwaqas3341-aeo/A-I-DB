@@ -3002,7 +3002,11 @@ function _hierarchyScopeDbFields(p) {
     case 'getStaffDesignations':
     case 'getPrivateCategories': {
       const table = action === 'getStaffDesignations' ? 'staff_designations' : 'private_school_categories';
-      const { data, error } = await _sb.from(table).select('*').eq('active', true).order('display_order');
+      let q = _sb.from(table).select('*').eq('active', true);
+      // Designations are always A–Z automatically — no manual ordering
+      // field for these. Categories keep their manual display_order.
+      q = table === 'staff_designations' ? q.order('name') : q.order('display_order');
+      const { data, error } = await q;
       if (error) return { success: false, message: error.message };
       return { success: true, items: (data || []).map(r => r.name) };
     }
@@ -3010,9 +3014,11 @@ function _hierarchyScopeDbFields(p) {
     case 'getStaffDesignationsAdmin':
     case 'getPrivateCategoriesAdmin': {
       const table = action === 'getStaffDesignationsAdmin' ? 'staff_designations' : 'private_school_categories';
-      const { data, error } = await _sb.from(table).select('*').order('display_order');
+      let q = _sb.from(table).select('*');
+      q = table === 'staff_designations' ? q.order('name') : q.order('display_order');
+      const { data, error } = await q;
       if (error) return { success: false, message: error.message };
-      const headers = ['Name', 'Display Order', 'Active'];
+      const headers = table === 'staff_designations' ? ['Name', 'Active'] : ['Name', 'Display Order', 'Active'];
       const mapped = (data || []).map(r => ({
         'Name': r.name || '',
         'Display Order': r.display_order || 99,
@@ -3031,11 +3037,13 @@ function _hierarchyScopeDbFields(p) {
       const name = (p['Name'] || '').trim();
       if (!name) return { success: false, message: 'Name is required.' };
 
-      const dbRow = {
-        name,
-        display_order: parseInt(p['Display Order']) || 99,
-        active: p['Active'] === 'No' ? false : true,
-      };
+      // Designations are always kept alphabetical automatically — no
+      // manual "Display Order" input for these; display_order is left
+      // at a constant placeholder since nothing reads it for this
+      // table anymore (both queries above sort by name instead).
+      const dbRow = table === 'staff_designations'
+        ? { name, active: p['Active'] === 'No' ? false : true }
+        : { name, display_order: parseInt(p['Display Order']) || 99, active: p['Active'] === 'No' ? false : true };
       if (id) {
         const r = await _checkedUpdate(table, dbRow, 'id', id);
         if (!r.ok) return { success: false, message: r.message };
