@@ -201,6 +201,7 @@ function enterApp(user) {
   loadKPIs();
   loadDashboardLinksApps();
   loadDashboardKpiCards();
+  if (typeof checkSeatEntryGate === 'function') checkSeatEntryGate();
 
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
   history.pushState({ route: 'home' }, '', '#home');

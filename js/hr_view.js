@@ -211,7 +211,7 @@ function _hrApplyPermissionGating() {
   const authorized = typeof currentUser !== 'undefined' && currentUser &&
     (String(currentUser.role || '').toLowerCase() === 'admin' ||
      String(currentUser.access_type || '').toLowerCase() === 'editor');
-  ['hrNavAwaitingIssues', 'hrNavTdHistory'].forEach(id => {
+  ['hrNavAwaitingIssues', 'hrNavTdHistory', 'hrNavTeachingSeats', 'hrNavNonTeachingSeats'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = authorized ? '' : 'none';
   });
@@ -948,66 +948,118 @@ function downloadSNE() {
     })
     .withSuccessHandler(res => {
       hideLoading();
-      if (!res || !res.success || !res.rows || !res.rows.length) {
+      if (!res || !res.success || ((res.teaching?.rows.length || 0) + (res.nonTeaching?.rows.length || 0) === 0)) {
         hrShowToast('No SNE data available for the current filter.', false);
         return;
       }
-      _buildSneExcel(res.rows);
+      _buildSneExcel(res.teaching, res.nonTeaching, filters);
     })
     .getSneSummary(userPayload, filters);
 }
 
-function _buildSneExcel(rows) {
-  // Sort by Markaz then EMIS (both A→Z) for a predictable, scannable report.
+// Builds a two-sheet workbook (Teaching / Non Teaching), each sheet a
+// per-school pivot: one Sanctioned/Filled/Vacant column-group per
+// subject/designation actually present in the data (not hardcoded —
+// different tehsils/wings can have different designation mixes), a
+// Grand Total group, then three grade-wise (16/15/14 + G.Total)
+// summary blocks — matching the requested report layout.
+function _buildSneExcel(teaching, nonTeaching, filters) {
+  const wb = XLSX.utils.book_new();
+  const title = [filters.tehsil, filters.wing].filter(Boolean).join(' — ') || 'All Scope';
+  const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  let sheetsBuilt = 0;
+  if (teaching)    { _appendSneSheet(wb, 'Teaching',     teaching,    `Detail of Sanctioned Posts — Teaching Staff — ${title} — as of ${dateStr}`, true); sheetsBuilt++; }
+  if (nonTeaching) { _appendSneSheet(wb, 'Non Teaching', nonTeaching, `Detail of Sanctioned Posts — Non-Teaching Staff — ${title} — as of ${dateStr}`, false); sheetsBuilt++; }
+  if (!sheetsBuilt) { hrShowToast('No SNE data available for the current filter.', false); return; }
+
+  XLSX.writeFile(wb, 'SNE_Summary_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  const totalSchools = (teaching?.rows.length || 0) + (nonTeaching?.rows.length || 0);
+  hrShowToast(`SNE report downloaded (${totalSchools} school record${totalSchools !== 1 ? 's' : ''} across ${sheetsBuilt} sheet${sheetsBuilt !== 1 ? 's' : ''}).`, true);
+}
+
+function _appendSneSheet(wb, sheetName, data, titleText, includeGradeWiseBlocks) {
+  const { subjectColumns, rows } = data;
   const sorted = rows.slice().sort((a, b) => {
     const m = (a.markaz_name || '').localeCompare(b.markaz_name || '');
     return m !== 0 ? m : String(a.emis || '').localeCompare(String(b.emis || ''));
   });
 
-  const headerRow1 = ['Sr No.', 'Markaz Name', 'Emis', 'School Name',
-    'Grade 16', '', '', 'Grade 15', '', '', 'Grade 14', '', '', 'Non-Teaching', '', ''];
-  const headerRow2 = ['', '', '', '',
-    'Sanctioned', 'Filled', 'Vacant', 'Sanctioned', 'Filled', 'Vacant',
-    'Sanctioned', 'Filled', 'Vacant', 'Sanctioned', 'Filled', 'Vacant'];
+  const FIXED_COLS = 5; // Sr No, Markaz, EMIS, School Name, School Level
+  const subjCount = subjectColumns.length;
+  const SUB_LABELS = ['Sanctioned', 'Filled', 'Vacant'];
+  const gradeBlockCols = includeGradeWiseBlocks ? 12 : 0; // 3 blocks (Sanctioned/Filled/Vacant) x 4 (16/15/14/G.Total)
 
-  const aoa = [headerRow1, headerRow2];
+  // ── Row 0: report title, spanning the full width ──
+  const totalCols = FIXED_COLS + (subjCount * 3) + 3 /* grand total */ + gradeBlockCols;
+  const titleRow = new Array(totalCols).fill('');
+  titleRow[0] = titleText;
+
+  // ── Row 1: group labels (subject names, "Grand Total", grade-wise block labels) ──
+  const groupRow = ['', '', '', '', ''];
+  subjectColumns.forEach(col => { groupRow.push(col.label, '', ''); });
+  groupRow.push('Grand Total', '', '');
+  if (includeGradeWiseBlocks) {
+    ['Sanctioned', 'Filled', 'Vacant'].forEach(label => {
+      groupRow.push(`Grade Wise Total ${label}`, '', '', '');
+    });
+  }
+
+  // ── Row 2: sub-labels (Sanctioned/Filled/Vacant, or 16/15/14/G.Total) ──
+  const subRow = ['Sr No.', 'Markaz Name', 'EMIS Code', 'Name of School', 'School Level'];
+  subjectColumns.forEach(() => { subRow.push(...SUB_LABELS); });
+  subRow.push(...SUB_LABELS);
+  if (includeGradeWiseBlocks) {
+    for (let i = 0; i < 3; i++) subRow.push('16', '15', '14', 'G.Total');
+  }
+
+  const aoa = [titleRow, groupRow, subRow];
+
   sorted.forEach((r, i) => {
-    aoa.push([
-      i + 1, r.markaz_name || '', r.emis || '', r.school_name || '',
-      r.grade16_sanctioned || 0, r.grade16_filled || 0, r.grade16_vacant || 0,
-      r.grade15_sanctioned || 0, r.grade15_filled || 0, r.grade15_vacant || 0,
-      r.grade14_sanctioned || 0, r.grade14_filled || 0, r.grade14_vacant || 0,
-      r.nonteaching_sanctioned || 0, r.nonteaching_filled || 0, r.nonteaching_vacant || 0,
-    ]);
+    const row = [i + 1, r.markaz_name || '', r.emis || '', r.school_name || '', r.school_level || ''];
+    subjectColumns.forEach(col => {
+      // "Sanctioned" shown here is the original/gross sanctioned figure
+      // (matches the reference template and keeps the audit trail
+      // visible); Vacant is still computed net of abolished posts —
+      // see effective_sanctioned_count in the pivot — so vacancy
+      // figures never overstate against an abolished post even though
+      // there's no separate "Abolished"/"Effective" column shown.
+      const v = r.subjects[col.code] || { sanctioned: 0, filled: 0, vacant: 0 };
+      row.push(v.sanctioned, v.filled, v.vacant);
+    });
+    const gt = r.grandTotal;
+    row.push(gt.sanctioned, gt.filled, gt.vacant);
+    if (includeGradeWiseBlocks) {
+      const g16 = r.grade16, g15 = r.grade15, g14 = r.grade14;
+      ['sanctioned', 'filled', 'vacant'].forEach(field => {
+        row.push(g16[field], g15[field], g14[field], g16[field] + g15[field] + g14[field]);
+      });
+    }
+    aoa.push(row);
   });
+  if (!sorted.length) aoa.push(['No data for this scope. Enter seat data via HR → Teaching / Non-Teaching Sanctioned & Abolished Seats.']);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-  // Merge Sr No./Markaz/Emis/School Name down both header rows, and
-  // each grade group across its 3 sub-columns.
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 },  e: { r: 1, c: 0 } },  // Sr No.
-    { s: { r: 0, c: 1 },  e: { r: 1, c: 1 } },  // Markaz Name
-    { s: { r: 0, c: 2 },  e: { r: 1, c: 2 } },  // Emis
-    { s: { r: 0, c: 3 },  e: { r: 1, c: 3 } },  // School Name
-    { s: { r: 0, c: 4 },  e: { r: 0, c: 6 } },  // Grade 16
-    { s: { r: 0, c: 7 },  e: { r: 0, c: 9 } },  // Grade 15
-    { s: { r: 0, c: 10 }, e: { r: 0, c: 12 } }, // Grade 14
-    { s: { r: 0, c: 13 }, e: { r: 0, c: 15 } }, // Non-Teaching
+  const merges = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }, // title spans full width
   ];
+  for (let c = 0; c < FIXED_COLS; c++) merges.push({ s: { r: 1, c }, e: { r: 2, c } }); // fixed cols span both header rows
+  let col = FIXED_COLS;
+  subjectColumns.forEach(() => { merges.push({ s: { r: 1, c: col }, e: { r: 1, c: col + 2 } }); col += 3; });
+  merges.push({ s: { r: 1, c: col }, e: { r: 1, c: col + 2 } }); col += 3; // Grand Total
+  if (includeGradeWiseBlocks) {
+    for (let i = 0; i < 3; i++) { merges.push({ s: { r: 1, c: col }, e: { r: 1, c: col + 3 } }); col += 4; }
+  }
+  ws['!merges'] = merges;
 
   ws['!cols'] = [
-    { wch: 6 }, { wch: 22 }, { wch: 10 }, { wch: 30 },
-    { wch: 10 }, { wch: 8 }, { wch: 8 },
-    { wch: 10 }, { wch: 8 }, { wch: 8 },
-    { wch: 10 }, { wch: 8 }, { wch: 8 },
-    { wch: 12 }, { wch: 8 }, { wch: 8 },
+    { wch: 6 }, { wch: 22 }, { wch: 10 }, { wch: 30 }, { wch: 12 },
+    ...Array(subjCount * 3 + 3).fill({ wch: 9 }),
+    ...Array(gradeBlockCols).fill({ wch: 7 }),
   ];
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'SNE Summary');
-  XLSX.writeFile(wb, 'SNE_Summary_' + new Date().toISOString().slice(0, 10) + '.xlsx');
-  hrShowToast('SNE report downloaded (' + sorted.length + ' schools).', true);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
 }
 
 // ──────────────────────────────────────────────────────────────────

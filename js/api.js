@@ -1216,23 +1216,147 @@ async function apiCall(action, payload) {
       return { success: true, headers, rows, count: missing.length };
     }
 
-    // SNE (Sanctioned/Filled/Vacant) grade-wise summary per school, used
-    // by the "Download SNE" button in the HR module. Sanctioned figures
-    // come from sne_subject_sanctioned (uploaded per Excel); filled
-    // figures are always computed live from active staff records.
+    // SNE (Sanctioned/Filled/Vacant) subject/designation-wise summary
+    // per school, split into Teaching and Non-Teaching — used by the
+    // "Download SNE" button in the HR module. Both sanctioned AND
+    // filled figures come straight from sne_subject_sanctioned (the
+    // uploaded Excel already carries both per subject/grade).
     //
     // Filters are pushed down to the DB query (not fetched-then-filtered
     // in JS) — public_schools has 38k+ rows nationwide, so pulling
     // everything before scoping it down was the cause of the export
     // hanging on slower connections. Non-admins are scoped to their own
     // district by default even with no explicit filter selected.
+    //
+    // Subject columns are NOT hardcoded — each school only shows the
+    // subject/designation columns that actually have a row for it
+    // within the current filtered scope, discovered from the data
+    // itself (per category), so a narrower scope (e.g. one tehsil)
+    // doesn't drag in irrelevant columns from elsewhere.
+    // ── SEAT MANAGEMENT (Sanctioned & Abolished Seats) — Teaching / Non-Teaching ──
+    // Built on the same sne_subject_sanctioned table the SNE export
+    // already reads, extended with abolished_count/remarks — one
+    // source of truth instead of a parallel table, so every vacancy
+    // check across the app (check_grade_vacancy RPC) automatically
+    // reflects abolished seats with no separate sync step needed.
+    case 'getSeatManagementList': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const category = p.category === 'non_teaching' ? 'non_teaching' : 'teaching';
+      let q = _sb.from('sne_subject_sanctioned').select('*').eq('category', category);
+      if (p.district) q = q.eq('district', p.district);
+      if (p.wing)     q = q.eq('wing', p.wing);
+      if (p.tehsil)   q = q.eq('tehsil', p.tehsil);
+      if (p.emis)     q = q.eq('emis', p.emis);
+      q = q.order('school_name').order('grade', { ascending: false }).order('subject_label');
+      const { data, error } = await q.limit(5000);
+      if (error) return { success: false, message: error.message };
+
+      const filterFn = _buildUserSchoolFilter(user, { idKey: 'emis' });
+      const rows = filterFn ? (data || []).filter(filterFn) : (data || []);
+      return { success: true, rows };
+    }
+
+    case 'saveSeatRecord': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const category = p.category === 'non_teaching' ? 'non_teaching' : 'teaching';
+      const emis = (p.emis || '').trim();
+      if (!emis) return { success: false, message: 'EMIS Code is required.' };
+      const grade = parseInt(p.grade);
+      if (!grade || grade < 1) return { success: false, message: 'Grade/BPS is required.' };
+      const sanctioned = parseInt(p.sanctionedCount);
+      const abolished  = parseInt(p.abolishedCount) || 0;
+      if (!Number.isFinite(sanctioned) || sanctioned < 0) return { success: false, message: 'Total Sanctioned Seats must be 0 or more.' };
+      if (abolished < 0) return { success: false, message: 'Abolished Seats cannot be negative.' };
+      if (abolished > sanctioned) return { success: false, message: 'Abolished Seats cannot exceed Total Sanctioned Seats.' };
+
+      // Duplicate-record prevention (same EMIS+Grade+Subject+Designation):
+      // subject_code already encodes designation+subject+grade, so this
+      // is exactly the natural key requested.
+      const designation = (p.designation || '').trim();
+      const subject = (p.subject || '').trim();
+      const codePart = s => (s || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const subjectCode = subject ? `${codePart(designation)}_${codePart(subject)}_G${grade}` : `${codePart(designation)}_G${grade}`;
+      const subjectLabel = subject ? `${designation} (${subject})` : designation;
+      const asOfDate = p.asOfDate || new Date().toISOString().slice(0, 10);
+
+      let schoolMeta = { school_name: p.schoolName || '', district: p.district || '', wing: p.wing || '', tehsil: p.tehsil || '', markaz_name: p.markazName || '' };
+      if (!schoolMeta.school_name || !schoolMeta.district) {
+        const { data: school } = await _sb.from('public_schools').select('school_name, district, wing, tehsil, markaz_name').eq('emis', emis).maybeSingle();
+        if (school) schoolMeta = { ...schoolMeta, ...Object.fromEntries(Object.entries(school).filter(([, v]) => v)) };
+      }
+
+      let savedId = p.id;
+      if (p.id) {
+        const r = await _checkedUpdate('sne_subject_sanctioned', dbRow, 'id', p.id);
+        if (!r.ok) return { success: false, message: r.message };
+      } else {
+        const { data: dupe } = await _sb.from('sne_subject_sanctioned').select('id')
+          .eq('emis', emis).eq('subject_code', subjectCode).eq('as_of_date', asOfDate).maybeSingle();
+        if (dupe) return { success: false, message: 'A record already exists for this EMIS + Grade + Subject + Designation. Edit the existing row instead.' };
+        const { data: inserted, error } = await _sb.from('sne_subject_sanctioned').insert([dbRow]).select('id').single();
+        if (error) return { success: false, message: error.message };
+        savedId = inserted?.id;
+      }
+      // Attach the optional change reason to the audit row the trigger
+      // just created (set_config can't be used here — each REST call is
+      // its own transaction, so a prior "set the session var" call
+      // wouldn't carry over to this one anyway).
+      if (p.reason && savedId) {
+        const { data: latestAudit } = await _sb.from('sne_seat_audit_log')
+          .select('id').eq('sne_id', savedId).order('changed_at', { ascending: false }).limit(1).maybeSingle();
+        if (latestAudit) await _sb.from('sne_seat_audit_log').update({ reason: p.reason }).eq('id', latestAudit.id);
+      }
+      return { success: true, message: 'Saved.' };
+    }
+
+    case 'deleteSeatRecord': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      if (!p.id) return { success: false, message: 'Missing record.' };
+      const r = await _checkedDelete('sne_subject_sanctioned', 'id', p.id);
+      if (!r.ok) return { success: false, message: r.message };
+      if (p.reason) {
+        const { data: latestAudit } = await _sb.from('sne_seat_audit_log')
+          .select('id').eq('sne_id', p.id).order('changed_at', { ascending: false }).limit(1).maybeSingle();
+        if (latestAudit) await _sb.from('sne_seat_audit_log').update({ reason: p.reason }).eq('id', latestAudit.id);
+      }
+      return { success: true, message: 'Deleted.' };
+    }
+
+    // First-time entry gate: has ANY seat data been entered yet for this
+    // user's own tehsil+wing? Admins are never gated (they need to be
+    // able to move around freely to fix/seed data for others). Deleting
+    // all of a jurisdiction's rows naturally re-triggers the gate next
+    // time, since this is a live existence check, not a stored flag.
+    case 'getSeatEntryStatus': {
+      if (!user || !user.id) return { success: true, required: false };
+      const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+      if (isAdmin || !user.tehsil) return { success: true, required: false };
+      const { count } = await _sb.from('sne_subject_sanctioned')
+        .select('id', { count: 'exact', head: true })
+        .eq('tehsil', user.tehsil).eq('wing', user.wing || '');
+      return { success: true, required: (count || 0) === 0 };
+    }
+
+    case 'getSeatAuditLog': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      let q = _sb.from('sne_seat_audit_log').select('*').order('changed_at', { ascending: false }).limit(200);
+      if (p.emis) q = q.eq('emis', p.emis);
+      const { data, error } = await q;
+      if (error) return { success: false, message: error.message };
+      return { success: true, rows: data || [] };
+    }
+
     case 'getSneSummary': {
       const args    = Array.isArray(payload) ? payload : [payload];
       const reqUser = args[0] || user;
       const filters = args[1] || {};
       const isAdmin = !reqUser || String(reqUser.role || '').toLowerCase() === 'admin';
 
-      const data = await _fetchAllRows('sne_summary', '*', q => {
+      const raw = await _fetchAllRows('sne_subject_sanctioned', '*', q => {
         if (filters.district) q = q.eq('district', filters.district);
         else if (!isAdmin && reqUser?.district) q = q.eq('district', reqUser.district);
         if (filters.wing)   q = q.eq('wing', filters.wing);
@@ -1240,11 +1364,82 @@ async function apiCall(action, payload) {
         if (filters.markaz) q = q.eq('markaz_name', filters.markaz);
         if (filters.emis)   q = q.eq('emis', filters.emis);
         return q;
-      }, null, 'emis');
+      });
 
       const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
-      const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
-      return { success: true, rows: visible };
+      const scoped = filterFn ? (raw || []).filter(filterFn) : (raw || []);
+
+      function buildCategory(catRows) {
+        // Discover the subject columns actually present, ordered by
+        // grade (senior/higher BPS first) then subject label.
+        const subjectMap = {}; // code -> {code, label, grade}
+        catRows.forEach(r => {
+          if (!subjectMap[r.subject_code]) {
+            subjectMap[r.subject_code] = { code: r.subject_code, label: r.subject_label || r.subject_code, grade: r.grade || 0 };
+          }
+        });
+        const subjectColumns = Object.values(subjectMap).sort((a, b) =>
+          (b.grade - a.grade) || a.label.localeCompare(b.label));
+
+        const bySchool = {};
+        catRows.forEach(r => {
+          const key = r.emis;
+          if (!bySchool[key]) {
+            bySchool[key] = {
+              emis: r.emis, school_name: r.school_name, markaz_name: r.markaz_name,
+              district: r.district, wing: r.wing, tehsil: r.tehsil,
+              subjects: {}, // code -> {sanctioned, abolished, effective, filled, vacant}
+              grade16: { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 },
+              grade15: { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 },
+              grade14: { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 },
+            };
+          }
+          const s  = Number(r.sanctioned_count) || 0;
+          const ab = Number(r.abolished_count) || 0;
+          const ef = Number(r.effective_sanctioned_count ?? (s - ab)) || 0;
+          const f  = Number(r.filled_count) || 0;
+          const v  = Number(r.vacant_count ?? (ef - f)) || 0;
+          bySchool[key].subjects[r.subject_code] = { sanctioned: s, abolished: ab, effective: ef, filled: f, vacant: v };
+          const gKey = r.grade === 16 ? 'grade16' : r.grade === 15 ? 'grade15' : r.grade === 14 ? 'grade14' : null;
+          if (gKey) {
+            bySchool[key][gKey].sanctioned += s;
+            bySchool[key][gKey].abolished  += ab;
+            bySchool[key][gKey].effective  += ef;
+            bySchool[key][gKey].filled     += f;
+            bySchool[key][gKey].vacant     += v;
+          }
+        });
+
+        const rows = Object.values(bySchool).map(row => {
+          let gt = { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 };
+          subjectColumns.forEach(col => {
+            const v = row.subjects[col.code];
+            if (v) { gt.sanctioned += v.sanctioned; gt.abolished += v.abolished; gt.effective += v.effective; gt.filled += v.filled; gt.vacant += v.vacant; }
+          });
+          row.grandTotal = gt;
+          return row;
+        });
+        return { subjectColumns, rows };
+      }
+
+      const teaching    = buildCategory(scoped.filter(r => r.category === 'teaching'));
+      const nonTeaching = buildCategory(scoped.filter(r => r.category === 'non_teaching'));
+
+      // School Level (Primary/Middle/High/...), not stored on
+      // sne_subject_sanctioned itself.
+      const allEmis = [...new Set([...teaching.rows, ...nonTeaching.rows].map(r => r.emis))];
+      let levelByEmis = {};
+      if (allEmis.length) {
+        const { data: schoolRows } = await _sb.from('public_schools').select('emis, level').in('emis', allEmis);
+        levelByEmis = Object.fromEntries((schoolRows || []).map(s => [s.emis, s.level]));
+      }
+      [...teaching.rows, ...nonTeaching.rows].forEach(r => { r.school_level = levelByEmis[r.emis] || ''; });
+
+      return {
+        success: true,
+        teaching,
+        nonTeaching,
+      };
     }
 
     case 'addStaffRow': {
