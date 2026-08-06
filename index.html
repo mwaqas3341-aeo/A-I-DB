@@ -924,6 +924,154 @@
     </div>
   </div>
 
+  <!-- ── SEAT MANAGEMENT (Teaching / Non-Teaching Sanctioned & Abolished Seats) ── -->
+  <div id="seatManagementView" class="app-view">
+    <div class="hr-page-header" style="margin-bottom:18px">
+      <div>
+        <div class="hr-page-title" id="seatMgmtTitle">Teaching Sanctioned &amp; Abolished Seats</div>
+        <div class="hr-page-subtitle">Effective Sanctioned Seats = Total Sanctioned − Abolished. Every vacancy check across the app (transfers, promotions, awaiting posting, budget) uses this effective figure automatically.</div>
+      </div>
+      <button class="hr-btn-ghost" onclick="openHrModule()">
+        <span class="material-icons-round">arrow_back</span> Back to Staff / HR
+      </button>
+    </div>
+
+    <div class="hr-filter-panel">
+      <div class="hr-filter-panel-header"><span class="material-icons-round">filter_alt</span> FILTERS</div>
+      <div class="hr-filter-grid">
+        <div class="hr-filter-field">
+          <label>District</label>
+          <select id="seatFilterDistrict" onchange="onSeatDistrictChange()"><option value="">All Districts</option></select>
+        </div>
+        <div class="hr-filter-field">
+          <label>Wing</label>
+          <select id="seatFilterWing" onchange="onSeatWingChange()"><option value="">All Wings</option><option>M-EE</option><option>W-EE</option></select>
+        </div>
+        <div class="hr-filter-field">
+          <label>Tehsil</label>
+          <select id="seatFilterTehsil"><option value="">All Tehsils</option></select>
+        </div>
+        <div class="hr-filter-field">
+          <label>EMIS Code</label>
+          <input type="text" id="seatFilterEmis" placeholder="8-digit EMIS…">
+        </div>
+        <div class="hr-filter-field" style="grid-column:span 2">
+          <label>Search (School Name, Designation, Subject)</label>
+          <input type="text" id="seatFilterKeyword" placeholder="Type to search…" onkeydown="if(event.key==='Enter')applySeatFilter()">
+        </div>
+      </div>
+      <div class="hr-filter-footer">
+        <button class="hr-btn-primary" onclick="applySeatFilter()">
+          <span class="material-icons-round">filter_alt</span> Apply Filter
+        </button>
+        <button class="hr-btn-ghost" onclick="openSeatModal(null)">
+          <span class="material-icons-round">add</span> Add Seat Record
+        </button>
+        <button class="hr-btn-ghost" onclick="seatImportFileInput.click()">
+          <span class="material-icons-round">upload_file</span> Import Excel/CSV
+        </button>
+        <input type="file" id="seatImportFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleSeatImportFile(this)">
+        <button class="hr-btn-ghost" onclick="exportSeatData()">
+          <span class="material-icons-round">download</span> Export
+        </button>
+        <button class="hr-btn-ghost" onclick="openSeatAuditLog()">
+          <span class="material-icons-round">history</span> Audit Log
+        </button>
+      </div>
+    </div>
+
+    <div id="seatResultsContainer" style="margin-top:18px">
+      <div class="hr-empty-state">Loading…</div>
+    </div>
+  </div>
+
+  <!-- ── Add/Edit Seat Record modal ── -->
+  <div id="seatModal" class="modal hr-modal-generic hidden">
+    <div class="modal-content" style="max-width:560px">
+      <button class="close-btn" onclick="closeSeatModal()" title="Close">&times;</button>
+      <h3 style="margin-bottom:14px" id="seatModalTitle">Add Seat Record</h3>
+
+      <div class="form-row">
+        <label>EMIS Code <span style="color:#EF4444">*</span></label>
+        <input type="text" id="seat_emis" placeholder="8-digit EMIS" onblur="seatLookupSchool()">
+      </div>
+      <div id="seat_schoolInfo" style="font-size:.8rem;color:var(--t3);margin:-6px 0 10px"></div>
+
+      <div class="form-row" id="seat_designationRow">
+        <label>Designation <span style="color:#EF4444">*</span></label>
+        <input type="text" id="seat_designation" placeholder="e.g. SST, EST, PST, Clerk…">
+      </div>
+      <div class="form-row" id="seat_subjectRow">
+        <label>Subject <span style="color:var(--t3);font-weight:400">(if applicable)</span></label>
+        <input type="text" id="seat_subject" placeholder="e.g. Science, English — leave blank if none">
+      </div>
+      <div class="form-row">
+        <label>Grade / BPS <span style="color:#EF4444">*</span></label>
+        <input type="number" id="seat_grade" min="1" max="22" placeholder="e.g. 16">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-row">
+          <label>Total Sanctioned Seats <span style="color:#EF4444">*</span></label>
+          <input type="number" id="seat_sanctioned" min="0" value="0" oninput="seatRecalc()">
+        </div>
+        <div class="form-row">
+          <label>Abolished Seats</label>
+          <input type="number" id="seat_abolished" min="0" value="0" oninput="seatRecalc()">
+        </div>
+        <div class="form-row">
+          <label>Effective Sanctioned <span style="color:var(--t3);font-weight:400">(auto)</span></label>
+          <input type="number" id="seat_effective" disabled style="background:#f8fafc;font-weight:700;color:#0d9488">
+        </div>
+        <div class="form-row">
+          <label>Filled Seats</label>
+          <input type="number" id="seat_filled" min="0" value="0" oninput="seatRecalc()">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Vacant Seats <span style="color:var(--t3);font-weight:400">(auto — never counts abolished posts)</span></label>
+        <input type="number" id="seat_vacant" disabled style="background:#f8fafc;font-weight:700;color:#DC2626">
+      </div>
+      <div class="form-row">
+        <label>Remarks</label>
+        <input type="text" id="seat_remarks" placeholder="Optional">
+      </div>
+      <div class="form-row">
+        <label>Reason for this change <span style="color:var(--t3);font-weight:400">(optional, kept in the audit log)</span></label>
+        <input type="text" id="seat_reason" placeholder="e.g. Post abolished per notification #...">
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn btn-outline-secondary" style="flex:1" onclick="closeSeatModal()">Cancel</button>
+        <button class="primary-btn" id="seatSaveBtn" style="flex:1" onclick="submitSeatRecord()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Seat Audit Log modal ── -->
+  <div id="seatAuditModal" class="modal hr-modal-generic hidden">
+    <div class="modal-content" style="max-width:700px">
+      <button class="close-btn" onclick="document.getElementById('seatAuditModal').classList.add('hidden')" title="Close">&times;</button>
+      <h3 style="margin-bottom:14px">Seat Change Audit Log</h3>
+      <div id="seatAuditBody" style="max-height:60vh;overflow:auto"></div>
+    </div>
+  </div>
+
+  <!-- ── First-time Seat Entry gate (blocks the whole app until saved) ── -->
+  <div id="seatGateOverlay" class="hidden" style="position:fixed;inset:0;background:rgba(15,23,42,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;padding:28px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.4)">
+      <span class="material-icons-round" style="font-size:2.4rem;color:#f59e0b">warning_amber</span>
+      <h3 style="margin:10px 0 8px">Sanctioned Seat Data Required</h3>
+      <p style="color:var(--t3);font-size:.88rem;line-height:1.6;margin-bottom:18px">
+        Before you can use the rest of the system, please complete the Teaching (and, if applicable, Non-Teaching)
+        Sanctioned &amp; Abolished Seat data for your tehsil. This only needs to be done once — you can update it any time afterward from the HR module.
+      </p>
+      <button class="hr-btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('seatGateOverlay').classList.add('hidden'); openSeatManagement('teaching');">
+        Start Now
+      </button>
+    </div>
+  </div>
+
   <div id="tdAssignModal" class="modal hr-modal-generic hidden">
     <div class="modal-content" style="max-width:520px">
       <button class="close-btn" onclick="closeTdAssignModal()" title="Close">&times;</button>
@@ -2278,6 +2426,16 @@
           <span class="hr-nav-label">Temporary Duty</span>
         </button>
 
+        <div class="hr-sidebar-section-label">Seats</div>
+        <button class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" onclick="openSeatManagement('teaching')">
+          <span class="material-icons-round hr-nav-icon">school</span>
+          <span class="hr-nav-label">Teaching Sanctioned &amp; Abolished Seats</span>
+        </button>
+        <button class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" onclick="openSeatManagement('non_teaching')">
+          <span class="material-icons-round hr-nav-icon">badge</span>
+          <span class="hr-nav-label">Non-Teaching Sanctioned &amp; Abolished Seats</span>
+        </button>
+
         <div class="hr-sidebar-section-label">Separations</div>
         <button class="hr-nav-item hr-view-btn" data-sheet="Retirement">
           <span class="material-icons-round hr-nav-icon">school</span>
@@ -2985,6 +3143,7 @@
   <!-- ── Module JS ── -->
   <script src="js/core.js"></script>
   <script src="js/hr_view.js"></script>
+  <script src="js/seat-management.js"></script>
   <script src="js/awaiting-posting.js"></script>
   <script src="js/temporary-duty.js"></script>
   <script src="js/staffform.js"></script>
@@ -2992,7 +3151,7 @@
   <script src="js/public_schools.js"></script>
   <script src="js/private_schools.js"></script>
   <script src="js/import-sync.js"></script>
-   <script src="js/data-normalization.js"></script>
+  <script src="js/data-normalization.js"></script>
   <script src="js/schools-import.js"></script>
   <script src="js/hr-staff-import.js"></script>
   <script src="js/user-import.js"></script>
