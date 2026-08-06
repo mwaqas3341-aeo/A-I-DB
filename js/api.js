@@ -1287,6 +1287,15 @@ async function apiCall(action, payload) {
         if (school) schoolMeta = { ...schoolMeta, ...Object.fromEntries(Object.entries(school).filter(([, v]) => v)) };
       }
 
+      const filled = parseInt(p.filledCount) || 0;
+      const dbRow = {
+        category, emis, designation, subjects: subject, grade,
+        subject_code: subjectCode, subject_label: subjectLabel,
+        sanctioned_count: sanctioned, abolished_count: abolished, filled_count: filled,
+        remarks: (p.remarks || '').trim(), as_of_date: asOfDate,
+        ...schoolMeta,
+      };
+
       let savedId = p.id;
       if (p.id) {
         const r = await _checkedUpdate('sne_subject_sanctioned', dbRow, 'id', p.id);
