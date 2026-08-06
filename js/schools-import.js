@@ -36,7 +36,17 @@
  *                                       dropdown, per row.
  *
  * Depends on: PUB_COL_MAP / PRIV_COL_MAP (js/api.js), _sb (js/api.js),
- * _getUserJurisdictions() (js/hr_view.js), the SheetJS XLSX global.
+ * _getUserJurisdictions() (js/hr_view.js), the SheetJS XLSX global,
+ * DN_normalizeValue() / DN_clearLog() / DN_logSummary() (js/data-normalization.js).
+ *
+ * NORMALIZATION: every cell is run through the Data Normalization
+ * engine before it's validated/inserted — see js/data-normalization.js.
+ * Controlled-value fields (Status, School Gender, Registeration Status,
+ * and any other dropdown field) are matched to their canonical value
+ * regardless of case/spacing/punctuation; CNIC and Cell No fields are
+ * reduced to digits; Registeration No keeps digits/commas only. This
+ * happens silently — a correction is never an error — with a
+ * best-effort summary logged to the console for debugging.
  */
 
 const SCHOOL_IMPORT_CONFIG = {
@@ -216,6 +226,18 @@ function _siGuessColumn(targetHeader, uploadedHeader) {
   return norm(targetHeader) === norm(uploadedHeader);
 }
 
+// Real dropdown options for a template header, if it's a controlled
+// (select) field on the corresponding manual Add/Edit form — this is
+// what lets the normalizer recognize "ACTIVE."/"active"/"Active " as
+// the same option without hardcoding every field by name.
+function _siFieldOptions(kind, header) {
+  const cfg = (kind === 'private')
+    ? (typeof PRIVATE_FIELD_CONFIG !== 'undefined' ? PRIVATE_FIELD_CONFIG : [])
+    : (typeof PUB_EDITABLE_FIELDS !== 'undefined' ? PUB_EDITABLE_FIELDS : []);
+  const f = cfg.find(f => f.header === header);
+  return (f && f.type === 'select' && f.options) ? f.options : null;
+}
+
 // ── Step 3: preview — validate + resolve each row, then let the admin review ──
 async function schoolImportGoToPreview() {
   const cfg = SCHOOL_IMPORT_CONFIG[_siKind];
@@ -228,6 +250,8 @@ async function schoolImportGoToPreview() {
     return;
   }
 
+  if (typeof DN_clearLog === 'function') DN_clearLog();
+
   if (_siKind === 'public') {
     await _siBuildPublicPreview(cfg, targetHeaders);
   } else {
@@ -235,12 +259,29 @@ async function schoolImportGoToPreview() {
   }
 
   _siRenderPreview(cfg);
+
+  // Debugging aid (requirement: log auto-corrections without interrupting
+  // the upload) — never shown as an error, just a heads-up + console detail.
+  if (typeof DN_logSummary === 'function') {
+    const summary = DN_logSummary();
+    if (summary.total) {
+      console.log('[Data Normalization] auto-corrected values this upload:');
+      console.table(DN_getLog());
+      const fieldCount = Object.keys(summary.byField).length;
+      showToast(`Auto-corrected formatting on ${summary.total} cell(s) across ${fieldCount} field(s) — nothing you need to do.`, true);
+    }
+  }
 }
 
 async function _siBuildPublicPreview(cfg, targetHeaders) {
-  const get = (raw, h) => _siMapping[h] ? String(raw[_siMapping[h]] || '').trim() : '';
-  const uploadedKeys = _siRawRows.map(r => get(r, 'Emis')).filter(Boolean);
   const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
+  const get = (raw, h) => {
+    if (!_siMapping[h]) return '';
+    const rawVal = raw[_siMapping[h]];
+    if (typeof DN_normalizeValue !== 'function') return String(rawVal || '').trim();
+    return DN_normalizeValue(reverseMap[h], rawVal, _siFieldOptions('public', h), h);
+  };
+  const uploadedKeys = _siRawRows.map(r => get(r, 'Emis')).filter(Boolean);
 
   let existingByEmis = new Map();
   if (uploadedKeys.length) {
@@ -304,8 +345,13 @@ function _siComputeDiffs(row, existing, reverseMap, targetHeaders, excludeHeader
 }
 
 async function _siBuildPrivatePreview(cfg, targetHeaders) {
-  const get = (raw, h) => _siMapping[h] ? String(raw[_siMapping[h]] || '').trim() : '';
   const reverseMap = Object.fromEntries(Object.entries(cfg.colMap()).map(([col, header]) => [header, col]));
+  const get = (raw, h) => {
+    if (!_siMapping[h]) return '';
+    const rawVal = raw[_siMapping[h]];
+    if (typeof DN_normalizeValue !== 'function') return String(rawVal || '').trim();
+    return DN_normalizeValue(reverseMap[h], rawVal, _siFieldOptions('private', h), h);
+  };
 
   // Collapse internal whitespace (stray tabs, double spaces from messy
   // source files) so "Foo  Bar" and "Foo Bar" are recognized as the
