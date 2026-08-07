@@ -320,6 +320,10 @@ tbody tr:hover td:first-child{ background:var(--brand-light); }
   .hr-sidebar{ width:100%; flex-direction:row; overflow-x:visible; }
   .hr-sidebar-inner{ display:flex; flex-direction:row; flex-wrap:wrap; gap:6px; padding:10px; }
   .hr-sidebar-section-label{ display:none; }
+  /* Accordion structure is a desktop affordance only — on mobile every
+     group stays visible and flat, exactly like the previous layout. */
+  .hr-nav-group-header{ display:none; }
+  .hr-nav-group-items{ display:contents; max-height:none !important; overflow:visible; }
   .hr-nav-item{
     flex-direction:column; gap:4px; font-size:11px; padding:8px 10px;
     white-space:normal; width:auto; flex:0 0 auto;
