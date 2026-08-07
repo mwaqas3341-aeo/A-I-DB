@@ -100,6 +100,7 @@ const HR_SHEET_META = {
   'Resignation':        { title:'Resignations',       sub:'Staff who have resigned from service' },
   'Deceased':           { title:'Death Cases',        sub:'Deceased staff records' },
   'Termination':        { title:'Terminations',       sub:'Staff whose service was terminated' },
+  'ContractEnded':      { title:'Contract Ended Employees', sub:'Contract staff whose contract has ended — renew to reassign and reactivate' },
   'Transfer_History':   { title:'Transfer History',   sub:'All transfer records and movement history' },
   'Promotions_History': { title:'Promotions History', sub:'All promotion events and scale changes' },
   'TD_History':          { title:'Temporary Duty History', sub:'Every Temporary Duty created, completed, or cancelled' },
@@ -1144,9 +1145,14 @@ function openHrMenu(btn, idx) {
       <button type="button" class="hr-action-item" onclick="openSeparationModal('resignation', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📝 Resignation</button>
       <button type="button" class="hr-action-item" onclick="openSeparationModal('termination', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🚫 Termination</button>
       <button type="button" class="hr-action-item" onclick="openSeparationModal('death', hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✝️ Death Case</button>
+      ${(hrFilteredResults[idx] && (hrFilteredResults[idx]['NATURE OF JOB'] || '').trim() === 'Contract')
+        ? `<button type="button" class="hr-action-item" onclick="openEndContractModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">📄 End Contract</button>`
+        : ''}
       ${isAdminUser ? `<button type="button" class="hr-action-item danger" onclick="confirmDeleteHrRow(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🗑 Delete</button>` : ''}`;
   } else if (hrCurrentSheetView === 'AwaitingPosting') {
     items += `<button type="button" class="hr-action-item" onclick="apOpenAssignModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✅ Assign</button>`;
+  } else if (hrCurrentSheetView === 'ContractEnded') {
+    items += `<button type="button" class="hr-action-item" onclick="openRenewContractModal(hrFilteredResults[${idx}]); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">🔄 Renew Contract</button>`;
   } else if (hrCurrentSheetView === 'TemporaryDuty') {
     items += `
       <button type="button" class="hr-action-item" onclick="tdComplete(hrFilteredResults[${idx}]._row); hrActiveMenu&&hrActiveMenu.remove(); hrActiveMenu=null;">✅ Complete</button>
@@ -1988,6 +1994,170 @@ function submitSeparation(actionType, row) {
     })
     .withFailureHandler(err => hrShowToast('Action failed: ' + err.message, false))
     .executeStaffAction({ personalNo: row['PERSONAL NO.'], actionType, effectiveDate: effDate ? _fromDateInput(effDate) : '', notificationNo: notif }, userPayload);
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  CONTRACT EMPLOYEE LIFECYCLE
+// ──────────────────────────────────────────────────────────────────
+function openEndContractModal(row) {
+  if (!row) { hrShowToast('Row not found.', false); return; }
+  document.getElementById('hrActionModalTitle').textContent = '📄 End Contract';
+  document.getElementById('hrActionBody').innerHTML = `
+    <div class="hr-info-box" style="margin-bottom:18px;">
+      <strong>📋 Staff</strong>
+      <div><b>Name:</b> ${row['NAME OF TEACHER']||''} | <b>P.No:</b> ${row['PERSONAL NO.']||''}</div>
+      <div><b>Designation:</b> ${row['DESIGNATION']||''} | <b>BPS:</b> ${row['BPS']||''}</div>
+      <div><b>School:</b> ${row['SCHOOL NAME']||''}</div>
+    </div>
+    <div class="transfer-step">
+      <label>Contract End Date <span style="color:#EF4444">*</span></label>
+      <input type="date" id="ec_endDate" onclick="smartDatePickerClick(this)">
+      <div class="transfer-err" id="ece_endDate"></div>
+    </div>
+    <div class="transfer-step">
+      <label>Contract End Order Number (Optional)</label>
+      <input type="text" id="ec_orderNo" placeholder="e.g. letter/order reference">
+    </div>
+    <div class="transfer-step">
+      <label>Remarks (Optional)</label>
+      <textarea id="ec_remarks" rows="3" style="width:100%"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+      <button type="button" class="hr-btn-danger" onclick="submitEndContract(hrFilteredResults.find(r=>r['PERSONAL NO.']==='${(row['PERSONAL NO.']||'').replace(/'/g,"\\'")}'))">
+        Confirm End Contract
+      </button>
+      <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
+    </div>`;
+  document.getElementById('hrActionModal').style.display = 'flex';
+}
+
+function submitEndContract(row) {
+  if (!row) { hrShowToast('Row not found.', false); return; }
+  const endDate = (document.getElementById('ec_endDate').value || '').trim();
+  const orderNo = (document.getElementById('ec_orderNo').value || '').trim();
+  const remarks = (document.getElementById('ec_remarks').value || '').trim();
+  document.querySelectorAll('#hrActionBody .transfer-err').forEach(e => e.textContent = '');
+  if (!endDate) { document.getElementById('ece_endDate').textContent = 'Contract End Date is required.'; return; }
+  if (!confirm('End contract for ' + row['NAME OF TEACHER'] + '?\nThey will be moved to Contract Ended Employees.')) return;
+
+  document.getElementById('hrActionModal').style.display = 'none';
+  document.getElementById('hrResultsContainer').innerHTML = '<div class="hr-empty-state">Processing…</div>';
+  const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name:'Admin' };
+  google.script.run
+    .withSuccessHandler(res => {
+      hrShowToast(res.success ? (res.message || 'Contract ended.') : (res.message || 'Failed.'), res.success);
+      hrInvalidateCache('Staff');
+      hrInvalidateCache('ContractEnded');
+      applyHrFilter();
+      if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
+    })
+    .withFailureHandler(err => hrShowToast('Action failed: ' + err.message, false))
+    .endStaffContract({ personalNo: row['PERSONAL NO.'], contractEndDate: _fromDateInput(endDate), orderNumber: orderNo, remarks }, userPayload);
+}
+
+let hrRenewTargetRow = null;
+let hrRenewSchoolSearchDebounce = null;
+
+function openRenewContractModal(row) {
+  if (!row) { hrShowToast('Row not found.', false); return; }
+  hrRenewTargetRow = row;
+  document.getElementById('hrActionModalTitle').textContent = '🔄 Renew Contract';
+  document.getElementById('hrActionBody').innerHTML = `
+    <div class="hr-info-box" style="margin-bottom:18px;">
+      <strong>📋 Staff</strong>
+      <div><b>Name:</b> ${row['NAME OF TEACHER']||''} | <b>P.No:</b> ${row['PERSONAL NO.']||''}</div>
+      <div><b>Designation:</b> ${row['DESIGNATION']||''} | <b>BPS:</b> ${row['BPS']||''}</div>
+      <div><b>Contract Ended:</b> ${row['CONTRACT END DATE']||row['Contract End Date']||'—'}</div>
+    </div>
+    <div class="transfer-step">
+      <label>New School (search by name or EMIS) <span style="color:#EF4444">*</span></label>
+      <input type="text" id="rc_schoolSearch" placeholder="Type school name or EMIS…" oninput="hrRenewSearchSchool()" autocomplete="off">
+      <div id="rc_schoolResults" class="ap-school-result-list" style="max-height:180px;overflow-y:auto;"></div>
+      <input type="hidden" id="rc_targetEmis">
+      <div class="transfer-err" id="rce_emis"></div>
+    </div>
+    <div class="transfer-step">
+      <label>Contract Renewal Order Number <span style="color:#EF4444">*</span></label>
+      <input type="text" id="rc_orderNo">
+      <div class="transfer-err" id="rce_orderNo"></div>
+    </div>
+    <div class="transfer-step">
+      <label>New Contract End Date <span style="color:#EF4444">*</span></label>
+      <input type="date" id="rc_newEndDate" onclick="smartDatePickerClick(this)">
+      <div class="transfer-err" id="rce_newEndDate"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+      <button type="button" class="hr-btn-primary" id="rc_confirmBtn" disabled onclick="submitRenewContract()">
+        Confirm Renewal
+      </button>
+      <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
+    </div>`;
+  document.getElementById('hrActionModal').style.display = 'flex';
+}
+
+function hrRenewSearchSchool() {
+  const kw = document.getElementById('rc_schoolSearch').value.trim();
+  const resultsEl = document.getElementById('rc_schoolResults');
+  document.getElementById('rc_targetEmis').value = '';
+  document.getElementById('rc_confirmBtn').disabled = true;
+  clearTimeout(hrRenewSchoolSearchDebounce);
+  if (kw.length < 2) { resultsEl.innerHTML = ''; return; }
+  resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>';
+  hrRenewSchoolSearchDebounce = setTimeout(() => {
+    google.script.run
+      .withSuccessHandler(res => {
+        if (!res.success) { resultsEl.innerHTML = ''; return; }
+        const matches = res.rows || [];
+        if (!matches.length) {
+          resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
+          return;
+        }
+        resultsEl.innerHTML = matches.map(s => `
+          <div class="ap-school-result" onclick="hrRenewSelectSchool('${s.emis}', '${(s.school_name||'').replace(/'/g,"\\'")}')">
+            <strong>${s.school_name||''}</strong>
+            <span style="color:var(--t3);font-size:.78rem"> — EMIS ${s.emis||''} · ${s.tehsil||''}, ${s.district||''}</span>
+          </div>`).join('');
+      })
+      .withFailureHandler(() => { resultsEl.innerHTML = '<div style="padding:8px;color:var(--bad);font-size:.82rem">Search failed.</div>'; })
+      .searchSchoolsForAssignment({ keyword: kw });
+  }, 300);
+}
+
+function hrRenewSelectSchool(emis, name) {
+  document.getElementById('rc_schoolSearch').value = `${name} (EMIS ${emis})`;
+  document.getElementById('rc_schoolResults').innerHTML = '';
+  document.getElementById('rc_targetEmis').value = emis;
+  document.getElementById('rc_confirmBtn').disabled = false;
+}
+
+function submitRenewContract() {
+  if (!hrRenewTargetRow) { hrShowToast('Row not found.', false); return; }
+  const targetEmis = document.getElementById('rc_targetEmis').value;
+  const orderNo    = (document.getElementById('rc_orderNo').value || '').trim();
+  const newEndDate = (document.getElementById('rc_newEndDate').value || '').trim();
+  document.querySelectorAll('#hrActionBody .transfer-err').forEach(e => e.textContent = '');
+  let ok = true;
+  if (!targetEmis) { document.getElementById('rce_emis').textContent = 'Please select a school from the search results.'; ok = false; }
+  if (!orderNo)    { document.getElementById('rce_orderNo').textContent = 'Renewal Order Number is required.'; ok = false; }
+  if (!newEndDate) { document.getElementById('rce_newEndDate').textContent = 'New Contract End Date is required.'; ok = false; }
+  if (!ok) return;
+
+  const row = hrRenewTargetRow;
+  if (!confirm('Renew contract for ' + row['NAME OF TEACHER'] + ' and reactivate at the selected school?')) return;
+
+  document.getElementById('hrActionModal').style.display = 'none';
+  document.getElementById('hrResultsContainer').innerHTML = '<div class="hr-empty-state">Processing…</div>';
+  const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name:'Admin' };
+  google.script.run
+    .withSuccessHandler(res => {
+      hrShowToast(res.success ? (res.message || 'Contract renewed.') : (res.message || 'Failed.'), res.success);
+      hrInvalidateCache('ContractEnded');
+      hrInvalidateCache('Staff');
+      applyHrFilter();
+      if (typeof refreshHrDashboardCounts === 'function') refreshHrDashboardCounts();
+    })
+    .withFailureHandler(err => hrShowToast('Renewal failed: ' + err.message, false))
+    .renewStaffContract({ personalNo: row['PERSONAL NO.'], targetEmis, orderNumber: orderNo, newEndDate: _fromDateInput(newEndDate) }, userPayload);
 }
 
 // ──────────────────────────────────────────────────────────────────

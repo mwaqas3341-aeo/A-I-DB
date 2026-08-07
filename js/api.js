@@ -52,6 +52,10 @@ const STAFF_COL_MAP = {
   bank_name_branch_code:         'BANK NAME & BRANCH CODE WHERE SALARY IS CREDIT',
   salary_account_iban_no:        'SALARY ACCOUNT IBAN NO.',
   date_of_retirement:            'DATE OF RETIREMENT',
+  contract_end_date:             'CONTRACT END DATE',
+  contract_end_order_no:         'CONTRACT END ORDER NO',
+  contract_end_remarks:          'CONTRACT END REMARKS',
+  contract_renewal_order_no:     'CONTRACT RENEWAL ORDER NO',
   status:                        'Status',
   changes_made_by:               'Changes Made by',
   changes_made_at:               'Time',
@@ -1165,6 +1169,7 @@ async function apiCall(action, payload) {
         'Resignation':       'resigned',
         'Deceased':          'deceased',
         'Deleted_Archive':   'deleted',
+        'ContractEnded':     'contract_ended',
       };
       const status = statusMap[sheetName] || 'active';
 
@@ -1939,6 +1944,108 @@ async function apiCall(action, payload) {
         created_by:     user?.name || '',
       }]);
       return { success: true, message: 'Action completed.', targetSheet };
+    }
+
+    // ── CONTRACT EMPLOYEE LIFECYCLE ─────────────────────────────────────
+    // "End Contract" — only valid for staff whose nature_of_job is
+    // 'Contract' and who are currently active. Moves them into the
+    // ContractEnded list (status='contract_ended') without deleting the
+    // record, same soft-status pattern as Retirement/Resignation/etc.
+    case 'endStaffContract': {
+      const p = Array.isArray(payload) ? payload[0] : payload;
+      const pno = p.personalNo || p.personal_no;
+      if (!pno) return { success: false, message: 'Missing employee personal number.' };
+
+      const { data: s } = await _sb.from('staff')
+        .select('name_of_teacher, nature_of_job, status').eq('personal_no', pno).maybeSingle();
+      if (!s) return { success: false, message: `No staff record found for personal number "${pno}".` };
+      if ((s.nature_of_job || '').trim() !== 'Contract') {
+        return { success: false, message: 'Only Contract employees can be moved to Contract Ended.' };
+      }
+      if (s.status !== 'active') {
+        return { success: false, message: `This employee is not currently active (status: ${s.status}).` };
+      }
+      if (!p.contractEndDate) return { success: false, message: 'Contract End Date is required.' };
+
+      const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
+        status: 'contract_ended',
+        contract_end_date: p.contractEndDate,
+        contract_end_order_no: p.orderNumber || null,
+        contract_end_remarks: p.remarks || null,
+        changes_made_by: user?.name || '',
+        changes_made_at: new Date().toISOString(),
+      }));
+      if (!r.ok) return { success: false, message: r.message };
+
+      await _sb.from('staff_events').insert([{
+        personal_no: pno,
+        employee_name: s.name_of_teacher || '',
+        event_type: 'contract_ended',
+        notification_no: p.orderNumber || '',
+        effective_date: p.contractEndDate,
+        details: { remarks: p.remarks || '' },
+        created_by: user?.name || '',
+      }]);
+      return { success: true, message: 'Contract ended. Employee moved to Contract Ended list.' };
+    }
+
+    // "Renew Contract" — reassigns a Contract Ended employee to a
+    // (possibly new) school and reactivates them, mirroring the
+    // Awaiting Posting assignment flow. School lookup checks public
+    // then private schools, same as searchSchoolsForAssignment.
+    case 'renewStaffContract': {
+      const p = Array.isArray(payload) ? payload[0] : payload;
+      const pno = p.personalNo || p.personal_no;
+      const targetEmis = (p.targetEmis || '').trim();
+      if (!pno) return { success: false, message: 'Missing employee personal number.' };
+      if (!targetEmis) return { success: false, message: 'Target school EMIS is required.' };
+      if (!p.orderNumber) return { success: false, message: 'Contract Renewal Order Number is required.' };
+      if (!p.newEndDate) return { success: false, message: 'New Contract End Date is required.' };
+
+      const { data: s } = await _sb.from('staff')
+        .select('name_of_teacher, status').eq('personal_no', pno).maybeSingle();
+      if (!s) return { success: false, message: `No staff record found for personal number "${pno}".` };
+      if (s.status !== 'contract_ended') {
+        return { success: false, message: `This employee is not in Contract Ended status (status: ${s.status}).` };
+      }
+
+      let school = (await _sb.from('public_schools')
+        .select('emis, school_name, district, wing, tehsil, markaz_name').eq('emis', targetEmis).maybeSingle()).data;
+      let wing = school?.wing || '';
+      if (!school) {
+        school = (await _sb.from('private_schools')
+          .select('emis, school_name, district, tehsil, markaz_name').eq('emis', targetEmis).maybeSingle()).data;
+        wing = '';
+      }
+      if (!school) return { success: false, message: `School with EMIS "${targetEmis}" was not found.` };
+
+      const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
+        status: 'active',
+        school_emis_code: school.emis,
+        school_name: school.school_name,
+        district: school.district,
+        wing: wing,
+        tehsil: school.tehsil,
+        markaz_name: school.markaz_name,
+        contract_end_date: p.newEndDate,
+        contract_renewal_order_no: p.orderNumber,
+        contract_end_order_no: null,
+        contract_end_remarks: null,
+        changes_made_by: user?.name || '',
+        changes_made_at: new Date().toISOString(),
+      }));
+      if (!r.ok) return { success: false, message: r.message };
+
+      await _sb.from('staff_events').insert([{
+        personal_no: pno,
+        employee_name: s.name_of_teacher || '',
+        event_type: 'contract_renewed',
+        notification_no: p.orderNumber,
+        effective_date: p.newEndDate,
+        details: { renewed_to_emis: school.emis, renewed_to_school: school.school_name },
+        created_by: user?.name || '',
+      }]);
+      return { success: true, message: 'Contract renewed. Employee moved back to Active Staff.' };
     }
 
     // Called by the HR "View Staff Details" modal every time it's opened.
