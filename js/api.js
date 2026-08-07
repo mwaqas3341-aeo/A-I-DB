@@ -1252,6 +1252,7 @@ async function apiCall(action, payload) {
       if (p.district) q = q.eq('district', p.district);
       if (p.wing)     q = q.eq('wing', p.wing);
       if (p.tehsil)   q = q.eq('tehsil', p.tehsil);
+      if (p.markaz)   q = q.eq('markaz_name', p.markaz);
       if (p.emis)     q = q.eq('emis', p.emis);
       q = q.order('school_name').order('grade', { ascending: false }).order('subject_label');
       const { data, error } = await q.limit(5000);

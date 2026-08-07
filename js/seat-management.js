@@ -27,20 +27,72 @@ function openSeatManagement(category) {
 
 function _seatPopulateJurisdictionFilters() {
   const distSel = document.getElementById('seatFilterDistrict');
-  if (distSel && !distSel.dataset.loaded && typeof hrSchoolCache !== 'undefined' && hrSchoolCache.length) {
-    const districts = [...new Set(hrSchoolCache.map(s => s.d).filter(Boolean))].sort();
-    distSel.innerHTML = '<option value="">All Districts</option>' + districts.map(d => `<option value="${d}">${d}</option>`).join('');
-    distSel.dataset.loaded = '1';
+  if (!distSel || distSel.dataset.loaded || typeof hrSchoolCache === 'undefined' || !hrSchoolCache.length) return;
+  const districts = [...new Set(hrSchoolCache.map(s => s.d).filter(Boolean))].sort();
+  hrPopulateSelect('seatFilterDistrict', districts, 'All Districts');
+  hrPopulateSelect('seatFilterWing',   [], 'All Wings');
+  hrPopulateSelect('seatFilterTehsil', [], 'All Tehsils');
+  hrPopulateSelect('seatFilterMarkaz', [], 'All Markazs');
+  distSel.dataset.loaded = '1';
+
+  // Convenience preselect of the user's primary location, same as the
+  // Staff/HR filter panel.
+  const u = typeof currentUser !== 'undefined' ? currentUser : null;
+  const isAdmin = u && String(u.role || '').toLowerCase() === 'admin';
+  if (u && !isAdmin && u.district) {
+    document.getElementById('seatFilterDistrict').value = u.district;
+    onSeatDistrictChange();
+    if (u.wing) {
+      document.getElementById('seatFilterWing').value = u.wing;
+      onSeatWingChange();
+    }
+    if (u.tehsil) {
+      document.getElementById('seatFilterTehsil').value = u.tehsil;
+      onSeatTehsilChange();
+    }
+    if (u.markaz) document.getElementById('seatFilterMarkaz').value = u.markaz;
+  }
+
+  // Lock/grey out per the user's jurisdiction level — same rules as
+  // Public/Private Schools and the Staff/HR filter panel.
+  if (typeof applyJurisdictionLock === 'function') {
+    applyJurisdictionLock(
+      { district: 'seatFilterDistrict', wing: 'seatFilterWing', tehsil: 'seatFilterTehsil', markaz: 'seatFilterMarkaz' },
+      u
+    );
   }
 }
 function onSeatDistrictChange() {
+  const pool = typeof hrSchoolCache !== 'undefined' ? hrSchoolCache : [];
   const d = document.getElementById('seatFilterDistrict').value;
-  const tehSel = document.getElementById('seatFilterTehsil');
-  const pool = (typeof hrSchoolCache !== 'undefined' ? hrSchoolCache : []).filter(s => !d || s.d === d);
-  const tehsils = [...new Set(pool.map(s => s.t).filter(Boolean))].sort();
-  tehSel.innerHTML = '<option value="">All Tehsils</option>' + tehsils.map(t => `<option value="${t}">${t}</option>`).join('');
+  const wings = d
+    ? [...new Set(pool.filter(x => x.d === d).map(x => x.w).filter(Boolean))].sort()
+    : [...new Set(pool.map(x => x.w).filter(Boolean))].sort();
+  hrPopulateSelect('seatFilterWing',   wings, 'All Wings');
+  hrPopulateSelect('seatFilterTehsil', [],    'All Tehsils');
+  hrPopulateSelect('seatFilterMarkaz', [],    'All Markazs');
 }
-function onSeatWingChange() { /* wing doesn't cascade district/tehsil options here — kept simple */ }
+function onSeatWingChange() {
+  const pool = typeof hrSchoolCache !== 'undefined' ? hrSchoolCache : [];
+  const d = document.getElementById('seatFilterDistrict').value;
+  const w = document.getElementById('seatFilterWing').value;
+  const tehsils = [...new Set(
+    pool.filter(x => (!d || x.d === d) && (!w || x.w === w)).map(x => x.t).filter(Boolean)
+  )].sort();
+  hrPopulateSelect('seatFilterTehsil', tehsils, 'All Tehsils');
+  hrPopulateSelect('seatFilterMarkaz', [],      'All Markazs');
+}
+function onSeatTehsilChange() {
+  const pool = typeof hrSchoolCache !== 'undefined' ? hrSchoolCache : [];
+  const d = document.getElementById('seatFilterDistrict').value;
+  const w = document.getElementById('seatFilterWing').value;
+  const t = document.getElementById('seatFilterTehsil').value;
+  const markazs = [...new Set(
+    pool.filter(x => (!d || x.d === d) && (!w || x.w === w) && (!t || x.t === t))
+        .map(x => x.m).filter(Boolean)
+  )].sort();
+  hrPopulateSelect('seatFilterMarkaz', markazs, 'All Markazs');
+}
 
 // ── LOAD + RENDER ──────────────────────────────────────────────────
 function applySeatFilter() {
@@ -49,6 +101,7 @@ function applySeatFilter() {
     district: document.getElementById('seatFilterDistrict')?.value || '',
     wing:     document.getElementById('seatFilterWing')?.value || '',
     tehsil:   document.getElementById('seatFilterTehsil')?.value || '',
+    markaz:   document.getElementById('seatFilterMarkaz')?.value || '',
     emis:     document.getElementById('seatFilterEmis')?.value.trim() || '',
   };
   const container = document.getElementById('seatResultsContainer');
