@@ -226,42 +226,43 @@
           <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
 
             <!-- New compact card -->
-            <a class="module-card" href="#school-data" onclick="toggleKpiCards(true); return false;">
+            <div class="module-card" onclick="toggleKpiCards(true)">
               <i class="bi bi-folder-fill mc-icon"></i>
               <div class="mc-title">School General Data Management</div>
               <div class="mc-desc">Govt/Public · Outsourced · Private · Inactive</div>
               <div class="mc-arrow"><i class="bi bi-grid-fill"></i> Open Modules</div>
-            </a>
+            </div>
 
             <!-- Existing cards -->
-            <a class="module-card" href="#hr" onclick="openHrModule(); return false;">
+            <div class="module-card" onclick="openHrModule()">
               <i class="bi bi-people-fill mc-icon"></i>
               <div class="mc-title">Staff Statement</div>
               <div class="mc-desc">Teaching &amp; non-teaching staff records</div>
               <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-            </a>
+            </div>
 
-            <a class="module-card" href="#tools" onclick="openToolsView(); return false;">
+            <div class="module-card" onclick="openToolsView()">
               <i class="bi bi-tools mc-icon" style="color:var(--purple)"></i>
               <div class="mc-title">Portal Tools</div>
               <div class="mc-desc">Utilities, calculators &amp; data helpers</div>
               <div class="mc-arrow" style="color:var(--purple)">
                 <i class="bi bi-arrow-right-circle-fill"></i> Open
               </div>
-            </a>
-            <a class="module-card" href="https://mwaqas3341-aeo.github.io/OfficialPerformas/" target="_blank" rel="noopener">
+            </div>
+            <div class="module-card"
+                 onclick="window.open('https://mwaqas3341-aeo.github.io/OfficialPerformas/','_blank')">
               <i class="bi bi-file-earmark-text-fill mc-icon"></i>
               <div class="mc-title">Official Performas</div>
               <div class="mc-desc">Download &amp; fill official documents</div>
               <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-            </a>
+            </div>
 
-            <a class="module-card" href="#inspection-allowance" onclick="openInspectionAllowanceView(); return false;">
+            <div class="module-card" onclick="openInspectionAllowanceView()">
               <i class="bi bi-file-earmark-medical-fill mc-icon" style="color:#0d9488"></i>
               <div class="mc-title">Inspection Allowance</div>
               <div class="mc-desc">Prepare your Inspection Allowance bill</div>
               <div class="mc-arrow" style="color:#0d9488"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
-            </a>
+            </div>
 
           </div>
 
@@ -401,7 +402,7 @@
         </button>
 
         <!-- Tabs: My Bill (everyone) / Batch Generate (admin only) -->
-        <div style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;margin-bottom:18px;border-bottom:1px solid var(--b0)">
           <button class="ia-tab-btn active" id="iaTabMyBillBtn" onclick="iaSwitchTab('myBill')">
             <i class="bi bi-person-fill"></i> My Bill
           </button>
@@ -489,7 +490,7 @@
         <!-- ══ PERFORMANCE CERTIFICATE TAB ══ -->
         <div id="iaPerformanceTab" style="display:none;max-width:960px;width:100%;margin:0 auto">
           <div id="perf_aeoTargetBanner" class="hidden" style="background:#fef3c7;border:1px solid #fcd34d;border-radius:var(--r2);padding:10px 16px;margin-bottom:12px;font-size:.85rem;color:#92400e;font-weight:700"></div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:var(--r2);padding:12px 16px;margin-bottom:16px;font-size:.8rem;color:#475569;line-height:1.7">
+          <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:var(--r2);padding:12px 16px;margin-bottom:16px;font-size:.8rem;color:#0f766e;line-height:1.7">
             <strong>AEO Monthly Performance Certificate</strong> — pick 1 to 4 prepared months. For each month choose the school status (Open/Closed) and fill in your indicator achievement — the rupee entitlement for each row, and the total, is calculated automatically from what you enter; you never type an amount directly.
           </div>
 
@@ -517,7 +518,7 @@
 
         <!-- ══ BUDGET PREPARATION TAB (TRs + Admins) ══ -->
         <div id="iaBudgetPrepTab" style="display:none">
-          <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:var(--r2);padding:12px 16px;margin-bottom:14px;font-size:.8rem;color:#c2410c;line-height:1.7">
+          <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:var(--r2);padding:12px 16px;margin-bottom:14px;font-size:.8rem;color:#0f766e;line-height:1.7">
             <strong>Budget Preparation</strong> — set each AEO's Inspection Allowance deduction for a tehsil, for up to 4 months at once. Preparing a month unlocks bill download and Performance Preparation for every AEO in that tehsil, for that month. Re-preparing a month later overwrites the previous amounts.
           </div>
 
@@ -629,23 +630,8 @@
   </div>
 
   <style>
-    .ia-tab-btn {
-      display: flex; align-items: center; gap: 8px;
-      background: #fff; border: 1.5px solid var(--b0); border-radius: 12px;
-      padding: 12px 18px; font-size: .86rem; font-weight: 700; color: var(--t3);
-      cursor: pointer; transition: all .15s; box-shadow: 0 1px 2px rgba(0,0,0,.04);
-    }
-    .ia-tab-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.08); }
-    .ia-tab-btn i { font-size: 1rem; }
-    /* My Bill — green (completed/your own processes) */
-    #iaTabMyBillBtn.active { background:#ecfdf5; border-color:#10b981; color:#047857; }
-    /* Performance — neutral/white (general information) */
-    #iaTabPerfBtn.active { background:#fff; border-color:#94a3b8; color:#334155; box-shadow:0 4px 12px rgba(15,23,42,.08); }
-    /* Budget Preparation — orange (pending tasks) */
-    #iaTabBudgetPrepBtn.active { background:#fff7ed; border-color:#f97316; color:#c2410c; }
-    /* AEO Bills & Performance — blue (admin/TR tool, distinct from the 3 self-service colors) */
-    #iaTabAeoBillBtn.active { background:#eff6ff; border-color:#3b82f6; color:#1d4ed8; }
-    @media (max-width:640px) { .ia-tab-btn { flex:1 1 45%; justify-content:center; padding:10px 8px; font-size:.78rem } }
+    .ia-tab-btn { background:none;border:none;padding:10px 18px;font-size:.88rem;font-weight:600;color:var(--t3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px }
+    .ia-tab-btn.active { color:#0d9488;border-bottom-color:#0d9488 }
     .ia-profile-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px }
     .ia-profile-item { background:var(--s2);border-radius:8px;padding:9px 12px }
     .ia-profile-item .lbl { font-size:.7rem;color:var(--t3);text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:2px }
@@ -921,154 +907,6 @@
           <i class="bi bi-download"></i> Download Cumulative Bill
         </button>
       </div>
-    </div>
-  </div>
-
-  <!-- ── SEAT MANAGEMENT (Teaching / Non-Teaching Sanctioned & Abolished Seats) ── -->
-  <div id="seatManagementView" class="app-view">
-    <div class="hr-page-header" style="margin-bottom:18px">
-      <div>
-        <div class="hr-page-title" id="seatMgmtTitle">Teaching Sanctioned &amp; Abolished Seats</div>
-        <div class="hr-page-subtitle">Effective Sanctioned Seats = Total Sanctioned − Abolished. Every vacancy check across the app (transfers, promotions, awaiting posting, budget) uses this effective figure automatically.</div>
-      </div>
-      <button class="hr-btn-ghost" onclick="openHrModule()">
-        <span class="material-icons-round">arrow_back</span> Back to Staff / HR
-      </button>
-    </div>
-
-    <div class="hr-filter-panel">
-      <div class="hr-filter-panel-header"><span class="material-icons-round">filter_alt</span> FILTERS</div>
-      <div class="hr-filter-grid">
-        <div class="hr-filter-field">
-          <label>District</label>
-          <select id="seatFilterDistrict" onchange="onSeatDistrictChange()"><option value="">All Districts</option></select>
-        </div>
-        <div class="hr-filter-field">
-          <label>Wing</label>
-          <select id="seatFilterWing" onchange="onSeatWingChange()"><option value="">All Wings</option><option>M-EE</option><option>W-EE</option></select>
-        </div>
-        <div class="hr-filter-field">
-          <label>Tehsil</label>
-          <select id="seatFilterTehsil"><option value="">All Tehsils</option></select>
-        </div>
-        <div class="hr-filter-field">
-          <label>EMIS Code</label>
-          <input type="text" id="seatFilterEmis" placeholder="8-digit EMIS…">
-        </div>
-        <div class="hr-filter-field" style="grid-column:span 2">
-          <label>Search (School Name, Designation, Subject)</label>
-          <input type="text" id="seatFilterKeyword" placeholder="Type to search…" onkeydown="if(event.key==='Enter')applySeatFilter()">
-        </div>
-      </div>
-      <div class="hr-filter-footer">
-        <button class="hr-btn-primary" onclick="applySeatFilter()">
-          <span class="material-icons-round">filter_alt</span> Apply Filter
-        </button>
-        <button class="hr-btn-ghost" onclick="openSeatModal(null)">
-          <span class="material-icons-round">add</span> Add Seat Record
-        </button>
-        <button class="hr-btn-ghost" onclick="seatImportFileInput.click()">
-          <span class="material-icons-round">upload_file</span> Import Excel/CSV
-        </button>
-        <input type="file" id="seatImportFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleSeatImportFile(this)">
-        <button class="hr-btn-ghost" onclick="exportSeatData()">
-          <span class="material-icons-round">download</span> Export
-        </button>
-        <button class="hr-btn-ghost" onclick="openSeatAuditLog()">
-          <span class="material-icons-round">history</span> Audit Log
-        </button>
-      </div>
-    </div>
-
-    <div id="seatResultsContainer" style="margin-top:18px">
-      <div class="hr-empty-state">Loading…</div>
-    </div>
-  </div>
-
-  <!-- ── Add/Edit Seat Record modal ── -->
-  <div id="seatModal" class="modal hr-modal-generic hidden">
-    <div class="modal-content" style="max-width:560px">
-      <button class="close-btn" onclick="closeSeatModal()" title="Close">&times;</button>
-      <h3 style="margin-bottom:14px" id="seatModalTitle">Add Seat Record</h3>
-
-      <div class="form-row">
-        <label>EMIS Code <span style="color:#EF4444">*</span></label>
-        <input type="text" id="seat_emis" placeholder="8-digit EMIS" onblur="seatLookupSchool()">
-      </div>
-      <div id="seat_schoolInfo" style="font-size:.8rem;color:var(--t3);margin:-6px 0 10px"></div>
-
-      <div class="form-row" id="seat_designationRow">
-        <label>Designation <span style="color:#EF4444">*</span></label>
-        <input type="text" id="seat_designation" placeholder="e.g. SST, EST, PST, Clerk…">
-      </div>
-      <div class="form-row" id="seat_subjectRow">
-        <label>Subject <span style="color:var(--t3);font-weight:400">(if applicable)</span></label>
-        <input type="text" id="seat_subject" placeholder="e.g. Science, English — leave blank if none">
-      </div>
-      <div class="form-row">
-        <label>Grade / BPS <span style="color:#EF4444">*</span></label>
-        <input type="number" id="seat_grade" min="1" max="22" placeholder="e.g. 16">
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-row">
-          <label>Total Sanctioned Seats <span style="color:#EF4444">*</span></label>
-          <input type="number" id="seat_sanctioned" min="0" value="0" oninput="seatRecalc()">
-        </div>
-        <div class="form-row">
-          <label>Abolished Seats</label>
-          <input type="number" id="seat_abolished" min="0" value="0" oninput="seatRecalc()">
-        </div>
-        <div class="form-row">
-          <label>Effective Sanctioned <span style="color:var(--t3);font-weight:400">(auto)</span></label>
-          <input type="number" id="seat_effective" disabled style="background:#f8fafc;font-weight:700;color:#0d9488">
-        </div>
-        <div class="form-row">
-          <label>Filled Seats</label>
-          <input type="number" id="seat_filled" min="0" value="0" oninput="seatRecalc()">
-        </div>
-      </div>
-      <div class="form-row">
-        <label>Vacant Seats <span style="color:var(--t3);font-weight:400">(auto — never counts abolished posts)</span></label>
-        <input type="number" id="seat_vacant" disabled style="background:#f8fafc;font-weight:700;color:#DC2626">
-      </div>
-      <div class="form-row">
-        <label>Remarks</label>
-        <input type="text" id="seat_remarks" placeholder="Optional">
-      </div>
-      <div class="form-row">
-        <label>Reason for this change <span style="color:var(--t3);font-weight:400">(optional, kept in the audit log)</span></label>
-        <input type="text" id="seat_reason" placeholder="e.g. Post abolished per notification #...">
-      </div>
-
-      <div style="display:flex;gap:10px;margin-top:16px">
-        <button class="btn btn-outline-secondary" style="flex:1" onclick="closeSeatModal()">Cancel</button>
-        <button class="primary-btn" id="seatSaveBtn" style="flex:1" onclick="submitSeatRecord()">Save</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Seat Audit Log modal ── -->
-  <div id="seatAuditModal" class="modal hr-modal-generic hidden">
-    <div class="modal-content" style="max-width:700px">
-      <button class="close-btn" onclick="document.getElementById('seatAuditModal').classList.add('hidden')" title="Close">&times;</button>
-      <h3 style="margin-bottom:14px">Seat Change Audit Log</h3>
-      <div id="seatAuditBody" style="max-height:60vh;overflow:auto"></div>
-    </div>
-  </div>
-
-  <!-- ── First-time Seat Entry gate (blocks the whole app until saved) ── -->
-  <div id="seatGateOverlay" class="hidden" style="position:fixed;inset:0;background:rgba(15,23,42,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">
-    <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;padding:28px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.4)">
-      <span class="material-icons-round" style="font-size:2.4rem;color:#f59e0b">warning_amber</span>
-      <h3 style="margin:10px 0 8px">Sanctioned Seat Data Required</h3>
-      <p style="color:var(--t3);font-size:.88rem;line-height:1.6;margin-bottom:18px">
-        Before you can use the rest of the system, please complete the Teaching (and, if applicable, Non-Teaching)
-        Sanctioned &amp; Abolished Seat data for your tehsil. This only needs to be done once — you can update it any time afterward from the HR module.
-      </p>
-      <button class="hr-btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('seatGateOverlay').classList.add('hidden'); openSeatManagement('teaching');">
-        Start Now
-      </button>
     </div>
   </div>
 
@@ -1485,7 +1323,21 @@
     <i class="bi bi-shield-lock-fill" style="color:var(--bad)"></i> Admin Control Center
   </h3>
 
-  <div class="admin-menu-grid" id="adminMenuGrid">
+  <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+    <button class="btn-kpi btn-kpi-view admin-sub-tab active-admin-tab" id="tabUsers"
+      onclick="switchAdminTab('users',this)">
+      <i class="bi bi-people-fill"></i> User Management
+    </button>
+    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabLinks"
+      style="background:var(--teal);color:white"
+      onclick="switchAdminTab('links',this)">
+      <i class="bi bi-link-45deg"></i> Links &amp; Apps Manager
+    </button>
+    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabTools"
+      style="background:var(--purple);color:white"
+      onclick="switchAdminTab('tools',this)">
+      <i class="bi bi-tools"></i> Tools Manager
+    </button>
     <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabKpi"
       style="background:#0f766e;color:white"
       onclick="switchAdminTab('kpi',this)">
@@ -1501,29 +1353,10 @@
       onclick="switchAdminTab('ia',this)">
       <i class="bi bi-file-earmark-medical-fill"></i> Inspection Allowance Management
     </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabLinks"
-      style="background:var(--teal);color:white"
-      onclick="switchAdminTab('links',this)">
-      <i class="bi bi-link-45deg"></i> Links &amp; Apps Manager
-    </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabTools"
-      style="background:var(--purple);color:white"
-      onclick="switchAdminTab('tools',this)">
-      <i class="bi bi-tools"></i> Tools Manager
-    </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabUsers"
-      onclick="switchAdminTab('users',this)">
-      <i class="bi bi-people-fill"></i> User Management
-    </button>
-  </div>
-
-  <div id="adminNoTabSelected" style="text-align:center;padding:60px 20px;color:var(--t3)">
-    <i class="bi bi-hand-index-thumb" style="font-size:2.2rem;display:block;margin-bottom:10px;opacity:.5"></i>
-    Select a menu above to get started.
   </div>
 
   <!-- ══ USERS PANEL ══ -->
-  <div id="adminPanelUsers" style="display:none">
+  <div id="adminPanelUsers">
     <div class="toolbar" style="margin-bottom:12px">
       <button class="btn-add" onclick="openUserModal()">
         <i class="bi bi-person-plus-fill"></i> Add User
@@ -1532,17 +1365,13 @@
         <i class="bi bi-cloud-arrow-up-fill"></i> Import AEOs
       </button>
     </div>
-     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <select id="userFilterDistrict" onchange="applyUserFilters()" style="height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.83rem"><option value="">All Districts</option></select>
-    <select id="userFilterWing" onchange="applyUserFilters()" style="height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.83rem"><option value="">All Wings</option><option>M-EE</option><option>W-EE</option></select>
-    <select id="userFilterTehsil" onchange="applyUserFilters()" style="height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.83rem"><option value="">All Tehsils</option></select>
-    <div style="position:relative;flex:1;min-width:220px;max-width:400px">
+     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+    <div style="position:relative;flex:1;max-width:400px">
       <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:.85rem;pointer-events:none"></i>
-      <input type="text" id="userSearchInput" placeholder="Search by name, username, personal no., CNIC…"
-        oninput="applyUserFilters()"
+      <input type="text" id="userSearchInput" placeholder="Search by name, CNIC, markaz, district…"
+        oninput="filterUserTable(this.value)"
         style="width:100%;height:38px;padding:0 12px 0 32px;border:1px solid var(--b0);border-radius:6px;font-size:.83rem;background:var(--s0);color:var(--t1);outline:none;box-sizing:border-box">
     </div>
-    <button class="btn btn-outline-secondary" style="height:38px" onclick="clearUserFilters()">Clear Filters</button>
     <span id="userSearchCount" style="font-size:.77rem;color:var(--t3)"></span>
   </div>
     <div class="tbl-wrap" style="max-height:520px">
@@ -1627,18 +1456,6 @@
         onclick="loadKpiCardsTable()">
         <i class="bi bi-arrow-clockwise"></i> Refresh
       </button>
-    </div>
-    <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <select id="kpiFilterDistrict" onchange="applyKpiFilters()" style="height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.83rem"><option value="">All Districts</option></select>
-      <select id="kpiFilterWing" onchange="applyKpiFilters()" style="height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.83rem"><option value="">All Wings</option><option>M-EE</option><option>W-EE</option></select>
-      <select id="kpiFilterTehsil" onchange="applyKpiFilters()" style="height:38px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.83rem"><option value="">All Tehsils</option></select>
-      <div style="position:relative;flex:1;min-width:200px;max-width:360px">
-        <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:.85rem;pointer-events:none"></i>
-        <input type="text" id="kpiSearchInput" placeholder="Search by title, description…" oninput="applyKpiFilters()"
-          style="width:100%;height:38px;padding:0 12px 0 32px;border:1px solid var(--b0);border-radius:6px;font-size:.83rem;background:var(--s0);color:var(--t1);outline:none;box-sizing:border-box">
-      </div>
-      <button class="btn btn-outline-secondary" style="height:38px" onclick="clearKpiFilters()">Clear Filters</button>
-      <span id="kpiSearchCount" style="font-size:.77rem;color:var(--t3)"></span>
     </div>
     <div class="tbl-wrap" style="max-height:520px">
       <table>
@@ -1775,8 +1592,7 @@
       <div class="modal-bdy">
         <div class="form-grid" style="grid-template-columns:1fr">
           <div class="ff"><span class="flabel">Name</span><input type="text" id="gl_name" placeholder="e.g. PST"></div>
-          <div class="ff" id="gl_orderWrap"><span class="flabel">Display Order</span><input type="number" id="gl_order" value="99" min="1"></div>
-          <div id="gl_alphaNote" class="hidden" style="font-size:.78rem;color:var(--t3);margin:-6px 0 6px"><i class="bi bi-sort-alpha-down"></i> Designations are kept in alphabetical (A–Z) order automatically — no manual ordering needed.</div>
+          <div class="ff"><span class="flabel">Display Order</span><input type="number" id="gl_order" value="99" min="1"></div>
           <div class="ff">
             <span class="flabel">Active</span>
             <select id="gl_active">
@@ -2426,16 +2242,6 @@
           <span class="hr-nav-label">Temporary Duty</span>
         </button>
 
-        <div class="hr-sidebar-section-label">Seats</div>
-        <button class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" onclick="openSeatManagement('teaching')">
-          <span class="material-icons-round hr-nav-icon">school</span>
-          <span class="hr-nav-label">Teaching Sanctioned &amp; Abolished Seats</span>
-        </button>
-        <button class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" onclick="openSeatManagement('non_teaching')">
-          <span class="material-icons-round hr-nav-icon">badge</span>
-          <span class="hr-nav-label">Non-Teaching Sanctioned &amp; Abolished Seats</span>
-        </button>
-
         <div class="hr-sidebar-section-label">Separations</div>
         <button class="hr-nav-item hr-view-btn" data-sheet="Retirement">
           <span class="material-icons-round hr-nav-icon">school</span>
@@ -2452,10 +2258,6 @@
         <button class="hr-nav-item hr-view-btn" data-sheet="Termination">
           <span class="material-icons-round hr-nav-icon">block</span>
           <span class="hr-nav-label">Terminations</span>
-        </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="ContractEnded">
-          <span class="material-icons-round hr-nav-icon">description</span>
-          <span class="hr-nav-label">Contract Ended Employees</span>
         </button>
 
         <div class="hr-sidebar-section-label">History</div>
@@ -3147,7 +2949,6 @@
   <!-- ── Module JS ── -->
   <script src="js/core.js"></script>
   <script src="js/hr_view.js"></script>
-  <script src="js/seat-management.js"></script>
   <script src="js/awaiting-posting.js"></script>
   <script src="js/temporary-duty.js"></script>
   <script src="js/staffform.js"></script>
@@ -3155,7 +2956,6 @@
   <script src="js/public_schools.js"></script>
   <script src="js/private_schools.js"></script>
   <script src="js/import-sync.js"></script>
-  <script src="js/data-normalization.js"></script>
   <script src="js/schools-import.js"></script>
   <script src="js/hr-staff-import.js"></script>
   <script src="js/user-import.js"></script>
