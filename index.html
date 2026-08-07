@@ -1668,9 +1668,13 @@
     </div>
 
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-      <button class="btn-kpi btn-kpi-view general-sub-tab active-admin-tab" id="genTabDesignations"
-        style="background:#b45309;color:white" onclick="switchGeneralTab('designation', this)">
-        <i class="bi bi-person-badge-fill"></i> Staff Designations
+      <button class="btn-kpi btn-kpi-view general-sub-tab active-admin-tab" id="genTabDesignationsTeaching"
+        style="background:#b45309;color:white" onclick="switchGeneralTab('designation_teaching', this)">
+        <i class="bi bi-person-badge-fill"></i> Teaching Staff Designations Management
+      </button>
+      <button class="btn-kpi btn-kpi-view general-sub-tab" id="genTabDesignationsNonTeaching"
+        style="background:#b45309;color:white" onclick="switchGeneralTab('designation_non_teaching', this)">
+        <i class="bi bi-person-workspace"></i> Non Teaching Staff Designations Management
       </button>
       <button class="btn-kpi btn-kpi-view general-sub-tab" id="genTabCategories"
         style="background:#b45309;color:white" onclick="switchGeneralTab('category', this)">
@@ -1678,28 +1682,53 @@
       </button>
     </div>
 
-    <!-- Staff Designations -->
-    <div id="genPanelDesignations">
+    <!-- Teaching Staff Designations -->
+    <div id="genPanelDesignationsTeaching">
       <div class="toolbar" style="margin-bottom:12px">
-        <button class="btn-add" style="background:#b45309" onclick="openGeneralListModal('designation')">
-          <i class="bi bi-plus-circle-fill"></i> Add Designation
+        <button class="btn-add" style="background:#b45309" onclick="openGeneralListModal('designation_teaching')">
+          <i class="bi bi-plus-circle-fill"></i> Add Teaching Designation
         </button>
         <button class="btn-export-tbl" style="height:40px;padding:0 14px;color:#b45309;border-color:#b45309"
-          onclick="loadGeneralList('designation')">
+          onclick="loadGeneralList('designation_teaching')">
           <i class="bi bi-arrow-clockwise"></i> Refresh
         </button>
       </div>
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
         <div style="position:relative;flex:1;max-width:400px">
           <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:.85rem;pointer-events:none"></i>
-          <input type="text" id="designationSearchInput" placeholder="Search designations…"
-            oninput="filterGeneralTable('designation', this.value)"
+          <input type="text" id="designationTeachingSearchInput" placeholder="Search teaching designations…"
+            oninput="filterGeneralTable('designation_teaching', this.value)"
             style="width:100%;height:38px;padding:0 12px 0 32px;border:1px solid var(--b0);border-radius:6px;font-size:.83rem;background:var(--s0);color:var(--t1);outline:none;box-sizing:border-box">
         </div>
-        <span id="designationSearchCount" style="font-size:.77rem;color:var(--t3)"></span>
+        <span id="designationTeachingSearchCount" style="font-size:.77rem;color:var(--t3)"></span>
       </div>
       <div class="tbl-wrap" style="max-height:480px">
-        <table><thead id="designationTHead"></thead><tbody id="designationTBody"></tbody></table>
+        <table><thead id="designationTeachingTHead"></thead><tbody id="designationTeachingTBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- Non-Teaching Staff Designations -->
+    <div id="genPanelDesignationsNonTeaching" style="display:none">
+      <div class="toolbar" style="margin-bottom:12px">
+        <button class="btn-add" style="background:#b45309" onclick="openGeneralListModal('designation_non_teaching')">
+          <i class="bi bi-plus-circle-fill"></i> Add Non-Teaching Designation
+        </button>
+        <button class="btn-export-tbl" style="height:40px;padding:0 14px;color:#b45309;border-color:#b45309"
+          onclick="loadGeneralList('designation_non_teaching')">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+      </div>
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+        <div style="position:relative;flex:1;max-width:400px">
+          <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:.85rem;pointer-events:none"></i>
+          <input type="text" id="designationNonTeachingSearchInput" placeholder="Search non-teaching designations…"
+            oninput="filterGeneralTable('designation_non_teaching', this.value)"
+            style="width:100%;height:38px;padding:0 12px 0 32px;border:1px solid var(--b0);border-radius:6px;font-size:.83rem;background:var(--s0);color:var(--t1);outline:none;box-sizing:border-box">
+        </div>
+        <span id="designationNonTeachingSearchCount" style="font-size:.77rem;color:var(--t3)"></span>
+      </div>
+      <div class="tbl-wrap" style="max-height:480px">
+        <table><thead id="designationNonTeachingTHead"></thead><tbody id="designationNonTeachingTBody"></tbody></table>
       </div>
     </div>
 
@@ -2941,12 +2970,27 @@
         <div class="sfm-section-title"><span class="sfm-sec-num">03</span> Service Details</div>
         <div class="sfm-grid">
 
+          <div class="sfm-field" data-field="STAFF CATEGORY">
+            <label class="sfm-label">Staff Category</label>
+            <div class="sfm-input-wrap">
+              <select id="sf_staffCategory" class="sfm-select" onchange="sfmOnStaffCategoryChange()">
+                <option value="">Select…</option>
+                <option value="teaching">Teaching Staff</option>
+                <option value="non_teaching">Non-Teaching Staff</option>
+              </select>
+              <span class="sfm-val-view" id="sfv_staffCategory"></span>
+            </div>
+            <div class="sfm-err" id="sfe_staffCategory"></div>
+          </div>
+
           <div class="sfm-field" data-field="DESIGNATION">
             <label class="sfm-label">Designation</label>
             <div class="sfm-input-wrap">
               <select id="sf_designation" class="sfm-select">
-                <option value="">Select…</option>
-                <!-- Populated dynamically from Admin Panel → General Management → Staff Designations -->
+                <option value="">Select a Staff Category first…</option>
+                <!-- Populated dynamically from Admin Panel → General Management →
+                     Teaching / Non-Teaching Staff Designations Management, filtered
+                     by the Staff Category selected above -->
               </select>
               <span class="sfm-val-view" id="sfv_designation"></span>
             </div>
