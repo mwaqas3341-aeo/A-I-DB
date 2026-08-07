@@ -8,6 +8,27 @@ let hrSheetDataCache   = {};
 let hrFilteredResults  = [];
 let hrCurrentHeaders   = [];
 let hrPageSize         = 50;
+
+// ── SUBJECT MASTER LIST (shared: Staff Form + Seat Calculation) ─────
+// Single source of truth, sourced from sne_subject_sanctioned.subjects
+// (see getSubjectList in api.js). Populated into a <datalist> so entry
+// stays free-text (no risk of blocking a legitimate new subject) while
+// still surfacing everything already in use across the system.
+let hrSubjectCache = [];
+let hrSubjectCacheLoaded = false;
+function hrEnsureSubjectCache(callback) {
+  if (hrSubjectCacheLoaded) { if (callback) callback(); return; }
+  google.script.run
+    .withSuccessHandler(res => {
+      hrSubjectCache = (res && res.success && res.subjects) ? res.subjects : [];
+      hrSubjectCacheLoaded = true;
+      const dl = document.getElementById('subjectMasterList');
+      if (dl) dl.innerHTML = hrSubjectCache.map(s => `<option value="${s.replace(/"/g, '&quot;')}"></option>`).join('');
+      if (callback) callback();
+    })
+    .withFailureHandler(() => { if (callback) callback(); })
+    .getSubjectList();
+}
 let hrCurrentPage      = 1;
 let hrActiveMenu       = null;
 let sfmMode            = 'view';

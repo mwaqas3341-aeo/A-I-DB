@@ -693,6 +693,8 @@ function openStaffFormModal(mode, row) {
   sfmCurrentRow = row || null;
   sfmSubmitting = false;
 
+  if (typeof hrEnsureSubjectCache === 'function') hrEnsureSubjectCache();
+
   refreshDesignationOptions(function() {
     if (row && row['DESIGNATION']) {
       var sel = document.getElementById('sf_designation');

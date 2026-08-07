@@ -1244,6 +1244,21 @@ async function apiCall(action, payload) {
     // source of truth instead of a parallel table, so every vacancy
     // check across the app (check_grade_vacancy RPC) automatically
     // reflects abolished seats with no separate sync step needed.
+    // Single source of truth for the "Subject" dropdown/suggestions used
+    // in Staff Forms and Seat Calculations — sourced from whatever
+    // subjects already exist in the Teaching Seat data
+    // (sne_subject_sanctioned.subjects), so anything entered in one
+    // place is immediately suggested everywhere else. Fixes the
+    // subject-mapping gap where Staff Forms/Seat entry had no shared
+    // subject list at all (previously plain free-text with no lookup).
+    case 'getSubjectList': {
+      const { data, error } = await _sb.from('sne_subject_sanctioned')
+        .select('subjects').eq('category', 'teaching').not('subjects', 'is', null).neq('subjects', '');
+      if (error) return { success: false, message: error.message };
+      const subjects = [...new Set((data || []).map(r => (r.subjects || '').trim()).filter(Boolean))].sort();
+      return { success: true, subjects };
+    }
+
     case 'getSeatManagementList': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
@@ -1271,8 +1286,18 @@ async function apiCall(action, payload) {
       if (!emis) return { success: false, message: 'EMIS Code is required.' };
       const grade = parseInt(p.grade);
       if (!grade || grade < 1) return { success: false, message: 'Grade/BPS is required.' };
-      const sanctioned = parseInt(p.sanctionedCount);
+      let sanctioned = parseInt(p.sanctionedCount);
       const abolished  = parseInt(p.abolishedCount) || 0;
+
+      // Teaching Seat Rule: Total Sanctioned is locked once a record
+      // exists — only Abolished Seats may change it going forward.
+      // Enforced here (not just hidden in the UI) so bulk imports and
+      // direct API calls can't bypass it either.
+      if (category === 'teaching' && p.id) {
+        const { data: existing } = await _sb.from('sne_subject_sanctioned')
+          .select('sanctioned_count').eq('id', p.id).maybeSingle();
+        if (existing) sanctioned = existing.sanctioned_count;
+      }
       if (!Number.isFinite(sanctioned) || sanctioned < 0) return { success: false, message: 'Total Sanctioned Seats must be 0 or more.' };
       if (abolished < 0) return { success: false, message: 'Abolished Seats cannot be negative.' };
       if (abolished > sanctioned) return { success: false, message: 'Abolished Seats cannot exceed Total Sanctioned Seats.' };
@@ -1293,7 +1318,33 @@ async function apiCall(action, payload) {
         if (school) schoolMeta = { ...schoolMeta, ...Object.fromEntries(Object.entries(school).filter(([, v]) => v)) };
       }
 
-      const filled = parseInt(p.filledCount) || 0;
+      // Non-Teaching filled seats are never taken from the client —
+      // always computed live from the Staff Statement (EMIS +
+      // Designation, active staff only). The trg_staff_sync_non_teaching_filled
+      // trigger keeps this correct afterward as staff records change;
+      // this handles the moment a seat row is first created/edited.
+      let filled = parseInt(p.filledCount) || 0;
+      if (category === 'non_teaching') {
+        const { count } = await _sb.from('staff')
+          .select('id', { count: 'exact', head: true })
+          .eq('school_emis_code', emis).eq('designation', designation).eq('status', 'active');
+        filled = count || 0;
+      }
+
+      // Prevent Invalid Seat Abolishment: a seat currently occupied by
+      // an active employee can never be abolished. If abolishing would
+      // push effective sanctioned seats (sanctioned - abolished) below
+      // the number of employees actually sitting in this Grade/Subject/
+      // Designation/EMIS combination, reject it outright.
+      const effectiveAfterAbolish = sanctioned - abolished;
+      if (effectiveAfterAbolish < filled) {
+        const maxAbolishable = Math.max(sanctioned - filled, 0);
+        return {
+          success: false,
+          message: `Cannot abolish ${abolished} seat(s) — ${filled} employee(s) currently occupy this position (${designation}${subject ? ' / ' + subject : ''}, Grade ${grade}, EMIS ${emis}). Only vacant seats can be abolished; at most ${maxAbolishable} seat(s) can be abolished here right now.`,
+        };
+      }
+
       const dbRow = {
         category, emis, designation, subjects: subject, grade,
         subject_code: subjectCode, subject_label: subjectLabel,

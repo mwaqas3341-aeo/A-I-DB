@@ -21,6 +21,8 @@ function openSeatManagement(category) {
     `${SEAT_CATEGORY_LABEL[seatState.category]} Sanctioned & Abolished Seats`;
   document.getElementById('seat_designationRow').style.display = '';
   document.getElementById('seat_subjectRow').style.display = seatState.category === 'teaching' ? '' : 'none';
+  document.getElementById('seatDownloadTemplateBtn').style.display = seatState.category === 'non_teaching' ? '' : 'none';
+  document.getElementById('seatImportErrorsPanel').style.display = 'none';
   _seatPopulateJurisdictionFilters();
   applySeatFilter();
 }
@@ -164,6 +166,27 @@ function seatRenderTable() {
 }
 
 // ── ADD / EDIT MODAL ──────────────────────────────────────────────
+// Designation options come from the same Admin Panel → General
+// Management → Staff Designations list the Staff Form uses
+// (see refreshDesignationOptions in staffform.js) — one source of
+// truth, so a designation added/renamed/removed there needs no
+// separate change here.
+function seatRefreshDesignationOptions(keepValue) {
+  const sel = document.getElementById('seat_designation');
+  if (!sel) return;
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res || !res.success) { if (keepValue) sel.insertAdjacentHTML('beforeend', `<option>${keepValue}</option>`), sel.value = keepValue; return; }
+      sel.innerHTML = '<option value="">Select…</option>' + res.items.map(name => `<option>${name}</option>`).join('');
+      if (keepValue) {
+        if (res.items.indexOf(keepValue) !== -1) sel.value = keepValue;
+        else { sel.insertAdjacentHTML('beforeend', `<option>${keepValue}</option>`); sel.value = keepValue; }
+      }
+    })
+    .withFailureHandler(() => { if (keepValue) { sel.insertAdjacentHTML('beforeend', `<option>${keepValue}</option>`); sel.value = keepValue; } })
+    .getStaffDesignations();
+}
+
 function seatLookupSchool() {
   const emis = document.getElementById('seat_emis').value.trim();
   const infoEl = document.getElementById('seat_schoolInfo');
@@ -201,12 +224,29 @@ function openSeatModal(id) {
   document.getElementById('seatModalTitle').textContent = id ? 'Edit Seat Record' : 'Add Seat Record';
   document.getElementById('seat_emis').value = row?.emis || '';
   document.getElementById('seat_schoolInfo').textContent = row ? `${row.school_name || ''} — ${row.tehsil || ''}, ${row.district || ''}` : '';
-  document.getElementById('seat_designation').value = row?.designation || '';
+  seatRefreshDesignationOptions(row?.designation || '');
+  if (typeof hrEnsureSubjectCache === 'function') hrEnsureSubjectCache();
   document.getElementById('seat_subject').value = row?.subjects || '';
   document.getElementById('seat_grade').value = row?.grade || '';
   document.getElementById('seat_sanctioned').value = row?.sanctioned_count ?? 0;
+  // Teaching Seat Rule: Total Sanctioned is locked once a record
+  // exists — only Abolished Seats may be entered from here on.
+  // A brand-new (never-saved) teaching record can still take an
+  // initial value since there's nothing yet to lock.
+  const lockSanctioned = seatState.category === 'teaching' && !!id;
+  document.getElementById('seat_sanctioned').disabled = lockSanctioned;
+  document.getElementById('seat_sanctioned').style.background = lockSanctioned ? '#f8fafc' : '';
+  document.getElementById('seat_sanctionedLabel').innerHTML = lockSanctioned
+    ? 'Total Sanctioned Seats <span style="color:var(--t3);font-weight:400">(locked — edit via Abolished Seats only)</span>'
+    : 'Total Sanctioned Seats <span style="color:#EF4444">*</span>';
   document.getElementById('seat_abolished').value = row?.abolished_count ?? 0;
   document.getElementById('seat_filled').value = row?.filled_count ?? 0;
+  const isNonTeaching = seatState.category === 'non_teaching';
+  document.getElementById('seat_filled').disabled = isNonTeaching;
+  document.getElementById('seat_filled').style.background = isNonTeaching ? '#f8fafc' : '';
+  document.getElementById('seat_filledLabel').innerHTML = isNonTeaching
+    ? 'Filled Seats <span style="color:var(--t3);font-weight:400">(auto — from Staff Statement)</span>'
+    : 'Filled Seats';
   document.getElementById('seat_remarks').value = row?.remarks || '';
   document.getElementById('seat_reason').value = '';
   document.getElementById('seat_subjectRow').style.display = seatState.category === 'teaching' ? '' : 'none';
@@ -266,6 +306,22 @@ function deleteSeatRecord(id) {
 }
 
 // ── IMPORT / EXPORT ───────────────────────────────────────────────
+function downloadNonTeachingSeatTemplate() {
+  // Note: "Grade/BPS" is included even though the original spec listed
+  // only EMIS/Designation/Total Sanctioned — the backend (saveSeatRecord)
+  // requires a Grade/BPS value for every seat record, teaching or not,
+  // since it's part of the record's uniqueness key. "Filled" is
+  // intentionally NOT included: Non-Teaching filled seats are always
+  // calculated automatically from the Staff Statement (see item 4).
+  const headers = ['EMIS Code', 'Seat/Designation Name', 'BPS', 'Total Sanctioned', 'Remarks'];
+  const sample = ['35201001', 'Clerk', '11', '2', ''];
+  const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
+  ws['!cols'] = headers.map(h => ({ wch: Math.max(14, Math.min(28, h.length + 6)) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Non-Teaching Seats');
+  XLSX.writeFile(wb, 'Non_Teaching_Seat_Upload_Template.xlsx');
+}
+
 function exportSeatData() {
   if (!seatState.rows.length) { showToast('Nothing to export for the current filter.', false); return; }
   const isTeaching = seatState.category === 'teaching';
@@ -285,41 +341,104 @@ function exportSeatData() {
 function handleSeatImportFile(input) {
   const file = input.files[0];
   if (!file) return;
+  document.getElementById('seatImportErrorsPanel').style.display = 'none';
   const reader = new FileReader();
   reader.onload = e => {
     const wb = XLSX.read(e.target.result, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
     if (!rows.length) { showToast('No rows found in the file.', false); return; }
-    if (!confirm(`Import ${rows.length} row(s) into ${SEAT_CATEGORY_LABEL[seatState.category]} Seats? Existing EMIS+Grade+Subject+Designation records will be updated; new ones will be added.`)) return;
-    _seatImportRows(rows, 0, { ok: 0, fail: 0 });
+
+    // Validate every row up front so the person sees every problem at
+    // once, instead of trickling in one failed toast per bad row.
+    const valid = [];
+    const errors = [];
+    rows.forEach((r, i) => {
+      const rowNum = i + 2; // +1 for header row, +1 for 1-indexing
+      const emis = String(r['EMIS Code'] || r['EMIS'] || '').trim();
+      const designation = String(r['Seat/Designation Name'] || r['Designation'] || '').trim();
+      const grade = Number(r['BPS'] || r['Grade/BPS'] || r['Grade'] || 0);
+      const sanctioned = Number(r['Total Sanctioned'] ?? r['Sanctioned'] ?? '');
+      const abolished = Number(r['Abolished'] || 0);
+      const subject = String(r['Subject'] || '').trim();
+      const remarks = String(r['Remarks'] || '').trim();
+
+      const rowErrs = [];
+      if (!emis) rowErrs.push('EMIS Code is missing.');
+      else if (!/^\d+$/.test(emis)) rowErrs.push('EMIS Code must be numeric.');
+      if (!designation) rowErrs.push('Seat/Designation Name is missing.');
+      if (!grade || grade < 1) rowErrs.push('BPS / Grade is missing or invalid.');
+      if (!Number.isFinite(sanctioned) || sanctioned < 0) rowErrs.push('Total Sanctioned is missing or invalid.');
+      if (abolished < 0) rowErrs.push('Abolished cannot be negative.');
+      if (abolished > sanctioned) rowErrs.push('Abolished cannot exceed Total Sanctioned.');
+
+      if (rowErrs.length) {
+        errors.push({ row: rowNum, emis, designation, messages: rowErrs });
+      } else {
+        // Filled is intentionally never read from the file for
+        // Non-Teaching — it's auto-calculated server-side (item 4).
+        // For Teaching it's still accepted, matching prior behaviour.
+        const filled = seatState.category === 'teaching' ? Number(r['Filled'] || 0) : 0;
+        valid.push({ emis, designation, subject, grade, sanctioned, abolished, filled, remarks });
+      }
+    });
+
+    if (!valid.length) {
+      _seatShowImportErrors(errors, 0, 0);
+      input.value = '';
+      return;
+    }
+    const proceedMsg = errors.length
+      ? `${valid.length} valid row(s) will be imported, ${errors.length} row(s) have errors and will be skipped. Continue?`
+      : `Import ${valid.length} row(s) into ${SEAT_CATEGORY_LABEL[seatState.category]} Seats? Existing EMIS+Grade+Subject+Designation records will be updated; new ones will be added.`;
+    if (!confirm(proceedMsg)) { input.value = ''; return; }
+    _seatImportRows(valid, 0, { ok: 0, fail: 0 }, errors);
   };
   reader.readAsArrayBuffer(file);
   input.value = '';
 }
 
-function _seatImportRows(rows, idx, tally) {
+function _seatShowImportErrors(errors, ok, fail) {
+  const panel = document.getElementById('seatImportErrorsPanel');
+  if (!errors.length) { panel.style.display = 'none'; return; }
+  const summary = (ok || fail)
+    ? `<div style="font-weight:700;margin-bottom:8px;">Import finished: ${ok} saved, ${fail} row(s) skipped due to errors.</div>`
+    : `<div style="font-weight:700;margin-bottom:8px;">No rows could be imported — every row had a validation error.</div>`;
+  panel.innerHTML = summary + `
+    <div style="max-height:220px;overflow-y:auto;font-size:.82rem;">
+      ${errors.map(e => `
+        <div style="padding:6px 0;border-bottom:1px solid #FECACA;">
+          <strong>Row ${e.row}</strong> ${e.emis ? `(EMIS ${escHtmlAp(e.emis)})` : ''} ${e.designation ? `— ${escHtmlAp(e.designation)}` : ''}
+          <ul style="margin:4px 0 0 18px;">${e.messages.map(m => `<li>${escHtmlAp(m)}</li>`).join('')}</ul>
+        </div>`).join('')}
+    </div>
+    <button type="button" class="hr-btn-ghost" style="margin-top:10px;" onclick="document.getElementById('seatImportErrorsPanel').style.display='none'">Dismiss</button>`;
+  panel.style.display = 'block';
+}
+
+function _seatImportRows(rows, idx, tally, errors) {
   if (idx >= rows.length) {
-    showToast(`Import complete: ${tally.ok} saved, ${tally.fail} failed.`, tally.fail === 0);
+    showToast(`Import complete: ${tally.ok} saved, ${tally.fail} failed.`, tally.fail === 0 && !(errors && errors.length));
+    _seatShowImportErrors(errors || [], tally.ok, tally.fail + (errors ? errors.length : 0));
     applySeatFilter();
     return;
   }
   const r = rows[idx];
-  const emis = String(r['EMIS'] || r['EMIS Code'] || '').trim();
-  const designation = String(r['Designation'] || '').trim();
-  const grade = Number(r['Grade/BPS'] || r['Grade'] || 0);
-  const sanctioned = Number(r['Total Sanctioned'] || r['Sanctioned'] || 0);
-  const abolished = Number(r['Abolished'] || 0);
-  const filled = Number(r['Filled'] || 0);
-  if (!emis || !designation || !grade) { tally.fail++; _seatImportRows(rows, idx + 1, tally); return; }
-
   google.script.run
-    .withSuccessHandler(res => { if (res && res.success) tally.ok++; else tally.fail++; _seatImportRows(rows, idx + 1, tally); })
-    .withFailureHandler(() => { tally.fail++; _seatImportRows(rows, idx + 1, tally); })
+    .withSuccessHandler(res => {
+      if (res && res.success) tally.ok++;
+      else { tally.fail++; (errors || (errors = [])).push({ row: idx + 2, emis: r.emis, designation: r.designation, messages: [res?.message || 'Save failed.'] }); }
+      _seatImportRows(rows, idx + 1, tally, errors);
+    })
+    .withFailureHandler(err => {
+      tally.fail++;
+      (errors || (errors = [])).push({ row: idx + 2, emis: r.emis, designation: r.designation, messages: [err.message || 'Server error.'] });
+      _seatImportRows(rows, idx + 1, tally, errors);
+    })
     .saveSeatRecord({
-      category: seatState.category, emis, designation, subject: String(r['Subject'] || '').trim(), grade,
-      sanctionedCount: sanctioned, abolishedCount: abolished, filledCount: filled,
-      remarks: String(r['Remarks'] || '').trim(), reason: 'Bulk import',
+      category: seatState.category, emis: r.emis, designation: r.designation, subject: r.subject, grade: r.grade,
+      sanctionedCount: r.sanctioned, abolishedCount: r.abolished, filledCount: r.filled,
+      remarks: r.remarks, reason: 'Bulk import',
     });
 }
 
