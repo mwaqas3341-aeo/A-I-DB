@@ -3369,9 +3369,30 @@ function _hierarchyScopeDbFields(p) {
       // Designations are always A–Z automatically — no manual ordering
       // field for these. Categories keep their manual display_order.
       q = table === 'staff_designations' ? q.order('name') : q.order('display_order');
+      // Teaching vs Non-Teaching split (Designation Synchronization):
+      // the Staff Form's "Staff Category" dropdown and Seat Management's
+      // teaching/non_teaching seat category both filter designations
+      // through this same param, so there's still exactly one list —
+      // just scoped by category instead of duplicated per category.
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      if (table === 'staff_designations' && p && p.category) {
+        q = q.eq('category', p.category);
+      }
       const { data, error } = await q;
       if (error) return { success: false, message: error.message };
       return { success: true, items: (data || []).map(r => r.name) };
+    }
+
+    // Name → category map for every designation (active or not), so
+    // the Staff Form can infer an existing employee's Teaching /
+    // Non-Teaching category from their already-saved Designation
+    // without needing that category stored separately on the staff row.
+    case 'getDesignationCategoryMap': {
+      const { data, error } = await _sb.from('staff_designations').select('name, category');
+      if (error) return { success: false, message: error.message };
+      const map = {};
+      (data || []).forEach(r => { map[r.name] = r.category || 'teaching'; });
+      return { success: true, map };
     }
 
     case 'getStaffDesignationsAdmin':
@@ -3379,6 +3400,10 @@ function _hierarchyScopeDbFields(p) {
       const table = action === 'getStaffDesignationsAdmin' ? 'staff_designations' : 'private_school_categories';
       let q = _sb.from(table).select('*');
       q = table === 'staff_designations' ? q.order('name') : q.order('display_order');
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      if (table === 'staff_designations' && p && p.category) {
+        q = q.eq('category', p.category);
+      }
       const { data, error } = await q;
       if (error) return { success: false, message: error.message };
       const headers = table === 'staff_designations' ? ['Name', 'Active'] : ['Name', 'Display Order', 'Active'];
@@ -3386,6 +3411,7 @@ function _hierarchyScopeDbFields(p) {
         'Name': r.name || '',
         'Display Order': r.display_order || 99,
         'Active': r.active === false ? 'No' : 'Yes',
+        'Category': r.category || 'teaching',
         _id: r.id,
       }));
       return { success: true, headers, data: mapped };
@@ -3404,8 +3430,11 @@ function _hierarchyScopeDbFields(p) {
       // manual "Display Order" input for these; display_order is left
       // at a constant placeholder since nothing reads it for this
       // table anymore (both queries above sort by name instead).
+      // Category ('teaching'/'non_teaching') is fixed by which admin
+      // sub-tab the row was added/edited from — the panel is scoped to
+      // one category at a time, so there's no separate picker for it.
       const dbRow = table === 'staff_designations'
-        ? { name, active: p['Active'] === 'No' ? false : true }
+        ? { name, active: p['Active'] === 'No' ? false : true, category: p['Category'] === 'non_teaching' ? 'non_teaching' : 'teaching' }
         : { name, display_order: parseInt(p['Display Order']) || 99, active: p['Active'] === 'No' ? false : true };
       if (id) {
         const r = await _checkedUpdate(table, dbRow, 'id', id);

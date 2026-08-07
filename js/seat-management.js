@@ -184,7 +184,7 @@ function seatRefreshDesignationOptions(keepValue) {
       }
     })
     .withFailureHandler(() => { if (keepValue) { sel.insertAdjacentHTML('beforeend', `<option>${keepValue}</option>`); sel.value = keepValue; } })
-    .getStaffDesignations();
+    .getStaffDesignations({ category: seatState.category });
 }
 
 function seatLookupSchool() {

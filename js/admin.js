@@ -68,7 +68,9 @@ window.addEventListener('DOMContentLoaded', () => {
         showToast('Deleted.');
         if (pendingDeleteType === 'tools')      loadToolsTableAdmin();
         else if (pendingDeleteType === 'kpi')   { loadKpiCardsTable(); if (typeof loadDashboardKpiCards === 'function') loadDashboardKpiCards(); }
-        else if (pendingDeleteType === 'designation') { loadGeneralList('designation'); if (typeof refreshDesignationOptions === 'function') refreshDesignationOptions(); }
+        else if (pendingDeleteType === 'designation_teaching' || pendingDeleteType === 'designation_non_teaching') {
+          loadGeneralList(pendingDeleteType); if (typeof refreshDesignationOptions === 'function') refreshDesignationOptions();
+        }
         else if (pendingDeleteType === 'category')    { loadGeneralList('category');    if (typeof refreshPrivateCategoryOptions === 'function') refreshPrivateCategoryOptions(); }
         else { loadLinksAppsTable(); if (typeof loadDashboardLinksApps === 'function') loadDashboardLinksApps(); }
       } else showToast(res.message || 'Delete failed.', false);
@@ -77,7 +79,7 @@ window.addEventListener('DOMContentLoaded', () => {
       google.script.run.withSuccessHandler(done).deleteToolRow(pendingDeleteRow, currentUser);
     else if (pendingDeleteType === 'kpi')
       google.script.run.withSuccessHandler(done).deleteKpiCard(pendingDeleteRow, currentUser);
-    else if (pendingDeleteType === 'designation')
+    else if (pendingDeleteType === 'designation_teaching' || pendingDeleteType === 'designation_non_teaching')
       google.script.run.withSuccessHandler(done).deleteDesignationRow(pendingDeleteRow, currentUser);
     else if (pendingDeleteType === 'category')
       google.script.run.withSuccessHandler(done).deleteCategoryRow(pendingDeleteRow, currentUser);
@@ -126,7 +128,7 @@ function switchAdminTab(tab, btn) {
   if (tab === 'links')   loadLinksAppsTable();
   if (tab === 'tools')   loadToolsTableAdmin();
   if (tab === 'kpi')     loadKpiCardsTable();
-  if (tab === 'general') loadGeneralList('designation');
+  if (tab === 'general') loadGeneralList('designation_teaching');
   if (tab === 'ia')      loadInspectionAllowanceAdmin();
 }
 let usersLoadedOnce = false;
@@ -215,21 +217,28 @@ function removeTehsilRepAdmin(id) {
 // Active) — same shape, same CRUD, just a different backend table —
 // so one set of functions backs both instead of duplicating the panel.
 const GENERAL_LIST_CONFIG = {
-  designation: {
-    label: 'Designation', getAdmin: 'getStaffDesignationsAdmin', save: 'saveDesignationRow', del: 'deleteDesignationRow',
-    tbody: 'designationTBody', thead: 'designationTHead', searchCount: 'designationSearchCount',
+  designation_teaching: {
+    label: 'Teaching Designation', getAdmin: 'getStaffDesignationsAdmin', save: 'saveDesignationRow', del: 'deleteDesignationRow',
+    tbody: 'designationTeachingTBody', thead: 'designationTeachingTHead', searchCount: 'designationTeachingSearchCount',
+    category: 'teaching',
+  },
+  designation_non_teaching: {
+    label: 'Non-Teaching Designation', getAdmin: 'getStaffDesignationsAdmin', save: 'saveDesignationRow', del: 'deleteDesignationRow',
+    tbody: 'designationNonTeachingTBody', thead: 'designationNonTeachingTHead', searchCount: 'designationNonTeachingSearchCount',
+    category: 'non_teaching',
   },
   category: {
     label: 'Category', getAdmin: 'getPrivateCategoriesAdmin', save: 'saveCategoryRow', del: 'deleteCategoryRow',
     tbody: 'categoryTBody', thead: 'categoryTHead', searchCount: 'categorySearchCount',
   },
 };
-let generalListData = { designation: [], category: [] };
-let generalListLoaded = { designation: false, category: false };
+let generalListData = { designation_teaching: [], designation_non_teaching: [], category: [] };
+let generalListLoaded = { designation_teaching: false, designation_non_teaching: false, category: false };
 
 function switchGeneralTab(kind, btn) {
-  document.getElementById('genPanelDesignations').style.display = kind === 'designation' ? 'block' : 'none';
-  document.getElementById('genPanelCategories').style.display   = kind === 'category'    ? 'block' : 'none';
+  document.getElementById('genPanelDesignationsTeaching').style.display    = kind === 'designation_teaching'     ? 'block' : 'none';
+  document.getElementById('genPanelDesignationsNonTeaching').style.display = kind === 'designation_non_teaching' ? 'block' : 'none';
+  document.getElementById('genPanelCategories').style.display              = kind === 'category'                ? 'block' : 'none';
   document.querySelectorAll('.general-sub-tab').forEach(b => b.classList.remove('active-admin-tab'));
   btn.classList.add('active-admin-tab');
   if (!generalListLoaded[kind]) loadGeneralList(kind);
@@ -247,12 +256,12 @@ function loadGeneralList(kind) {
       renderGeneralTable(kind, res.headers, res.data);
     })
     .withFailureHandler(err => showToast('Error: ' + err.message, false))
-    [cfg.getAdmin]();
+    [cfg.getAdmin](cfg.category ? { category: cfg.category } : undefined);
 }
 
 function renderGeneralTable(kind, headers, data) {
   const cfg = GENERAL_LIST_CONFIG[kind];
-  const showOrderCol = kind !== 'designation';
+  const showOrderCol = kind === 'category';
   document.getElementById(cfg.thead).innerHTML =
     `<tr><th>Actions</th><th>Name</th>${showOrderCol ? '<th>Display Order</th>' : ''}<th>Active</th></tr>`;
   document.getElementById(cfg.tbody).innerHTML = data.map(row => `
@@ -288,31 +297,37 @@ function filterGeneralTable(kind, query) {
 
 function openGeneralListModal(kind) {
   const cfg = GENERAL_LIST_CONFIG[kind];
+  const isDesignation = kind !== 'category';
   document.getElementById('glModalTitle').textContent = `Add ${cfg.label}`;
-  document.getElementById('glModalSub').textContent = kind === 'designation' ? 'Staff Designations' : 'Private School Categories';
+  document.getElementById('glModalSub').textContent =
+    kind === 'designation_teaching' ? 'Teaching Staff Designations Management' :
+    kind === 'designation_non_teaching' ? 'Non Teaching Staff Designations Management' : 'Private School Categories';
   document.getElementById('gl_name').value  = '';
   document.getElementById('gl_order').value = '99';
   document.getElementById('gl_active').value = 'Yes';
   document.getElementById('gl_kind').value = kind;
   document.getElementById('gl_rowIndex').value = '';
-  document.getElementById('gl_orderWrap').style.display = kind === 'designation' ? 'none' : '';
-  document.getElementById('gl_alphaNote').classList.toggle('hidden', kind !== 'designation');
+  document.getElementById('gl_orderWrap').style.display = isDesignation ? 'none' : '';
+  document.getElementById('gl_alphaNote').classList.toggle('hidden', !isDesignation);
   generalListModalInst.show();
 }
 
 function editGeneralListRow(kind, ri) {
   const cfg = GENERAL_LIST_CONFIG[kind];
+  const isDesignation = kind !== 'category';
   const row = generalListData[kind].find(r => String(r._id) === String(ri));
   if (!row) return;
   document.getElementById('glModalTitle').textContent = `Edit ${cfg.label}`;
-  document.getElementById('glModalSub').textContent = kind === 'designation' ? 'Staff Designations' : 'Private School Categories';
+  document.getElementById('glModalSub').textContent =
+    kind === 'designation_teaching' ? 'Teaching Staff Designations Management' :
+    kind === 'designation_non_teaching' ? 'Non Teaching Staff Designations Management' : 'Private School Categories';
   document.getElementById('gl_name').value  = row['Name'] || '';
   document.getElementById('gl_order').value = row['Display Order'] || '99';
   document.getElementById('gl_active').value = row['Active'] || 'Yes';
   document.getElementById('gl_kind').value = kind;
   document.getElementById('gl_rowIndex').value = ri;
-  document.getElementById('gl_orderWrap').style.display = kind === 'designation' ? 'none' : '';
-  document.getElementById('gl_alphaNote').classList.toggle('hidden', kind !== 'designation');
+  document.getElementById('gl_orderWrap').style.display = isDesignation ? 'none' : '';
+  document.getElementById('gl_alphaNote').classList.toggle('hidden', !isDesignation);
   generalListModalInst.show();
 }
 
@@ -327,6 +342,10 @@ function submitGeneralListRow() {
     'Display Order': document.getElementById('gl_order').value.trim() || '99',
     'Active': document.getElementById('gl_active').value,
   };
+  // Category is fixed by which admin tab this modal was opened from —
+  // Teaching Staff Designations Management always saves 'teaching',
+  // Non Teaching Staff Designations Management always saves 'non_teaching'.
+  if (cfg.category) rowData['Category'] = cfg.category;
   const ri  = document.getElementById('gl_rowIndex').value || null;
   const btn = document.getElementById('saveGeneralListBtn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
@@ -339,7 +358,7 @@ function submitGeneralListRow() {
         showToast(res.message || 'Saved!');
         loadGeneralList(kind);
         // Keep the live forms in sync immediately — no page reload needed.
-        if (kind === 'designation' && typeof refreshDesignationOptions === 'function') refreshDesignationOptions();
+        if (kind.startsWith('designation') && typeof refreshDesignationOptions === 'function') refreshDesignationOptions();
         if (kind === 'category' && typeof refreshPrivateCategoryOptions === 'function') refreshPrivateCategoryOptions();
       } else showToast(res.message || 'Save failed.', false);
     })
@@ -352,7 +371,7 @@ function submitGeneralListRow() {
 
 function confirmDeleteGeneralRow(kind, ri) {
   pendingDeleteRow = ri;
-  pendingDeleteType = kind; // 'designation' | 'category'
+  pendingDeleteType = kind; // 'designation_teaching' | 'designation_non_teaching' | 'category'
   deleteModalInst.show();
 }
 

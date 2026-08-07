@@ -666,7 +666,28 @@ function sfmValidate() {
 // adding/editing/removing a designation there needs no code change.
 var sfmDesignationsLoaded = false;
 
+function sfmOnStaffCategoryChange() {
+  var sel = document.getElementById('sf_designation');
+  var cat = document.getElementById('sf_staffCategory').value;
+  if (!cat) {
+    if (sel) sel.innerHTML = '<option value="">Select a Staff Category first…</option>';
+    return;
+  }
+  // A manual category switch invalidates whatever designation was
+  // selected under the old category — clear it rather than trying to
+  // carry it over, so the person always re-picks from the right list.
+  if (sel) sel.value = '';
+  refreshDesignationOptions();
+}
+
 function refreshDesignationOptions(callback) {
+  var cat = (document.getElementById('sf_staffCategory') || {}).value || '';
+  if (!cat) {
+    var sel0 = document.getElementById('sf_designation');
+    if (sel0) sel0.innerHTML = '<option value="">Select a Staff Category first…</option>';
+    if (callback) callback();
+    return;
+  }
   google.script.run
     .withSuccessHandler(function(res) {
       if (!res.success) { if (callback) callback(); return; }
@@ -685,7 +706,7 @@ function refreshDesignationOptions(callback) {
       if (callback) callback();
     })
     .withFailureHandler(function() { if (callback) callback(); })
-    .getStaffDesignations();
+    .getStaffDesignations({ category: cat });
 }
 
 function openStaffFormModal(mode, row) {
@@ -695,12 +716,36 @@ function openStaffFormModal(mode, row) {
 
   if (typeof hrEnsureSubjectCache === 'function') hrEnsureSubjectCache();
 
-  refreshDesignationOptions(function() {
-    if (row && row['DESIGNATION']) {
-      var sel = document.getElementById('sf_designation');
-      if (sel && sel.value !== row['DESIGNATION']) sel.value = row['DESIGNATION'];
-    }
-  });
+  var catSel = document.getElementById('sf_staffCategory');
+  if (row && row['DESIGNATION']) {
+    // Existing employee: figure out which category their current
+    // designation belongs to, so the Designation dropdown re-populates
+    // with the right filtered list before we try to select it.
+    google.script.run
+      .withSuccessHandler(function(res) {
+        var cat = (res && res.success && res.map && res.map[row['DESIGNATION']]) || '';
+        if (catSel) catSel.value = cat;
+        var catSpan = document.getElementById('sfv_staffCategory');
+        if (catSpan) catSpan.textContent = cat === 'non_teaching' ? 'Non-Teaching Staff' : cat === 'teaching' ? 'Teaching Staff' : '—';
+        refreshDesignationOptions(function() {
+          var sel = document.getElementById('sf_designation');
+          if (sel && sel.value !== row['DESIGNATION']) {
+            if (![].some.call(sel.options, function(o) { return o.value === row['DESIGNATION']; })) {
+              sel.insertAdjacentHTML('beforeend', '<option>' + row['DESIGNATION'] + '</option>');
+            }
+            sel.value = row['DESIGNATION'];
+          }
+        });
+      })
+      .withFailureHandler(function() { refreshDesignationOptions(); })
+      .getDesignationCategoryMap();
+  } else {
+    // New employee: nothing to prefill — Designation stays disabled
+    // until a Staff Category is chosen (see sfmOnStaffCategoryChange).
+    if (catSel) catSel.value = '';
+    var dsel = document.getElementById('sf_designation');
+    if (dsel) dsel.innerHTML = '<option value="">Select a Staff Category first…</option>';
+  }
 
   sfmEnsureSchoolCache(function() {
     if (sfmMode !== 'add' || (document.getElementById('sf_emis') || {}).value) {
