@@ -46,6 +46,9 @@
   <link rel="stylesheet" href="css/theme.css">
 </head>
 <body>
+<!-- Shared "Subject" suggestions — see hrEnsureSubjectCache() in hr_view.js.
+     Free-text-with-suggestions on purpose: never blocks a legitimate new subject. -->
+<datalist id="subjectMasterList"></datalist>
 <div id="authGateLoader"><span class="spinner-border spinner-border-sm" style="margin-right:8px"></span> Loading…</div>
 
 
@@ -971,6 +974,9 @@
         <button class="hr-btn-ghost" onclick="openSeatModal(null)">
           <span class="material-icons-round">add</span> Add Seat Record
         </button>
+        <button class="hr-btn-ghost" id="seatDownloadTemplateBtn" style="display:none" onclick="downloadNonTeachingSeatTemplate()">
+          <span class="material-icons-round">description</span> Download Template
+        </button>
         <button class="hr-btn-ghost" onclick="seatImportFileInput.click()">
           <span class="material-icons-round">upload_file</span> Import Excel/CSV
         </button>
@@ -982,6 +988,7 @@
           <span class="material-icons-round">history</span> Audit Log
         </button>
       </div>
+      <div id="seatImportErrorsPanel" style="display:none;margin-top:14px;padding:12px 14px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;"></div>
     </div>
 
     <div id="seatResultsContainer" style="margin-top:18px">
@@ -1003,11 +1010,11 @@
 
       <div class="form-row" id="seat_designationRow">
         <label>Designation <span style="color:#EF4444">*</span></label>
-        <input type="text" id="seat_designation" placeholder="e.g. SST, EST, PST, Clerk…">
+        <select id="seat_designation"><option value="">Select…</option></select>
       </div>
       <div class="form-row" id="seat_subjectRow">
         <label>Subject <span style="color:var(--t3);font-weight:400">(if applicable)</span></label>
-        <input type="text" id="seat_subject" placeholder="e.g. Science, English — leave blank if none">
+        <input type="text" id="seat_subject" list="subjectMasterList" placeholder="e.g. Science, English — leave blank if none">
       </div>
       <div class="form-row">
         <label>Grade / BPS <span style="color:#EF4444">*</span></label>
@@ -1016,7 +1023,7 @@
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-row">
-          <label>Total Sanctioned Seats <span style="color:#EF4444">*</span></label>
+          <label id="seat_sanctionedLabel">Total Sanctioned Seats <span style="color:#EF4444">*</span></label>
           <input type="number" id="seat_sanctioned" min="0" value="0" oninput="seatRecalc()">
         </div>
         <div class="form-row">
@@ -1028,7 +1035,7 @@
           <input type="number" id="seat_effective" disabled style="background:#f8fafc;font-weight:700;color:#0d9488">
         </div>
         <div class="form-row">
-          <label>Filled Seats</label>
+          <label id="seat_filledLabel">Filled Seats</label>
           <input type="number" id="seat_filled" min="0" value="0" oninput="seatRecalc()">
         </div>
       </div>
@@ -3038,7 +3045,7 @@
           <div class="sfm-field" data-field="SUBJECT">
             <label class="sfm-label">Subject</label>
             <div class="sfm-input-wrap">
-              <input type="text" id="sf_subject" class="sfm-input" placeholder="Subject(s) taught">
+              <input type="text" id="sf_subject" class="sfm-input" list="subjectMasterList" placeholder="Subject(s) taught">
               <span class="sfm-val-view" id="sfv_subject"></span>
             </div>
           </div>
