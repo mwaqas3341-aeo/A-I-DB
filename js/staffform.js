@@ -36,6 +36,9 @@ var SF_ID_TO_COL = {
   sf_pps:                  'pps',
   sf_natureOfJob:          'nature_of_job',
   sf_regularizationDate:   'date_of_permanentization',
+  sf_contractStartDate:      'contract_start_date',
+  sf_contractTenure:         'contract_tenure_months',
+  sf_contractExpectedEndDate: 'contract_expected_end_date',
   sf_govtEntry:            'date_of_entry_govt_service',
   sf_firstPosting:         'first_place_of_posting',
   sf_presentSchoolPosting: 'date_of_posting_present_school',
@@ -460,6 +463,43 @@ function toggleRegularizationDate() {
   }
 }
 
+// ---------- Contract fields toggle + auto Expected End Date ----------
+// Contract Start Date + Tenure are only relevant for Contract employees.
+// Expected End Date is always derived (Start Date + Tenure in months),
+// never typed directly, and is intentionally separate from the
+// "End Contract" HR action's Contract End Date (see the DB migration
+// note) — this one's a forecast, that one's what actually happened.
+function toggleContractFields() {
+  var jobNature = document.getElementById('sf_natureOfJob').value;
+  var isContract = jobNature === 'Contract';
+  ['contractStartContainer', 'contractTenureContainer', 'contractExpectedEndContainer'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = isContract ? 'flex' : 'none';
+  });
+  if (!isContract && sfmMode !== 'view') {
+    document.getElementById('sf_contractStartDate').value = '';
+    document.getElementById('sf_contractTenure').value = '';
+    document.getElementById('sf_contractExpectedEndDate').value = '';
+  }
+}
+
+function sfmCalcContractExpectedEndDate() {
+  var startVal = document.getElementById('sf_contractStartDate').value;
+  var months   = parseInt(document.getElementById('sf_contractTenure').value, 10);
+  var out      = document.getElementById('sf_contractExpectedEndDate');
+  if (!startVal || !months) { out.value = ''; return; }
+
+  var parts = startVal.split('-');
+  var d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  d.setMonth(d.getMonth() + months);
+  // Contract runs THROUGH the tenure — end date is the day before the
+  // same calendar date N months later (e.g. 1 Jan + 12 months tenure
+  // ends 31 Dec, not 1 Jan next year).
+  d.setDate(d.getDate() - 1);
+
+  out.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 // ---------- Error helpers ----------
 function setFieldErr(inputId, errId, msg) {
   var el = document.getElementById(inputId);
@@ -552,11 +592,19 @@ function sfmPopulateForm(row) {
 
     var spanId = 'sfv_' + id.replace('sf_', '');
     var span   = document.getElementById(spanId);
-    if (span) span.textContent = val || '—';
+    if (span) {
+      if (id === 'sf_contractTenure' && val) {
+        var tenureLabels = {'3':'3 Months','6':'6 Months','12':'1 Year','18':'1.5 Years','24':'2 Years','36':'3 Years','48':'4 Years','60':'5 Years'};
+        span.textContent = tenureLabels[val] || (val + ' Months');
+      } else {
+        span.textContent = val || '—';
+      }
+    }
   });
 
   if (row && sfmMode !== 'view') sfmOnEmisInput();
   toggleRegularizationDate();
+  toggleContractFields();
 }
 
 // ---------- Collect form data ----------
@@ -602,6 +650,17 @@ function sfmValidate() {
     e('sf_emis', 'sfe_emis', 'Must be exactly 8 digits.');
   } else if (!sfmEmisMap[emis.toLowerCase()]) {
     e('sf_emis', 'sfe_emis', 'EMIS not found in Schools data.');
+  }
+
+  // Contract Start Date + Tenure only make sense together — not
+  // hard-required overall (same reasoning as Designation/BPS/etc.
+  // below), but if only one of the pair is filled in, that's a
+  // half-entered state worth flagging rather than silently saving.
+  if (v('sf_natureOfJob') === 'Contract') {
+    var cStart = v('sf_contractStartDate');
+    var cTenure = v('sf_contractTenure');
+    if (cStart && !cTenure) e('sf_contractTenure', 'sfe_contractTenure', 'Select a tenure to calculate the Expected End Date.');
+    if (cTenure && !cStart) e('sf_contractStartDate', 'sfe_contractStartDate', 'Contract Start Date is required to calculate the Expected End Date.');
   }
 
   // Name/DOB/Gender/Designation/BPS/Govt-Entry-Date are no longer
@@ -807,7 +866,10 @@ function openStaffFormModal(mode, row) {
   document.getElementById('sf_emis').oninput         = sfmOnEmisInput;
   document.getElementById('sf_personalNo').oninput   = sfmOnPersonalNoInput;
   document.getElementById('sf_cnic').oninput         = sfmOnCnicInput;
-  document.getElementById('sf_natureOfJob').onchange = toggleRegularizationDate;
+  document.getElementById('sf_natureOfJob').onchange = function() {
+    toggleRegularizationDate();
+    toggleContractFields();
+  };
 
   sfmPopulateForm(row);
   sfmSetInputsDisabled(mode === 'view');

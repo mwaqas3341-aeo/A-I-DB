@@ -172,6 +172,23 @@ const SF_MAP = {
 };
 
 // ──────────────────────────────────────────────────────────────────
+//  COLLAPSIBLE SIDEBAR GROUPS
+// ──────────────────────────────────────────────────────────────────
+function toggleHrNavGroup(groupId, headerBtn) {
+  const el = document.getElementById(groupId);
+  if (!el) return;
+  const collapsed = el.classList.toggle('collapsed');
+  headerBtn.classList.toggle('expanded', !collapsed);
+}
+function hrExpandGroupContaining(btn) {
+  const group = btn.closest('.hr-nav-group-items');
+  if (!group) return;
+  group.classList.remove('collapsed');
+  const header = group.previousElementSibling;
+  if (header && header.classList.contains('hr-nav-group-header')) header.classList.add('expanded');
+}
+
+// ──────────────────────────────────────────────────────────────────
 //  INIT
 // ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -179,6 +196,7 @@ window.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', function() {
       document.querySelectorAll('.hr-view-btn').forEach(b => b.classList.remove('hr-active'));
       this.classList.add('hr-active');
+      hrExpandGroupContaining(this);
       hrCurrentSheetView = this.dataset.sheet;
       hrCurrentPage = 1;
       const meta = HR_SHEET_META[hrCurrentSheetView] || { title: hrCurrentSheetView, sub: '' };
@@ -186,6 +204,12 @@ window.addEventListener('DOMContentLoaded', () => {
       document.getElementById('hrPageSubtitle').textContent = meta.sub;
       document.getElementById('addStaffBtn').style.display  = hrCurrentSheetView === 'Staff' ? 'inline-flex' : 'none';
       document.getElementById('hrSummaryCards').style.display = hrCurrentSheetView === 'Staff' ? '' : 'none';
+      // Staff Statement / SNE / Head Teachers List only make sense for
+      // the full Active Staff roster — keep them out of every other
+      // HR list so the filter footer isn't cluttered with reports
+      // that don't apply to Retirements, Transfers, etc.
+      const reportsEl = document.getElementById('hrActiveStaffOnlyReports');
+      if (reportsEl) reportsEl.style.display = hrCurrentSheetView === 'Staff' ? 'contents' : 'none';
       if (hrCurrentSheetView !== 'Staff') resetSummaryCards();
       clearHrFilters();
     });
