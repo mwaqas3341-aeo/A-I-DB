@@ -2452,75 +2452,102 @@
     <!-- ── SIDEBAR ── -->
     <nav class="hr-sidebar" id="hrSidebar">
       <div class="hr-sidebar-inner">
-        <div class="hr-sidebar-section-label">Active Records</div>
-        <button class="hr-nav-item hr-active hr-view-btn" data-sheet="Staff">
-          <span class="material-icons-round hr-nav-icon">group</span>
-          <span class="hr-nav-label">Active Staff</span>
-        </button>
-        <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="AwaitingPosting">
-          <span class="material-icons-round hr-nav-icon">person_search</span>
-          <span class="hr-nav-label">Awaiting Posting</span>
-        </button>
-        <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="TemporaryDuty">
-          <span class="material-icons-round hr-nav-icon">schedule</span>
-          <span class="hr-nav-label">Temporary Duty</span>
-        </button>
 
-        <div class="hr-sidebar-section-label">Seats</div>
-        <button class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" onclick="openSeatManagement('teaching')">
-          <span class="material-icons-round hr-nav-icon">school</span>
-          <span class="hr-nav-label">Teaching Sanctioned &amp; Abolished Seats</span>
+        <button class="hr-nav-group-header expanded" onclick="toggleHrNavGroup('grpActiveRecords', this)">
+          <span>Active Records</span>
+          <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
-        <button class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" onclick="openSeatManagement('non_teaching')">
-          <span class="material-icons-round hr-nav-icon">badge</span>
-          <span class="hr-nav-label">Non-Teaching Sanctioned &amp; Abolished Seats</span>
-        </button>
+        <div class="hr-nav-group-items" id="grpActiveRecords">
+          <button class="hr-nav-item hr-active hr-view-btn" data-sheet="Staff">
+            <span class="material-icons-round hr-nav-icon">group</span>
+            <span class="hr-nav-label">Active Staff</span>
+          </button>
+          <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="AwaitingPosting">
+            <span class="material-icons-round hr-nav-icon">person_search</span>
+            <span class="hr-nav-label">Awaiting Posting</span>
+          </button>
+          <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="TemporaryDuty">
+            <span class="material-icons-round hr-nav-icon">schedule</span>
+            <span class="hr-nav-label">Temporary Duty</span>
+          </button>
+        </div>
 
-        <div class="hr-sidebar-section-label">Separations</div>
-        <button class="hr-nav-item hr-view-btn" data-sheet="Retirement">
-          <span class="material-icons-round hr-nav-icon">school</span>
-          <span class="hr-nav-label">Retirements</span>
+        <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpSeats', this)">
+          <span>Seats</span>
+          <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="Resignation">
-          <span class="material-icons-round hr-nav-icon">assignment_return</span>
-          <span class="hr-nav-label">Resignations</span>
-        </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="Deceased">
-          <span class="material-icons-round hr-nav-icon">sentiment_very_dissatisfied</span>
-          <span class="hr-nav-label">Death Cases</span>
-        </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="Termination">
-          <span class="material-icons-round hr-nav-icon">block</span>
-          <span class="hr-nav-label">Terminations</span>
-        </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="ContractEnded">
-          <span class="material-icons-round hr-nav-icon">description</span>
-          <span class="hr-nav-label">Contract Ended Employees</span>
-        </button>
+        <div class="hr-nav-group-items collapsed" id="grpSeats">
+          <button class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" onclick="openSeatManagement('teaching')">
+            <span class="material-icons-round hr-nav-icon">school</span>
+            <span class="hr-nav-label">Teaching Sanctioned &amp; Abolished Seats</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" onclick="openSeatManagement('non_teaching')">
+            <span class="material-icons-round hr-nav-icon">badge</span>
+            <span class="hr-nav-label">Non-Teaching Sanctioned &amp; Abolished Seats</span>
+          </button>
+        </div>
 
-        <div class="hr-sidebar-section-label">History</div>
-        <button class="hr-nav-item hr-view-btn" data-sheet="Transfer_History">
-          <span class="material-icons-round hr-nav-icon">swap_horiz</span>
-          <span class="hr-nav-label">Transfers</span>
+        <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpSeparations', this)">
+          <span>Separations</span>
+          <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="Promotions_History">
-          <span class="material-icons-round hr-nav-icon">trending_up</span>
-          <span class="hr-nav-label">Promotions</span>
-        </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="TD_History" id="hrNavTdHistory">
-          <span class="material-icons-round hr-nav-icon">history</span>
-          <span class="hr-nav-label">Temporary Duty History</span>
-        </button>
-        <button class="hr-nav-item hr-view-btn" data-sheet="AwaitingPosting_History" id="hrNavAwaitingIssues">
-          <span class="material-icons-round hr-nav-icon">undo</span>
-          <span class="hr-nav-label">Awaiting Posting Issues</span>
-        </button>
+        <div class="hr-nav-group-items collapsed" id="grpSeparations">
+          <button class="hr-nav-item hr-view-btn" data-sheet="Retirement">
+            <span class="material-icons-round hr-nav-icon">school</span>
+            <span class="hr-nav-label">Retirements</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" data-sheet="Resignation">
+            <span class="material-icons-round hr-nav-icon">assignment_return</span>
+            <span class="hr-nav-label">Resignations</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" data-sheet="Deceased">
+            <span class="material-icons-round hr-nav-icon">sentiment_very_dissatisfied</span>
+            <span class="hr-nav-label">Death Cases</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" data-sheet="Termination">
+            <span class="material-icons-round hr-nav-icon">block</span>
+            <span class="hr-nav-label">Terminations</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" data-sheet="ContractEnded">
+            <span class="material-icons-round hr-nav-icon">description</span>
+            <span class="hr-nav-label">Contract Ended Employees</span>
+          </button>
+        </div>
 
-        <div class="hr-sidebar-section-label">Archive</div>
-        <button class="hr-nav-item hr-view-btn" data-sheet="Deleted_Archive">
-          <span class="material-icons-round hr-nav-icon">archive</span>
-          <span class="hr-nav-label">Deleted Archive</span>
+        <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpHistory', this)">
+          <span>History</span>
+          <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
+        <div class="hr-nav-group-items collapsed" id="grpHistory">
+          <button class="hr-nav-item hr-view-btn" data-sheet="Transfer_History">
+            <span class="material-icons-round hr-nav-icon">swap_horiz</span>
+            <span class="hr-nav-label">Transfers</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" data-sheet="Promotions_History">
+            <span class="material-icons-round hr-nav-icon">trending_up</span>
+            <span class="hr-nav-label">Promotions</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" data-sheet="TD_History" id="hrNavTdHistory">
+            <span class="material-icons-round hr-nav-icon">history</span>
+            <span class="hr-nav-label">Temporary Duty History</span>
+          </button>
+          <button class="hr-nav-item hr-view-btn" data-sheet="AwaitingPosting_History" id="hrNavAwaitingIssues">
+            <span class="material-icons-round hr-nav-icon">undo</span>
+            <span class="hr-nav-label">Awaiting Posting Issues</span>
+          </button>
+        </div>
+
+        <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpArchive', this)">
+          <span>Archive</span>
+          <span class="material-icons-round hr-nav-chevron">expand_more</span>
+        </button>
+        <div class="hr-nav-group-items collapsed" id="grpArchive">
+          <button class="hr-nav-item hr-view-btn" data-sheet="Deleted_Archive">
+            <span class="material-icons-round hr-nav-icon">archive</span>
+            <span class="hr-nav-label">Deleted Archive</span>
+          </button>
+        </div>
+
       </div>
     </nav>
 
@@ -2687,15 +2714,17 @@
             <button class="hr-btn-ghost" onclick="clearHrFilters()">
               <span class="material-icons-round">close</span> Clear
             </button>
-            <button class="hr-btn-primary" onclick="downloadActiveStaff()">
-              <span class="material-icons-round">download</span>Staff Statement
-            </button>
-            <button class="hr-btn-primary" onclick="downloadSNE()">
-              <span class="material-icons-round">download</span>Download SNE
-            </button>
-            <button class="hr-btn-primary" onclick="downloadHeadTeachers()">
-              <span class="material-icons-round">download</span>Head Teachers List
-            </button>
+            <span id="hrActiveStaffOnlyReports" style="display:contents">
+              <button class="hr-btn-primary" onclick="downloadActiveStaff()">
+                <span class="material-icons-round">download</span>Staff Statement
+              </button>
+              <button class="hr-btn-primary" onclick="downloadSNE()">
+                <span class="material-icons-round">download</span>Download SNE
+              </button>
+              <button class="hr-btn-primary" onclick="downloadHeadTeachers()">
+                <span class="material-icons-round">download</span>Head Teachers List
+              </button>
+            </span>
           </div>
         </div>
       </section>
@@ -3047,6 +3076,43 @@
               <input type="date" id="sf_regularizationDate" lang="en-GB" class="sfm-input sfm-date" onclick="smartDatePickerClick(this)">
               <span class="sfm-val-view" id="sfv_regularizationDate"></span>
               <span class="sfm-date-icon">📅</span>
+            </div>
+          </div>
+
+          <div class="sfm-field" data-field="CONTRACT START DATE" id="contractStartContainer" style="display:none">
+            <label class="sfm-label">Contract Start Date</label>
+            <div class="sfm-input-wrap sfm-date-wrap">
+              <input type="date" id="sf_contractStartDate" lang="en-GB" class="sfm-input sfm-date" onclick="smartDatePickerClick(this)" onchange="sfmCalcContractExpectedEndDate()">
+              <span class="sfm-val-view" id="sfv_contractStartDate"></span>
+              <span class="sfm-date-icon">📅</span>
+            </div>
+            <div class="sfm-err" id="sfe_contractStartDate"></div>
+          </div>
+
+          <div class="sfm-field" data-field="CONTRACT TENURE MONTHS" id="contractTenureContainer" style="display:none">
+            <label class="sfm-label">Contract Tenure</label>
+            <div class="sfm-input-wrap">
+              <select id="sf_contractTenure" class="sfm-select" onchange="sfmCalcContractExpectedEndDate()">
+                <option value="">Select…</option>
+                <option value="3">3 Months</option>
+                <option value="6">6 Months</option>
+                <option value="12">1 Year</option>
+                <option value="18">1.5 Years</option>
+                <option value="24">2 Years</option>
+                <option value="36">3 Years</option>
+                <option value="48">4 Years</option>
+                <option value="60">5 Years</option>
+              </select>
+              <span class="sfm-val-view" id="sfv_contractTenure"></span>
+            </div>
+            <div class="sfm-err" id="sfe_contractTenure"></div>
+          </div>
+
+          <div class="sfm-field" data-field="CONTRACT EXPECTED END DATE" id="contractExpectedEndContainer" style="display:none">
+            <label class="sfm-label">Contract Expected End Date <span style="color:var(--t3);font-weight:400">(auto)</span></label>
+            <div class="sfm-input-wrap sfm-date-wrap">
+              <input type="date" id="sf_contractExpectedEndDate" class="sfm-input sfm-date" disabled style="background:#f8fafc;font-weight:700;color:#0d9488">
+              <span class="sfm-val-view" id="sfv_contractExpectedEndDate"></span>
             </div>
           </div>
 
