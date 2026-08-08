@@ -142,23 +142,20 @@
 
   <!-- ── NAV ─────────────────────────────── -->
   <nav class="top-nav">
-    <button class="nav-brand" onclick="switchGlobalTab('homeView', null)">
+    <a class="nav-brand" href="#home" onclick="return topNavLinkClick(event, 'home')">
       <i class="bi bi-building-fill"></i> AEO Portal <span class="live-dot" title="Live"></span>
-    </button>
+    </a>
 
     <div class="nav-links" id="navLinksPanel">
-      <button class="nav-link-btn active" id="navHomeBtn"
-              onclick="switchGlobalTab('homeView', this); closeMobileNav()">
+      <a class="nav-link-btn active" id="navHomeBtn" href="#home" onclick="closeMobileNav(); return topNavLinkClick(event, 'home')">
         <i class="bi bi-grid-1x2-fill"></i> Dashboard
-      </button>
-      <button class="nav-link-btn" id="navAdminBtn" style="display:none"
-              onclick="openAdminModule(); switchGlobalTab('adminDataView', this); closeMobileNav()">
+      </a>
+      <a class="nav-link-btn" id="navAdminBtn" style="display:none" href="#admin" onclick="closeMobileNav(); return topNavLinkClick(event, 'admin')">
         <i class="bi bi-shield-lock-fill"></i> Admin Panel
-      </button>
-      <button class="nav-link-btn" id="navMyProfileBtn"
-              onclick="openMyProfileModal(); closeMobileNav()">
+      </a>
+      <a class="nav-link-btn" id="navMyProfileBtn" href="#profile" onclick="closeMobileNav(); return topNavLinkClick(event, 'profile')">
         <i class="bi bi-person-circle"></i> My Profile
-      </button>
+      </a>
       <div class="nav-links-contact">
         <a href="https://wa.me/923466507640" class="contact-icon whatsapp" title="WhatsApp">
           <i class="bi bi-whatsapp"></i>
@@ -238,7 +235,7 @@
             </a>
 
             <!-- Existing cards -->
-            <a class="module-card" href="#hr" onclick="openHrModule(); return false;">
+            <a class="module-card" href="#hr" onclick="return topNavLinkClick(event, 'hr')">
               <i class="bi bi-people-fill mc-icon"></i>
               <div class="mc-title">Staff Statement</div>
               <div class="mc-desc">Teaching &amp; non-teaching staff records</div>
@@ -2459,18 +2456,18 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items" id="grpActiveRecords">
-          <button class="hr-nav-item hr-active hr-view-btn" data-sheet="Staff">
+          <a class="hr-nav-item hr-active hr-view-btn" href="#hr-Staff" data-sheet="Staff">
             <span class="material-icons-round hr-nav-icon">group</span>
             <span class="hr-nav-label">Active Staff</span>
-          </button>
-          <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="AwaitingPosting">
+          </a>
+          <a class="hr-nav-item hr-sub-nav-item hr-view-btn" href="#hr-AwaitingPosting" data-sheet="AwaitingPosting">
             <span class="material-icons-round hr-nav-icon">person_search</span>
             <span class="hr-nav-label">Awaiting Posting</span>
-          </button>
-          <button class="hr-nav-item hr-sub-nav-item hr-view-btn" data-sheet="TemporaryDuty">
+          </a>
+          <a class="hr-nav-item hr-sub-nav-item hr-view-btn" href="#hr-TemporaryDuty" data-sheet="TemporaryDuty">
             <span class="material-icons-round hr-nav-icon">schedule</span>
             <span class="hr-nav-label">Temporary Duty</span>
-          </button>
+          </a>
         </div>
 
         <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpSeats', this)">
@@ -2478,14 +2475,14 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpSeats">
-          <button class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" onclick="openSeatManagement('teaching')">
+          <a class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" href="#hr-seats-teaching" onclick="return hrNavLinkClick(event, 'teaching')">
             <span class="material-icons-round hr-nav-icon">school</span>
             <span class="hr-nav-label">Teaching Sanctioned &amp; Abolished Seats</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" onclick="openSeatManagement('non_teaching')">
+          </a>
+          <a class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" href="#hr-seats-non_teaching" onclick="return hrNavLinkClick(event, 'non_teaching')">
             <span class="material-icons-round hr-nav-icon">badge</span>
             <span class="hr-nav-label">Non-Teaching Sanctioned &amp; Abolished Seats</span>
-          </button>
+          </a>
         </div>
 
         <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpSeparations', this)">
@@ -2493,26 +2490,26 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpSeparations">
-          <button class="hr-nav-item hr-view-btn" data-sheet="Retirement">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Retirement" data-sheet="Retirement">
             <span class="material-icons-round hr-nav-icon">school</span>
             <span class="hr-nav-label">Retirements</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" data-sheet="Resignation">
+          </a>
+          <a class="hr-nav-item hr-view-btn" href="#hr-Resignation" data-sheet="Resignation">
             <span class="material-icons-round hr-nav-icon">assignment_return</span>
             <span class="hr-nav-label">Resignations</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" data-sheet="Deceased">
+          </a>
+          <a class="hr-nav-item hr-view-btn" href="#hr-Deceased" data-sheet="Deceased">
             <span class="material-icons-round hr-nav-icon">sentiment_very_dissatisfied</span>
             <span class="hr-nav-label">Death Cases</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" data-sheet="Termination">
+          </a>
+          <a class="hr-nav-item hr-view-btn" href="#hr-Termination" data-sheet="Termination">
             <span class="material-icons-round hr-nav-icon">block</span>
             <span class="hr-nav-label">Terminations</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" data-sheet="ContractEnded">
+          </a>
+          <a class="hr-nav-item hr-view-btn" href="#hr-ContractEnded" data-sheet="ContractEnded">
             <span class="material-icons-round hr-nav-icon">description</span>
             <span class="hr-nav-label">Contract Ended Employees</span>
-          </button>
+          </a>
         </div>
 
         <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpHistory', this)">
@@ -2520,22 +2517,22 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpHistory">
-          <button class="hr-nav-item hr-view-btn" data-sheet="Transfer_History">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Transfer_History" data-sheet="Transfer_History">
             <span class="material-icons-round hr-nav-icon">swap_horiz</span>
             <span class="hr-nav-label">Transfers</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" data-sheet="Promotions_History">
+          </a>
+          <a class="hr-nav-item hr-view-btn" href="#hr-Promotions_History" data-sheet="Promotions_History">
             <span class="material-icons-round hr-nav-icon">trending_up</span>
             <span class="hr-nav-label">Promotions</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" data-sheet="TD_History" id="hrNavTdHistory">
+          </a>
+          <a class="hr-nav-item hr-view-btn" href="#hr-TD_History" data-sheet="TD_History" id="hrNavTdHistory">
             <span class="material-icons-round hr-nav-icon">history</span>
             <span class="hr-nav-label">Temporary Duty History</span>
-          </button>
-          <button class="hr-nav-item hr-view-btn" data-sheet="AwaitingPosting_History" id="hrNavAwaitingIssues">
+          </a>
+          <a class="hr-nav-item hr-view-btn" href="#hr-AwaitingPosting_History" data-sheet="AwaitingPosting_History" id="hrNavAwaitingIssues">
             <span class="material-icons-round hr-nav-icon">undo</span>
             <span class="hr-nav-label">Awaiting Posting Issues</span>
-          </button>
+          </a>
         </div>
 
         <button class="hr-nav-group-header" onclick="toggleHrNavGroup('grpArchive', this)">
@@ -2543,10 +2540,10 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpArchive">
-          <button class="hr-nav-item hr-view-btn" data-sheet="Deleted_Archive">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Deleted_Archive" data-sheet="Deleted_Archive">
             <span class="material-icons-round hr-nav-icon">archive</span>
             <span class="hr-nav-label">Deleted Archive</span>
-          </button>
+          </a>
         </div>
 
       </div>
