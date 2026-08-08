@@ -1395,30 +1395,29 @@ async function apiCall(action, payload) {
 
     case 'checkSeatManagementPermissions': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
-      const canEditNonTeaching = await _isAdminOrTr(user);
-      return { success: true, canEditNonTeaching, canEditTeaching: false };
+      const isAdminOrTr = await _isAdminOrTr(user);
+      return { success: true, canEditNonTeaching: isAdminOrTr, canAddTeaching: isAdminOrTr, canEditTeachingSanctioned: isAdminOrTr };
     }
 
     case 'saveSeatRecord': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const category = p.category === 'non_teaching' ? 'non_teaching' : 'teaching';
+      const isAdminOrTr = await _isAdminOrTr(user);
 
-      // Teaching Sanctioned Seats are now maintained entirely via
-      // direct Supabase data upload (not this app) — new Teaching
-      // records can never be created here, only their Abolished count
-      // edited on records that already exist (Item 5's rule).
-      if (category === 'teaching' && !p.id) {
-        return { success: false, message: 'New Teaching Sanctioned Seats can only be added via direct Supabase data upload, not through the app.' };
-      }
       // Non-Teaching Sanctioned Seats (add, edit, and bulk import all
       // route through this same action) are restricted to Admins and
       // Tehsil Representatives.
-      if (category === 'non_teaching') {
-        const authorizedForNonTeaching = await _isAdminOrTr(user);
-        if (!authorizedForNonTeaching) {
-          return { success: false, message: 'Only Admins and Tehsil Representatives can add, edit, or import Non-Teaching Sanctioned Seats.' };
-        }
+      if (category === 'non_teaching' && !isAdminOrTr) {
+        return { success: false, message: 'Only Admins and Tehsil Representatives can add, edit, or import Non-Teaching Sanctioned Seats.' };
+      }
+      // Teaching Sanctioned Seats: adding a brand-new seat record is
+      // restricted to Admins/TRs (so a missed seat doesn't have to
+      // wait on a direct Supabase upload — they can add it here now).
+      // Everyone else can still only edit an existing seat's Abolished
+      // count (see the Total Sanctioned lock below).
+      if (category === 'teaching' && !p.id && !isAdminOrTr) {
+        return { success: false, message: 'Only Admins and Tehsil Representatives can add new Teaching Sanctioned Seats.' };
       }
 
       const emis = (p.emis || '').trim();
@@ -1428,11 +1427,13 @@ async function apiCall(action, payload) {
       let sanctioned = parseInt(p.sanctionedCount);
       const abolished  = parseInt(p.abolishedCount) || 0;
 
-      // Teaching Seat Rule: Total Sanctioned is locked once a record
-      // exists — only Abolished Seats may change it going forward.
-      // Enforced here (not just hidden in the UI) so bulk imports and
-      // direct API calls can't bypass it either.
-      if (category === 'teaching' && p.id) {
+      // Teaching Seat Rule: Total Sanctioned is locked on existing
+      // records for everyone EXCEPT Admins/TRs, who can correct a
+      // missed/wrong sanctioned count directly. Regular editors can
+      // still only change Abolished Seats. Enforced here (not just
+      // hidden in the UI) so bulk imports and direct API calls can't
+      // bypass it either.
+      if (category === 'teaching' && p.id && !isAdminOrTr) {
         const { data: existing } = await _sb.from('sne_subject_sanctioned')
           .select('sanctioned_count').eq('id', p.id).maybeSingle();
         if (existing) sanctioned = existing.sanctioned_count;

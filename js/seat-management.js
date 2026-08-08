@@ -10,7 +10,7 @@ let seatState = {
   rows: [],
   editingId: null,
 };
-let seatPermissions = { canEditNonTeaching: false, checked: false };
+let seatPermissions = { isAdminOrTr: false, checked: false };
 
 const SEAT_CATEGORY_LABEL = { teaching: 'Teaching', non_teaching: 'Non-Teaching' };
 
@@ -29,37 +29,30 @@ function openSeatManagement(category) {
   applySeatFilter();
 }
 
-// Teaching Sanctioned Seats are now maintained entirely via direct
-// Supabase data upload — Add/Import never appear for Teaching, full
-// stop, regardless of who's logged in. Non-Teaching Add/Import are
-// restricted to Admins and Tehsil Representatives (checked once per
-// session and cached; the real gate is still server-side in
-// saveSeatRecord — this only controls what's shown).
+// Add/Import for BOTH categories are restricted to Admins and Tehsil
+// Representatives — that's what lets a TR/Admin plug a missed Teaching
+// seat straight in here instead of waiting on a direct Supabase
+// upload. Total Sanctioned on existing Teaching records follows the
+// same gate (see openSeatModal). Checked once per session and cached;
+// the real gate is still server-side in saveSeatRecord — this only
+// controls what's shown.
 function _seatApplyButtonPermissions() {
   const addBtn = document.getElementById('seatAddRecordBtn');
   const importBtn = document.getElementById('seatImportBtn');
-  if (seatState.category === 'teaching') {
-    addBtn.style.display = 'none';
-    importBtn.style.display = 'none';
-    return;
-  }
-  if (seatPermissions.checked) {
-    const allowed = seatPermissions.canEditNonTeaching;
+  const applyVisibility = () => {
+    const allowed = seatPermissions.isAdminOrTr;
     addBtn.style.display = allowed ? '' : 'none';
     importBtn.style.display = allowed ? '' : 'none';
-    return;
-  }
+  };
+  if (seatPermissions.checked) { applyVisibility(); return; }
   addBtn.style.display = 'none';
   importBtn.style.display = 'none';
   google.script.run
     .withSuccessHandler(res => {
-      seatPermissions.canEditNonTeaching = !!(res && res.success && res.canEditNonTeaching);
+      seatPermissions.isAdminOrTr = !!(res && res.success && (res.canEditNonTeaching || res.canAddTeaching));
       seatPermissions.checked = true;
-      if (seatState.category === 'non_teaching') {
-        addBtn.style.display = seatPermissions.canEditNonTeaching ? '' : 'none';
-        importBtn.style.display = seatPermissions.canEditNonTeaching ? '' : 'none';
-        if (seatState.rows.length) seatRenderTable();
-      }
+      applyVisibility();
+      if (seatState.rows.length) seatRenderTable();
     })
     .withFailureHandler(() => { seatPermissions.checked = true; })
     .checkSeatManagementPermissions();
@@ -269,10 +262,12 @@ function openSeatModal(id) {
   document.getElementById('seat_grade').value = row?.grade || '';
   document.getElementById('seat_sanctioned').value = row?.sanctioned_count ?? 0;
   // Teaching Seat Rule: Total Sanctioned is locked once a record
-  // exists — only Abolished Seats may be entered from here on.
-  // A brand-new (never-saved) teaching record can still take an
-  // initial value since there's nothing yet to lock.
-  const lockSanctioned = seatState.category === 'teaching' && !!id;
+  // exists — only Abolished Seats may be entered from here on — EXCEPT
+  // for Admins/TRs, who can correct a missed/wrong sanctioned count
+  // directly instead of needing a direct Supabase upload. A brand-new
+  // (never-saved) teaching record can always take an initial value
+  // since there's nothing yet to lock.
+  const lockSanctioned = seatState.category === 'teaching' && !!id && !seatPermissions.isAdminOrTr;
   document.getElementById('seat_sanctioned').disabled = lockSanctioned;
   document.getElementById('seat_sanctioned').style.background = lockSanctioned ? '#f8fafc' : '';
   document.getElementById('seat_sanctionedLabel').innerHTML = lockSanctioned
