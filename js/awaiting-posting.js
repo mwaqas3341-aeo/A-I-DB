@@ -341,7 +341,9 @@ function apSearchAssignSchool() {
   const kw = document.getElementById('apAssignSchoolSearch').value.trim();
   const resultsEl = document.getElementById('apAssignSchoolResults');
   clearTimeout(apSchoolSearchDebounce);
-  if (kw.length < 2) { resultsEl.innerHTML = ''; return; }
+  const isEmisInput = /^\d+$/.test(kw);
+  const minLen = isEmisInput ? 7 : 2; // EMIS: start once 7+ digits typed; name: 2+ chars
+  if (kw.length < minLen) { resultsEl.innerHTML = ''; return; }
   resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>';
   apSchoolSearchDebounce = setTimeout(() => {
     google.script.run
@@ -352,6 +354,7 @@ function apSearchAssignSchool() {
           resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
           return;
         }
+        if (matches.length === 1) { apSelectAssignSchool(matches[0].emis, matches[0].school_name || ''); return; }
         resultsEl.innerHTML = matches.map(s => `
           <div class="ap-school-result" onclick="apSelectAssignSchool('${s.emis}', '${escHtmlAp(s.school_name || '').replace(/'/g, "\\'")}')">
             <strong>${escHtmlAp(s.school_name || '')}</strong>

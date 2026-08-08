@@ -3632,14 +3632,21 @@ function _hierarchyScopeDbFields(p) {
     case 'searchSchoolsForAssignment': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const kw = (p.keyword || '').trim();
-      if (kw.length < 2) return { success: true, rows: [] };
       const isEmis = /^\d+$/.test(kw);
+      // EMIS codes are 8 digits, but within one tehsil the first several
+      // digits are usually shared — waiting for the full 8 before
+      // showing anything meant nothing appeared until the very last
+      // keystroke. Once 7+ digits are typed, search by prefix instead
+      // of requiring an exact match, so results (often just one) show
+      // up a keystroke early and the person can pick before finishing.
+      if (isEmis && kw.length < 7) return { success: true, rows: [] };
+      if (!isEmis && kw.length < 2) return { success: true, rows: [] };
       const [pubRes, privRes] = await Promise.all([
         isEmis
-          ? _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').eq('emis', kw).limit(10)
+          ? _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').like('emis', `${kw}%`).limit(10)
           : _sb.from('public_schools').select('emis, school_name, district, wing, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
         isEmis
-          ? _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').eq('emis', kw).limit(10)
+          ? _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').like('emis', `${kw}%`).limit(10)
           : _sb.from('private_schools').select('emis, school_name, district, tehsil, markaz_name').ilike('school_name', `%${kw}%`).limit(10),
       ]);
       const rows = [

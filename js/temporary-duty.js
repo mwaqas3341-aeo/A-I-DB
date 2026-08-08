@@ -180,7 +180,9 @@ function tdSearchSchool() {
   const kw = document.getElementById('tdAssignSchoolSearch').value.trim();
   const resultsEl = document.getElementById('tdAssignSchoolResults');
   clearTimeout(tdSchoolSearchDebounce);
-  if (kw.length < 2) { resultsEl.innerHTML = ''; return; }
+  const isEmisInput = /^\d+$/.test(kw);
+  const minLen = isEmisInput ? 7 : 2; // EMIS: start once 7+ digits typed; name: 2+ chars
+  if (kw.length < minLen) { resultsEl.innerHTML = ''; return; }
   resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>';
   tdSchoolSearchDebounce = setTimeout(() => {
     google.script.run
@@ -191,6 +193,9 @@ function tdSearchSchool() {
           resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
           return;
         }
+        // A single match is treated as selected — no extra tap needed
+        // once the typed digits/prefix narrow it down to one school.
+        if (matches.length === 1) { tdSelectSchool(matches[0].emis, matches[0].school_name || ''); return; }
         resultsEl.innerHTML = matches.map(s => `
           <div class="ap-school-result" onclick="tdSelectSchool('${s.emis}', '${escHtmlAp(s.school_name || '').replace(/'/g, "\\'")}')">
             <strong>${escHtmlAp(s.school_name || '')}</strong>

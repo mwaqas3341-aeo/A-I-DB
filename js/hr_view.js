@@ -2146,7 +2146,9 @@ function hrRenewSearchSchool() {
   document.getElementById('rc_targetEmis').value = '';
   document.getElementById('rc_confirmBtn').disabled = true;
   clearTimeout(hrRenewSchoolSearchDebounce);
-  if (kw.length < 2) { resultsEl.innerHTML = ''; return; }
+  const isEmisInput = /^\d+$/.test(kw);
+  const minLen = isEmisInput ? 7 : 2; // EMIS: start once 7+ digits typed; name: 2+ chars
+  if (kw.length < minLen) { resultsEl.innerHTML = ''; return; }
   resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>';
   hrRenewSchoolSearchDebounce = setTimeout(() => {
     google.script.run
@@ -2157,6 +2159,7 @@ function hrRenewSearchSchool() {
           resultsEl.innerHTML = '<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>';
           return;
         }
+        if (matches.length === 1) { hrRenewSelectSchool(matches[0].emis, matches[0].school_name || ''); return; }
         resultsEl.innerHTML = matches.map(s => `
           <div class="ap-school-result" onclick="hrRenewSelectSchool('${s.emis}', '${(s.school_name||'').replace(/'/g,"\\'")}')">
             <strong>${s.school_name||''}</strong>
