@@ -14,10 +14,30 @@ let seatPermissions = { isAdminOrTr: false, checked: false };
 
 const SEAT_CATEGORY_LABEL = { teaching: 'Teaching', non_teaching: 'Non-Teaching' };
 
+// Shared guard for hr-nav-item anchors whose left-click behavior needs
+// to keep calling the existing open function directly (unchanged
+// functionality), while native Ctrl/Cmd/middle/right-click "Open in
+// New Tab" is left to the browser's normal anchor handling — the
+// fresh tab picks up the correct module from the href hash via the
+// app's boot-time router (see enterApp() in index.js).
+function hrNavLinkClick(e, category) {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return true;
+  e.preventDefault();
+  openSeatManagement(category);
+  return false;
+}
+
 function openSeatManagement(category) {
   seatState.category = category === 'non_teaching' ? 'non_teaching' : 'teaching';
+  const prevNavInFlight = typeof _navInFlight !== 'undefined' ? _navInFlight : false;
+  if (typeof _navInFlight !== 'undefined') _navInFlight = true; // openHrModule() below shouldn't push its own '#hr' entry
   openHrModule();
+  if (typeof _navInFlight !== 'undefined') _navInFlight = prevNavInFlight;
   switchGlobalTab('seatManagementView', null);
+  const routeKey = 'hr-seats-' + seatState.category;
+  if (typeof _navInFlight === 'undefined' || !_navInFlight) {
+    history.pushState({ route: routeKey }, '', '#' + routeKey);
+  }
   document.getElementById('seatMgmtTitle').textContent =
     `${SEAT_CATEGORY_LABEL[seatState.category]} Sanctioned & Abolished Seats`;
   document.getElementById('seat_designationRow').style.display = '';

@@ -191,27 +191,45 @@ function hrExpandGroupContaining(btn) {
 // ──────────────────────────────────────────────────────────────────
 //  INIT
 // ──────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────
+// Shared by the sidebar click handler AND the app router (index.js) —
+// so opening a specific HR sheet works identically whether it came
+// from a left-click, browser Back/Forward, or a hash URL loaded fresh
+// in a new tab (Ctrl/middle/right-click → Open in New Tab).
+function hrGoToSheet(sheetName, btnEl) {
+  const btn = btnEl || document.querySelector(`.hr-view-btn[data-sheet="${sheetName}"]`);
+  document.querySelectorAll('.hr-view-btn').forEach(b => b.classList.remove('hr-active'));
+  if (btn) { btn.classList.add('hr-active'); hrExpandGroupContaining(btn); }
+  hrCurrentSheetView = sheetName;
+  hrCurrentPage = 1;
+  const meta = HR_SHEET_META[hrCurrentSheetView] || { title: hrCurrentSheetView, sub: '' };
+  document.getElementById('hrPageTitle').textContent    = meta.title;
+  document.getElementById('hrPageSubtitle').textContent = meta.sub;
+  document.getElementById('addStaffBtn').style.display  = hrCurrentSheetView === 'Staff' ? 'inline-flex' : 'none';
+  document.getElementById('hrSummaryCards').style.display = hrCurrentSheetView === 'Staff' ? '' : 'none';
+  // Staff Statement / SNE / Head Teachers List only make sense for
+  // the full Active Staff roster — keep them out of every other
+  // HR list so the filter footer isn't cluttered with reports
+  // that don't apply to Retirements, Transfers, etc.
+  const reportsEl = document.getElementById('hrActiveStaffOnlyReports');
+  if (reportsEl) reportsEl.style.display = hrCurrentSheetView === 'Staff' ? 'contents' : 'none';
+  if (hrCurrentSheetView !== 'Staff') resetSummaryCards();
+  clearHrFilters();
+}
+
 window.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.hr-view-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-      document.querySelectorAll('.hr-view-btn').forEach(b => b.classList.remove('hr-active'));
-      this.classList.add('hr-active');
-      hrExpandGroupContaining(this);
-      hrCurrentSheetView = this.dataset.sheet;
-      hrCurrentPage = 1;
-      const meta = HR_SHEET_META[hrCurrentSheetView] || { title: hrCurrentSheetView, sub: '' };
-      document.getElementById('hrPageTitle').textContent    = meta.title;
-      document.getElementById('hrPageSubtitle').textContent = meta.sub;
-      document.getElementById('addStaffBtn').style.display  = hrCurrentSheetView === 'Staff' ? 'inline-flex' : 'none';
-      document.getElementById('hrSummaryCards').style.display = hrCurrentSheetView === 'Staff' ? '' : 'none';
-      // Staff Statement / SNE / Head Teachers List only make sense for
-      // the full Active Staff roster — keep them out of every other
-      // HR list so the filter footer isn't cluttered with reports
-      // that don't apply to Retirements, Transfers, etc.
-      const reportsEl = document.getElementById('hrActiveStaffOnlyReports');
-      if (reportsEl) reportsEl.style.display = hrCurrentSheetView === 'Staff' ? 'contents' : 'none';
-      if (hrCurrentSheetView !== 'Staff') resetSummaryCards();
-      clearHrFilters();
+  document.querySelectorAll('.hr-view-btn[data-sheet]').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      // Native anchor navigation (Ctrl/Cmd/middle-click, right-click →
+      // Open in New Tab) is left completely alone — only a plain
+      // left-click drives the in-page switch + URL update below.
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+      e.preventDefault();
+      hrGoToSheet(this.dataset.sheet, this);
+      const routeKey = 'hr-' + this.dataset.sheet;
+      if (typeof _navInFlight === 'undefined' || !_navInFlight) {
+        history.pushState({ route: routeKey }, '', '#' + routeKey);
+      }
     });
   });
 

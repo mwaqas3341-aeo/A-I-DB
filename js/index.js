@@ -657,6 +657,7 @@ const ROUTES = {
   admin:               () => { if (typeof _rawOpenAdmin   === 'function') _rawOpenAdmin();          },
   tools:               () => { if (typeof _rawOpenTools   === 'function') _rawOpenTools();          },
   hr:                  () => { if (typeof _rawOpenHr      === 'function') _rawOpenHr();             },
+  profile:             () => { switchGlobalTab('homeView', document.getElementById('navHomeBtn')); if (typeof openMyProfileModal === 'function') openMyProfileModal(); },
   'public-Public':     () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('Public'); },
   'public-OutSourced': () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('Out Sourced School'); },
   'private-Private':   () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Private'); },
@@ -664,6 +665,26 @@ const ROUTES = {
   'school-data':        () => { if (typeof toggleKpiCards === 'function') toggleKpiCards(true); },
   'inspection-allowance': () => { if (typeof _rawOpenIa === 'function') _rawOpenIa(); },
 };
+
+// HR sub-sheets (Staff, Awaiting Posting, Retirements, Transfers, …)
+// and the two Seat Management categories all open the HR module first,
+// then land on the specific sheet — same two-step whether it's a
+// same-tab click, Back/Forward, or a hash URL loaded fresh in a new
+// tab. Built from the same sheet names hr_view.js already uses, so
+// there's one list to keep in sync, not two.
+const HR_SUB_SHEETS = [
+  'Staff', 'AwaitingPosting', 'TemporaryDuty', 'Retirement', 'Resignation',
+  'Deceased', 'Termination', 'ContractEnded', 'Transfer_History',
+  'Promotions_History', 'TD_History', 'AwaitingPosting_History', 'Deleted_Archive',
+];
+HR_SUB_SHEETS.forEach(sheet => {
+  ROUTES['hr-' + sheet] = () => {
+    if (typeof _rawOpenHr === 'function') _rawOpenHr();
+    if (typeof hrGoToSheet === 'function') hrGoToSheet(sheet);
+  };
+});
+ROUTES['hr-seats-teaching'] = () => { if (typeof openSeatManagement === 'function') openSeatManagement('teaching'); };
+ROUTES['hr-seats-non_teaching'] = () => { if (typeof openSeatManagement === 'function') openSeatManagement('non_teaching'); };
 
 let _navInFlight = false;
 
@@ -673,6 +694,18 @@ function navigateTo(routeKey, push = true) {
   _navInFlight = true;
   try { fn(); } finally { _navInFlight = false; }
   if (push) history.pushState({ route: routeKey }, '', '#' + routeKey);
+}
+
+// Shared guard for top-nav/module-card anchors: a plain left-click
+// still calls navigateTo() directly (unchanged, instant behavior);
+// Ctrl/Cmd/Shift/middle-click are left to the browser's native
+// "open in new tab" handling — the fresh tab resolves the same route
+// from the hash on load via enterApp() below.
+function topNavLinkClick(e, routeKey) {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return true;
+  e.preventDefault();
+  navigateTo(routeKey);
+  return false;
 }
 
 window.addEventListener('popstate', e => {
