@@ -51,6 +51,10 @@ const PUB_EDITABLE_FIELDS = [
   { header: 'Address', col: 'bank_address',                                                                                                                     id: 'pub_BankAddr' },
   { header: 'Branch Code', col: 'branch_code',                                                                                                                 id: 'pub_Branch' },
   { header: 'IBAN NO.', col: 'iban_no',                                                                                                                    id: 'pub_IBAN' },
+  { header: 'Does School Have FTF Account', col: 'has_ftf_account', hint: 'Does School Have FTF Account? (Yes/No)',                                        id: 'pub_FTFAvail',    type: 'select',  options: ['Yes', 'No'], onchange: 'handlePubFTF()' },
+  { header: 'FTF Bank Name', col: 'ftf_bank_name',                  hint: 'FTF Bank Name — only applies if FTF Account is Yes',                              id: 'pub_FTFBank',     hidden: true },
+  { header: 'FTF Bank Branch', col: 'ftf_bank_branch',                hint: 'FTF Bank Branch — only applies if FTF Account is Yes',                            id: 'pub_FTFBranch',   hidden: true },
+  { header: 'FTF IBAN No. / Account No.', col: 'ftf_iban_account_no',    hint: 'FTF IBAN No. / Account No. — only applies if FTF Account is Yes',                  id: 'pub_FTFIban',     hidden: true },
   { header: 'Status', col: 'status',              hint: 'Status (Active/Out Sourced)',                                                                    id: 'pub_Status',      type: 'select',  options: ['Active', 'Out Sourced'] }
 ];
 
@@ -418,6 +422,7 @@ function editPublic(keyVal) {
   });
   handlePubBW();
   handlePubECCE();
+  handlePubFTF();
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
   pubModal.show();
 }
@@ -498,6 +503,20 @@ function handlePubECCE() {
   });
 }
 
+function handlePubFTF() {
+  const avail = document.getElementById('pub_FTFAvail')?.value;
+  const show  = avail === 'Yes';
+  const ids   = ['pub_FTFBank', 'pub_FTFBranch', 'pub_FTFIban'];
+  ids.forEach(id => {
+    const wrap = document.getElementById('wrap_' + id);
+    if (wrap) wrap.style.display = show ? 'block' : 'none';
+    if (!show) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    }
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  SAVE
 // ══════════════════════════════════════════════════════════════════════
@@ -518,6 +537,36 @@ function submitPublicForm() {
     document.getElementById('wrap_pub_IBAN').classList.add('ff-invalid');
     if (typeof showToast === 'function') showToast('IBAN must be exactly 24 characters', false);
     return;
+  }
+
+  const ftfAvail = document.getElementById('pub_FTFAvail')?.value;
+  if (ftfAvail === 'Yes') {
+    const ftfBankEl   = document.getElementById('pub_FTFBank');
+    const ftfBranchEl = document.getElementById('pub_FTFBranch');
+    const ftfIbanEl   = document.getElementById('pub_FTFIban');
+    const ftfBank   = ftfBankEl?.value.trim() || '';
+    const ftfBranch = ftfBranchEl?.value.trim() || '';
+    const ftfIban   = ftfIbanEl?.value.trim().replace(/\s/g, '') || '';
+    if (!ftfBank) {
+      document.getElementById('wrap_pub_FTFBank').classList.add('ff-invalid');
+      if (typeof showToast === 'function') showToast('FTF Bank Name is required when FTF Account is Yes.', false);
+      return;
+    }
+    if (!ftfBranch) {
+      document.getElementById('wrap_pub_FTFBranch').classList.add('ff-invalid');
+      if (typeof showToast === 'function') showToast('FTF Bank Branch is required when FTF Account is Yes.', false);
+      return;
+    }
+    if (!ftfIban) {
+      document.getElementById('wrap_pub_FTFIban').classList.add('ff-invalid');
+      if (typeof showToast === 'function') showToast('FTF IBAN No. / Account No. is required when FTF Account is Yes.', false);
+      return;
+    }
+    if (ftfIban.length !== 24) {
+      document.getElementById('wrap_pub_FTFIban').classList.add('ff-invalid');
+      if (typeof showToast === 'function') showToast('FTF IBAN No. / Account No. must be exactly 24 characters', false);
+      return;
+    }
   }
 
   let dataObj = {};

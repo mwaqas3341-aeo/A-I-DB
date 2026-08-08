@@ -58,6 +58,13 @@ const SCHOOL_IMPORT_CONFIG = {
     hasWing: true,
     updateOnly: true,
     requiredHeaders: ['Emis'],
+    // FTF bank fields are conditionally required — only when the row's
+    // own "Does School Have FTF Account" value is Yes. Blank is fine
+    // when it's No (or blank), same as the manual Add/Edit form.
+    conditionalMissing: (row) => {
+      if (row['Does School Have FTF Account'] !== 'Yes') return [];
+      return ['FTF Bank Name', 'FTF Bank Branch', 'FTF IBAN No. / Account No.'].filter(h => !row[h]);
+    },
     instructions: 'This updates EXISTING public schools only — it never creates a new school. Every row must have an Emis code that already exists in the system; blank cells leave that field unchanged. Rows with an unrecognized Emis, or an Emis outside your jurisdiction, are skipped.',
     confirmLabel: 'Update These Records',
     templateFile: 'Public_Schools_Update_Template.xlsx',
@@ -302,7 +309,8 @@ async function _siBuildPublicPreview(cfg, targetHeaders) {
     const row = {};
     targetHeaders.forEach(h => { row[h] = get(raw, h); });
     const key = row['Emis'];
-    const missing = cfg.requiredHeaders.filter(h => !row[h]);
+    const missing = cfg.requiredHeaders.filter(h => !row[h])
+      .concat(cfg.conditionalMissing ? cfg.conditionalMissing(row) : []);
     const existing = key ? existingByEmis.get(key) : null;
 
     let status = 'ok';
