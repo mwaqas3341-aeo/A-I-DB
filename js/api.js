@@ -240,6 +240,13 @@ function _buildUserSchoolFilter(user, opts) {
  * non-admin can't extend their own window by touching the record
  * again after the fact.
  */
+async function _isAdminOrTr(user) {
+  if ((user.role || '').toLowerCase() === 'admin') return true;
+  const { count } = await _sb.from('tehsil_representatives')
+    .select('id', { count: 'exact', head: true }).eq('user_id', user.id);
+  return (count || 0) > 0;
+}
+
 function _checkRevertWindow(user, actionTimestamp) {
   const isAdminUser = user && String(user.role || '').toLowerCase() === 'admin';
   if (isAdminUser) return null;
@@ -636,116 +643,6 @@ async function _callAdminFunction(action, payload) {
     body: JSON.stringify({ action, payload }),
   });
   return res.json();
-}
-
-// ═════════════════════════════════════════════════════════════════
-//  SANCTIONED SEAT RECONCILIATION ENGINE — single source of truth
-//  ─────────────────────────────────────────────────────────────
-//  Every screen that reports Sanctioned / Working / Vacant (Staff
-//  Statement, SNE, HR dashboard, school/grade/subject-wise summaries)
-//  MUST go through this function rather than keeping its own copy of
-//  the matching logic, and MUST NOT trust a stored filled_count /
-//  vacant_count column — those are manually-typed fields on the Seat
-//  Management screen that default to 0 and are routinely left
-//  un-updated, which is exactly what was causing SNE to show
-//  Working = 0 for schools with a real active employee on record.
-//  "Working" here always means the real `staff` table (status =
-//  'active', matched by EMIS + BPS/grade + designation/subject),
-//  never a Temporary Duty assignment — TD only ever adds Remarks
-//  elsewhere, it never fills or vacates a sanctioned seat here.
-//
-//  seatRows:  rows from sne_subject_sanctioned (must include emis,
-//             grade, sanctioned_count, abolished_count, and
-//             subject_label and/or designation).
-//  staffRows: active `staff` rows for the same scope (must include
-//             personal_no, school_emis_code, bps, designation).
-//
-//  Returns one result per seatRow (same array order), each:
-//    { seat, sanctioned, abolished, effective, working, vacant,
-//      units: [{ filled, staff }, ...] }   // one entry per seat unit
-//  `units` gives per-seat-unit fidelity (which specific unit is
-//  filled by which employee) for callers that build individual rows
-//  (Staff Statement); callers that only need totals (SNE, dashboards)
-//  can just use working/vacant/effective directly.
-// ═════════════════════════════════════════════════════════════════
-function _normSeatText(v) {
-  return String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-// EMIS as a trimmed string (codes can arrive as either number or text
-// depending on the table/import path) and BPS/grade as an integer
-// (seen stored as both a number column and a padded/text value) — both
-// normalized the same way on both sides of the match so a type or
-// whitespace difference between `staff` and `sne_subject_sanctioned`
-// can't silently turn a real match into a false vacancy.
-function _seatKey(emis, grade) {
-  return `${String(emis ?? '').trim()}||${parseInt(grade, 10) || 0}`;
-}
-
-function reconcileSanctionedSeats(seatRows, staffRows) {
-  const occupantsByEmisGrade = {};
-  (staffRows || []).forEach(o => {
-    const key = _seatKey(o.school_emis_code, o.bps);
-    (occupantsByEmisGrade[key] = occupantsByEmisGrade[key] || []).push(o);
-  });
-
-  const results = (seatRows || []).map(s => {
-    const sanctioned = Number(s.sanctioned_count) || 0;
-    const abolished  = Number(s.abolished_count) || 0;
-    return {
-      seat: s, sanctioned, abolished,
-      effective: Math.max(sanctioned - abolished, 0),
-      working: 0, vacant: 0, units: [],
-    };
-  });
-
-  // Bucket by EMIS + grade so several distinct seat types sharing the
-  // same grade (e.g. several teaching subjects, or several
-  // non-teaching designations like C-IV / Chowkidar / Security Guard
-  // all at grade 1) are matched within their own shared occupant
-  // pool, but resolved unit-by-unit against their own
-  // designation/subject text — not just the grade's total headcount.
-  const bucketed = {};
-  results.forEach(r => {
-    if (r.effective <= 0) return;
-    const key = _seatKey(r.seat.emis, r.seat.grade);
-    (bucketed[key] = bucketed[key] || []).push(r);
-  });
-
-  Object.keys(bucketed).forEach(key => {
-    // Expand each result into its individual seat units, ordered by
-    // subject/designation text so matching is deterministic.
-    const resultsInBucket = bucketed[key].slice().sort((a, b) =>
-      String(a.seat.subject_label || '').localeCompare(String(b.seat.subject_label || '')));
-    const units = []; // { result }
-    resultsInBucket.forEach(r => { for (let i = 0; i < r.effective; i++) units.push({ result: r }); });
-
-    const pool = (occupantsByEmisGrade[key] || []).slice();
-    const filled = new Array(units.length).fill(false);
-    const filledBy = new Array(units.length).fill(null);
-
-    // Pass a) exact designation/subject-label text match.
-    units.forEach((u, i) => {
-      const label = _normSeatText(u.result.seat.subject_label || u.result.seat.designation);
-      if (!label) return;
-      const idx = pool.findIndex(o => _normSeatText(o.designation) === label);
-      if (idx !== -1) { filledBy[i] = pool[idx]; pool.splice(idx, 1); filled[i] = true; }
-    });
-    // Pass b) any remaining real staff in this grade fill whatever
-    // units are still open, so genuine headcount is never reported
-    // as vacant just because the wording didn't line up exactly.
-    for (let i = 0; i < units.length && pool.length; i++) {
-      if (!filled[i]) { filledBy[i] = pool.pop(); filled[i] = true; }
-    }
-
-    units.forEach((u, i) => {
-      u.result.units.push({ filled: filled[i], staff: filledBy[i] });
-      if (filled[i]) u.result.working += 1;
-    });
-  });
-
-  results.forEach(r => { r.vacant = Math.max(r.effective - r.working, 0); });
-  return results;
 }
 
 /**
@@ -1378,130 +1275,24 @@ async function apiCall(action, payload) {
     // for the client to append (VACANT placeholders + TD cross-listing)
     // plus a small map of Remarks to patch onto already-exported rows
     // at the TD employee's original posting.
-    //
-    // IMPORTANT: vacancy is derived by comparing sanctioned seats
-    // against ACTUAL currently-working staff (status='active') for
-    // the same EMIS + BPS/grade — never against the sanctioned
-    // table's own `filled_count` column. `filled_count` is a manually
-    // typed field on the Seat Management screen (defaults to 0 and is
-    // routinely left un-updated), so trusting it here previously
-    // caused the whole sanctioned strength to be re-added as VACANT
-    // even when every seat was already occupied. Counting real staff
-    // rows is the only way to guarantee: sanctioned == occupied → 0
-    // vacant rows, and only the true shortfall (sanctioned - occupied)
-    // is ever appended.
     case 'getStaffStatementExtras': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const emisList = [...new Set((p.emisList || []).filter(Boolean))];
-      if (!emisList.length) return { success: true, vacantRows: [], remarksPatch: {} };
+      if (!emisList.length) return { success: true, vacantRows: [], tdRows: [], remarksPatch: {} };
 
       const colLabel = key => STAFF_COL_MAP[key] || key;
-      const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
       // 1) Sanctioned seats (both categories) for schools in scope.
       const { data: seats } = await _sb.from('sne_subject_sanctioned')
-        .select('emis, school_name, district, wing, tehsil, markaz_name, category, designation, grade, subject_label, sanctioned_count, abolished_count, remarks')
+        .select('emis, school_name, district, wing, tehsil, markaz_name, category, designation, grade, subject_label, sanctioned_count, abolished_count, filled_count, remarks')
         .in('emis', emisList);
 
-      // 1b) Actual currently-working staff for the same schools — the
-      // ONLY source of truth for seat occupancy. Temporary Duty never
-      // fills or vacates a sanctioned seat (Core Principle): it only
-      // ever adds information to Remarks, so it must never enter this
-      // occupancy pool.
-      const { data: occupants } = await _sb.from('staff')
-        .select('personal_no, school_emis_code, bps, designation')
-        .eq('status', 'active')
-        .in('school_emis_code', emisList);
-
-      const occupantsByEmisGrade = {};
-      (occupants || []).forEach(o => {
-        const key = `${o.school_emis_code}||${o.bps}`;
-        (occupantsByEmisGrade[key] = occupantsByEmisGrade[key] || []).push(o);
-      });
-
-      // 1c) Active Temporary Duty records landing at any school in
-      // scope. Used ONLY to build a Remarks line attached to whichever
-      // seat row (vacant or filled) represents that seat at the
-      // destination school — never to change vacancy status and never
-      // to create a standalone row for the TD employee.
-      const { data: tds } = await _sb.from('staff_temporary_duty')
-        .select('personal_no, original_school_emis, original_school_name, temporary_school_emis, order_number')
-        .eq('status', 'active')
-        .in('temporary_school_emis', emisList);
-
-      // Remarks lines per destination EMIS+grade, each tagged with the
-      // seat's own designation so it can be matched to the right unit
-      // when a grade holds several distinct seat types.
-      const tdLinesByEmisGrade = {};
-      if (tds && tds.length) {
-        const personalNos = [...new Set(tds.map(t => t.personal_no))];
-        const { data: tdStaffRows } = await _sb.from('staff').select('*').in('personal_no', personalNos);
-        const staffByPno = {};
-        (tdStaffRows || []).forEach(s => { staffByPno[s.personal_no] = s; });
-
-        tds.forEach(t => {
-          const staffRow = staffByPno[t.personal_no];
-          if (!staffRow) return;
-          const key = _seatKey(t.temporary_school_emis, staffRow.bps);
-          const line = `Temporary Duty: ${staffRow.name_of_teacher || ''}`
-            + ` | Personal No: ${t.personal_no || ''}`
-            + ` | Designation: ${staffRow.designation || ''}`
-            + (staffRow.bps ? ` | BPS-${String(staffRow.bps).padStart(2, '0')}` : '')
-            + ` | From EMIS: ${t.original_school_emis || ''}${t.original_school_name ? ' (' + t.original_school_name + ')' : ''}`
-            + (t.order_number ? ` | Order No: ${t.order_number}` : '');
-          (tdLinesByEmisGrade[key] = tdLinesByEmisGrade[key] || [])
-            .push({ designation: staffRow.designation, line });
-        });
-      }
-
-      // 2) Run the shared reconciliation engine (same function SNE and
-      // every other summary use) so this screen can never drift out of
-      // sync with the rest of the system — sanctioned/working/vacant
-      // here are always the same numbers SNE and the HR dashboard would
-      // report for the same seats.
-      const reconciled = reconcileSanctionedSeats(seats || [], occupants || []);
-
       const vacantRows = [];
-      const remarksPatch = {}; // personal_no -> Remarks text, for already-filled seats
-
-      reconciled.forEach(result => {
-        const s = result.seat;
-        const key = _seatKey(s.emis, s.grade);
-        // TD employees landing on this EMIS+grade, matched to a
-        // specific seat unit by designation (Case E: several lines per
-        // seat, each on its own line).
-        const tdLines = (tdLinesByEmisGrade[key] || []).slice();
-        const takeTdLine = () => {
-          if (!tdLines.length) return null;
-          const label = norm(s.subject_label || s.designation);
-          let idx = tdLines.findIndex(t => norm(t.designation) === label);
-          if (idx === -1) idx = 0;
-          return tdLines.splice(idx, 1)[0] || null;
-        };
-
-        result.units.forEach(u => {
-          if (u.filled) {
-            // Filled seat: existing employee row stays exactly as-is;
-            // any matching TD info is appended to THEIR Remarks only
-            // (Case D). A seat can have more than one TD line (Case E).
-            if (u.staff) {
-              let match;
-              while ((match = takeTdLine())) {
-                remarksPatch[u.staff.personal_no] = [remarksPatch[u.staff.personal_no], match.line].filter(Boolean).join('\n');
-              }
-            }
-            return;
-          }
-          // Vacant seat: "VACANT" goes in the employee-name cell — the
-          // DESIGNATION cell carries the actual seat name (e.g. "SST
-          // (School Head)", "C-IV") so the row reads like a real staff
-          // row with an empty seat. Remarks stays blank unless a TD
-          // employee is covering it (Case A vs Case B) — the seat's
-          // own static `remarks` field (if any) is preserved too.
-          const tdMatches = [];
-          let match;
-          while ((match = takeTdLine())) tdMatches.push(match.line);
-          const staticRemark = (s.remarks && s.remarks.trim()) || '';
+      (seats || []).forEach(s => {
+        const effective = (s.sanctioned_count || 0) - (s.abolished_count || 0);
+        const vacant = effective - (s.filled_count || 0);
+        if (vacant <= 0) return;
+        for (let i = 0; i < vacant; i++) {
           vacantRows.push({
             [colLabel('school_emis_code')]: s.emis,
             [colLabel('school_name')]:      s.school_name || '',
@@ -1509,16 +1300,78 @@ async function apiCall(action, payload) {
             [colLabel('district')]:         s.district || '',
             [colLabel('wing')]:             s.wing || '',
             [colLabel('tehsil')]:           s.tehsil || '',
-            [colLabel('name_of_teacher')]:  'VACANT',
-            [colLabel('designation')]:      s.designation || s.subject_label || '',
+            [colLabel('designation')]:      'VACANT',
             [colLabel('bps')]:              s.grade || '',
             [colLabel('subject')]:          s.subject_label || '',
-            'REMARKS': [staticRemark, ...tdMatches].filter(Boolean).join('\n'),
+            'REMARKS': (s.remarks && s.remarks.trim()) || 'Vacant Seat — No Staff Currently Posted',
           });
-        });
+        }
       });
 
-      return { success: true, vacantRows, remarksPatch };
+      // 2) Active Temporary Duty records touching any school in scope,
+      // either as the TD destination or the employee's original posting.
+      const { data: tds } = await _sb.from('staff_temporary_duty')
+        .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name')
+        .eq('status', 'active')
+        .or(`temporary_school_emis.in.(${emisList.join(',')}),original_school_emis.in.(${emisList.join(',')})`);
+
+      const tdRows = [];
+      const remarksPatch = {};
+      if (tds && tds.length) {
+        const personalNos = [...new Set(tds.map(t => t.personal_no))];
+        const tempEmisList = [...new Set(tds.map(t => t.temporary_school_emis))];
+        const [{ data: staffRows }, { data: pubMeta }, { data: privMeta }] = await Promise.all([
+          _sb.from('staff').select('*').in('personal_no', personalNos),
+          _sb.from('public_schools').select('emis, markaz_name, tehsil').in('emis', tempEmisList),
+          _sb.from('private_schools').select('emis, markaz_name, tehsil').in('emis', tempEmisList),
+        ]);
+        const staffByPno = {};
+        (staffRows || []).forEach(s => { staffByPno[s.personal_no] = s; });
+        const schoolMetaByEmis = {};
+        [...(pubMeta || []), ...(privMeta || [])].forEach(m => { schoolMetaByEmis[m.emis] = m; });
+
+        tds.forEach(t => {
+          const staffRow = staffByPno[t.personal_no];
+          if (!staffRow) return;
+          const meta = schoolMetaByEmis[t.temporary_school_emis] || {};
+          const remarksText = `On Temporary Duty at EMIS: ${t.temporary_school_emis}, ${t.temporary_school_name || ''}, ${meta.markaz_name || ''}, ${meta.tehsil || ''}`;
+
+          if (emisList.includes(t.original_school_emis)) {
+            remarksPatch[t.personal_no] = remarksText;
+          }
+          if (emisList.includes(t.temporary_school_emis)) {
+            const rowObj = { 'REMARKS': remarksText };
+            Object.entries(STAFF_COL_MAP).forEach(([key, label]) => { rowObj[label] = staffRow[key] ?? ''; });
+            // Placed against the TD school, not their permanent one.
+            rowObj[colLabel('school_emis_code')] = t.temporary_school_emis;
+            rowObj[colLabel('school_name')]      = t.temporary_school_name || '';
+            if (meta.markaz_name) rowObj[colLabel('markaz_name')] = meta.markaz_name;
+            if (meta.tehsil)      rowObj[colLabel('tehsil')]      = meta.tehsil;
+            tdRows.push(rowObj);
+          }
+        });
+      }
+
+      return { success: true, vacantRows, tdRows, remarksPatch };
+    }
+
+    case 'getSystemSetting': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const { data } = await _sb.from('system_settings').select('value').eq('key', p.key).maybeSingle();
+      return { success: true, value: data ? data.value : null };
+    }
+
+    case 'saveSystemSetting': {
+      if (!user || !user.id || (user.role || '').toLowerCase() !== 'admin') {
+        return { success: false, message: 'Only Admins can change system settings.' };
+      }
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      if (!p.key) return { success: false, message: 'Setting key is required.' };
+      const { error } = await _sb.from('system_settings').upsert({
+        key: p.key, value: String(p.value ?? ''), updated_by: user.id, updated_at: new Date().toISOString(),
+      });
+      if (error) return { success: false, message: error.message };
+      return { success: true, message: 'Setting saved.' };
     }
 
     case 'getSeatManagementList': {
@@ -1537,44 +1390,37 @@ async function apiCall(action, payload) {
 
       const filterFn = _buildUserSchoolFilter(user, { idKey: 'emis' });
       const rows = filterFn ? (data || []).filter(filterFn) : (data || []);
-
-      // Live Working/Vacant via the same reconciliation engine as Staff
-      // Statement/SNE, so this screen can't drift from the rest of the
-      // app either — the stored filled_count/vacant_count columns stay
-      // untouched (still used by the Add/Edit form) but the list itself
-      // shows `*_computed` figures reflecting actual current staff.
-      if (rows.length) {
-        const staffRaw = await _fetchAllRows(
-          'staff',
-          'personal_no, school_emis_code, bps, designation, district, wing, tehsil, markaz_name',
-          sq => {
-            sq = sq.eq('status', 'active');
-            if (p.district) sq = sq.eq('district', p.district);
-            if (p.wing)     sq = sq.eq('wing', p.wing);
-            if (p.tehsil)   sq = sq.eq('tehsil', p.tehsil);
-            if (p.markaz)   sq = sq.eq('markaz_name', p.markaz);
-            if (p.emis)     sq = sq.eq('school_emis_code', p.emis);
-            return sq;
-          }
-        );
-        const staffFilterFn = _buildUserSchoolFilter(user, { idKey: 'school_emis_code' });
-        const staffScoped = staffFilterFn ? staffRaw.filter(staffFilterFn) : staffRaw;
-
-        const reconciled = reconcileSanctionedSeats(rows, staffScoped);
-        reconciled.forEach(result => {
-          result.seat.effective_computed = result.effective;
-          result.seat.working_computed   = result.working;
-          result.seat.vacant_computed    = result.vacant;
-        });
-      }
-
       return { success: true, rows };
+    }
+
+    case 'checkSeatManagementPermissions': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const canEditNonTeaching = await _isAdminOrTr(user);
+      return { success: true, canEditNonTeaching, canEditTeaching: false };
     }
 
     case 'saveSeatRecord': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const category = p.category === 'non_teaching' ? 'non_teaching' : 'teaching';
+
+      // Teaching Sanctioned Seats are now maintained entirely via
+      // direct Supabase data upload (not this app) — new Teaching
+      // records can never be created here, only their Abolished count
+      // edited on records that already exist (Item 5's rule).
+      if (category === 'teaching' && !p.id) {
+        return { success: false, message: 'New Teaching Sanctioned Seats can only be added via direct Supabase data upload, not through the app.' };
+      }
+      // Non-Teaching Sanctioned Seats (add, edit, and bulk import all
+      // route through this same action) are restricted to Admins and
+      // Tehsil Representatives.
+      if (category === 'non_teaching') {
+        const authorizedForNonTeaching = await _isAdminOrTr(user);
+        if (!authorizedForNonTeaching) {
+          return { success: false, message: 'Only Admins and Tehsil Representatives can add, edit, or import Non-Teaching Sanctioned Seats.' };
+        }
+      }
+
       const emis = (p.emis || '').trim();
       if (!emis) return { success: false, message: 'EMIS Code is required.' };
       const grade = parseInt(p.grade);
@@ -1728,40 +1574,6 @@ async function apiCall(action, payload) {
       const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
       const scoped = filterFn ? (raw || []).filter(filterFn) : (raw || []);
 
-      // Real currently-active staff for the same scope — the ONLY
-      // source of truth for Working/Vacant (see reconcileSanctionedSeats
-      // above). Never the sanctioned table's own filled_count/
-      // vacant_count columns, which are manually typed on the Seat
-      // Management screen, default to 0, and are routinely left
-      // un-updated — that mismatch is what was showing Working = 0 for
-      // schools with a real active employee on record.
-      const staffRows = await _fetchAllRows(
-        'staff',
-        'personal_no, school_emis_code, bps, designation, district, wing, tehsil, markaz_name',
-        q => {
-          q = q.eq('status', 'active');
-          if (filters.district) q = q.eq('district', filters.district);
-          else if (!isAdmin && reqUser?.district) q = q.eq('district', reqUser.district);
-          if (filters.wing)   q = q.eq('wing', filters.wing);
-          if (filters.tehsil) q = q.eq('tehsil', filters.tehsil);
-          if (filters.markaz) q = q.eq('markaz_name', filters.markaz);
-          if (filters.emis)   q = q.eq('school_emis_code', filters.emis);
-          return q;
-        }
-      );
-      // Staff rows use school_emis_code, not emis — same multi-group
-      // scope logic as the seats above, just a different idKey.
-      const staffFilterFn = _buildUserSchoolFilter(reqUser, { idKey: 'school_emis_code' });
-      const scopedStaff = staffFilterFn ? staffRows.filter(staffFilterFn) : staffRows;
-
-      // Run the SAME reconciliation engine Staff Statement uses, keyed
-      // back to each original sne_subject_sanctioned row by object
-      // identity, so this screen can never drift out of sync with
-      // Staff Statement / HR dashboard for the same seats.
-      const reconciledByRow = new Map(
-        reconcileSanctionedSeats(scoped, scopedStaff).map(result => [result.seat, result])
-      );
-
       function buildCategory(catRows) {
         // Discover the subject columns actually present, ordered by
         // grade (senior/higher BPS first) then subject label.
@@ -1787,12 +1599,11 @@ async function apiCall(action, payload) {
               grade14: { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 },
             };
           }
-          const reconciled = reconciledByRow.get(r);
-          const s  = reconciled ? reconciled.sanctioned : (Number(r.sanctioned_count) || 0);
-          const ab = reconciled ? reconciled.abolished  : (Number(r.abolished_count) || 0);
-          const ef = reconciled ? reconciled.effective  : Math.max(s - ab, 0);
-          const f  = reconciled ? reconciled.working    : 0;
-          const v  = reconciled ? reconciled.vacant      : ef;
+          const s  = Number(r.sanctioned_count) || 0;
+          const ab = Number(r.abolished_count) || 0;
+          const ef = Number(r.effective_sanctioned_count ?? (s - ab)) || 0;
+          const f  = Number(r.filled_count) || 0;
+          const v  = Number(r.vacant_count ?? (ef - f)) || 0;
           bySchool[key].subjects[r.subject_code] = { sanctioned: s, abolished: ab, effective: ef, filled: f, vacant: v };
           const gKey = r.grade === 16 ? 'grade16' : r.grade === 15 ? 'grade15' : r.grade === 14 ? 'grade14' : null;
           if (gKey) {

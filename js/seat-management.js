@@ -10,6 +10,7 @@ let seatState = {
   rows: [],
   editingId: null,
 };
+let seatPermissions = { canEditNonTeaching: false, checked: false };
 
 const SEAT_CATEGORY_LABEL = { teaching: 'Teaching', non_teaching: 'Non-Teaching' };
 
@@ -23,8 +24,45 @@ function openSeatManagement(category) {
   document.getElementById('seat_subjectRow').style.display = seatState.category === 'teaching' ? '' : 'none';
   document.getElementById('seatDownloadTemplateBtn').style.display = seatState.category === 'non_teaching' ? '' : 'none';
   document.getElementById('seatImportErrorsPanel').style.display = 'none';
+  _seatApplyButtonPermissions();
   _seatPopulateJurisdictionFilters();
   applySeatFilter();
+}
+
+// Teaching Sanctioned Seats are now maintained entirely via direct
+// Supabase data upload — Add/Import never appear for Teaching, full
+// stop, regardless of who's logged in. Non-Teaching Add/Import are
+// restricted to Admins and Tehsil Representatives (checked once per
+// session and cached; the real gate is still server-side in
+// saveSeatRecord — this only controls what's shown).
+function _seatApplyButtonPermissions() {
+  const addBtn = document.getElementById('seatAddRecordBtn');
+  const importBtn = document.getElementById('seatImportBtn');
+  if (seatState.category === 'teaching') {
+    addBtn.style.display = 'none';
+    importBtn.style.display = 'none';
+    return;
+  }
+  if (seatPermissions.checked) {
+    const allowed = seatPermissions.canEditNonTeaching;
+    addBtn.style.display = allowed ? '' : 'none';
+    importBtn.style.display = allowed ? '' : 'none';
+    return;
+  }
+  addBtn.style.display = 'none';
+  importBtn.style.display = 'none';
+  google.script.run
+    .withSuccessHandler(res => {
+      seatPermissions.canEditNonTeaching = !!(res && res.success && res.canEditNonTeaching);
+      seatPermissions.checked = true;
+      if (seatState.category === 'non_teaching') {
+        addBtn.style.display = seatPermissions.canEditNonTeaching ? '' : 'none';
+        importBtn.style.display = seatPermissions.canEditNonTeaching ? '' : 'none';
+        if (seatState.rows.length) seatRenderTable();
+      }
+    })
+    .withFailureHandler(() => { seatPermissions.checked = true; })
+    .checkSeatManagementPermissions();
 }
 
 function _seatPopulateJurisdictionFilters() {
@@ -151,13 +189,14 @@ function seatRenderTable() {
               <td>${escHtmlAp(r.designation || '')}</td>
               <td>${r.sanctioned_count ?? 0}</td>
               <td style="color:${r.abolished_count ? '#DC2626' : 'inherit'}">${r.abolished_count ?? 0}</td>
-              <td style="font-weight:700;color:#0d9488">${r.effective_computed ?? r.effective_sanctioned_count ?? (r.sanctioned_count - r.abolished_count)}</td>
-              <td title="Live count from current active staff, not the manually-typed Filled Seats value">${r.working_computed ?? r.filled_count ?? 0}</td>
-              <td style="font-weight:700;color:${(r.vacant_computed ?? r.vacant_count) > 0 ? '#DC2626' : 'inherit'}">${r.vacant_computed ?? r.vacant_count ?? 0}</td>
+              <td style="font-weight:700;color:#0d9488">${r.effective_sanctioned_count ?? (r.sanctioned_count - r.abolished_count)}</td>
+              <td>${r.filled_count ?? 0}</td>
+              <td style="font-weight:700;color:${r.vacant_count > 0 ? '#DC2626' : 'inherit'}">${r.vacant_count ?? 0}</td>
               <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:.76rem;color:var(--t3)">${escHtmlAp(r.remarks || '')}</td>
               <td class="actions-col">
+                ${(seatState.category === 'non_teaching' && !seatPermissions.canEditNonTeaching) ? '' : `
                 <button class="hr-btn-ghost" style="padding:5px 10px;font-size:.74rem" onclick="openSeatModal('${r.id}')">Edit</button>
-                <button class="hr-btn-ghost" style="padding:5px 10px;font-size:.74rem;color:#DC2626" onclick="deleteSeatRecord('${r.id}')">Delete</button>
+                <button class="hr-btn-ghost" style="padding:5px 10px;font-size:.74rem;color:#DC2626" onclick="deleteSeatRecord('${r.id}')">Delete</button>`}
               </td>
             </tr>`).join('')}
         </tbody>

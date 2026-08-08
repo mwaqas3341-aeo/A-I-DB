@@ -905,26 +905,16 @@ function downloadActiveStaff() {
     .withSuccessHandler(extras => {
       let allRows = rows;
       if (extras && extras.success) {
-        // Patch Remarks onto the filled seat's existing employee row
-        // when a Temporary Duty employee is covering that same seat —
-        // that row itself is left otherwise untouched, per spec
-        // (seat status/columns never change, only Remarks gains a line).
+        // Patch Remarks onto the TD employee's existing row at their
+        // original posting — that row itself is left otherwise
+        // untouched, per spec.
         if (extras.remarksPatch && Object.keys(extras.remarksPatch).length) {
           allRows = rows.map(r => {
             const remark = extras.remarksPatch[r[pnoCol]];
-            return remark ? { ...r, 'REMARKS': [r['REMARKS'], remark].filter(Boolean).join('\n') } : r;
+            return remark ? { ...r, 'REMARKS': [r['REMARKS'], remark].filter(Boolean).join(' | ') } : r;
           });
         }
-        // Vacant seats (each carrying its own Remarks, including any
-        // Temporary Duty line) are appended — never a standalone row
-        // for the TD employee themselves.
-        allRows = allRows.concat(extras.vacantRows || []);
-        // Vacant rows arrive appended at the end — re-sort so each
-        // school's seats read top to bottom by BPS (16 → 1), and
-        // within the same EMIS + BPS the real/filled staff come
-        // first, immediately followed by that BPS's VACANT row(s),
-        // before moving on to the next BPS.
-        allRows = _sortStaffStatementRows(allRows);
+        allRows = allRows.concat(extras.vacantRows || [], extras.tdRows || []);
       }
       _downloadActiveStaffFinish(allRows, exportCols);
     })
@@ -936,132 +926,51 @@ function downloadActiveStaff() {
     .getStaffStatementExtras({ emisList });
 }
 
-// Groups the final Staff Statement (real staff + appended VACANT +
-// Temporary Duty rows) by Markaz → EMIS → BPS (descending), and
-// within an identical EMIS+BPS puts filled seats before the VACANT
-// seat(s) for that same BPS — e.g. all BPS 16 staff, then BPS 16
-// VACANT rows, then all BPS 15 staff, then BPS 15 VACANT rows, etc.
-function _sortStaffStatementRows(rows) {
-  return rows.slice().sort((a, b) => {
-    const markazA = (a['MARKAZ NAME'] || '').toString().toLowerCase();
-    const markazB = (b['MARKAZ NAME'] || '').toString().toLowerCase();
-    if (markazA !== markazB) return markazA < markazB ? -1 : 1;
-
-    const emisA = parseInt((a['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
-    const emisB = parseInt((b['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
-    if (emisA !== emisB) return emisA - emisB;
-
-    const bpsA = parseInt((a['BPS'] || '').toString(), 10) || 0;
-    const bpsB = parseInt((b['BPS'] || '').toString(), 10) || 0;
-    if (bpsA !== bpsB) return bpsB - bpsA; // Descending BPS
-
-    const aVacant = (a['NAME OF TEACHER'] || '').toString().trim().toUpperCase() === 'VACANT' ? 1 : 0;
-    const bVacant = (b['NAME OF TEACHER'] || '').toString().trim().toUpperCase() === 'VACANT' ? 1 : 0;
-    return aVacant - bVacant; // filled staff before the VACANT row(s) at the same BPS
-  });
-}
-
 function _downloadActiveStaffFinish(rows, exportCols) {
+
+  const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name: 'Admin' };
   const cleanRows = rows.map(r => {
     const obj = {};
     exportCols.forEach(col => { obj[col] = r[col] !== undefined ? r[col] : ''; });
     return obj;
   });
 
-  // Build a genuinely formatted .xlsx entirely client-side (wrap text,
-  // borders, sized columns, auto row height for multi-line Remarks) —
-  // CSV can't carry any of that, so this is a real workbook, not a
-  // round trip through the (unimplemented) backend export action.
-  if (typeof XLSX === 'undefined') {
-    _hrDownloadCsv(rows, exportCols);
-    return;
-  }
+  // Attempt backend Excel export via base64; fallback to CSV
   try {
-    const wb = _hrBuildStyledWorkbook(cleanRows, exportCols, 'Staff Statement');
-    _hrDownloadWorkbook(wb, 'Staff_Statement_' + new Date().toISOString().slice(0, 10) + '.xlsx');
-    hrShowToast('Staff Statement downloaded (' + rows.length + ' records, ' + exportCols.length + ' columns).', true);
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res && res.base64) {
+          // Decode base64 and download as Excel
+          const binary = atob(res.base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'Active_Staff_Filtered_' + new Date().toISOString().slice(0,10) + '.xlsx';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          hrShowToast('Active Staff list downloaded (' + rows.length + ' records, ' + exportCols.length + ' columns).', true);
+        } else if (res && res.url) {
+          // Fallback for backward compatibility (old Drive URL)
+          window.open(res.url, '_blank');
+          hrShowToast('Active Staff Excel opened successfully.', true);
+        } else {
+          _hrDownloadCsv(rows, exportCols);
+        }
+      })
+      .withFailureHandler(() => {
+        _hrDownloadCsv(rows, exportCols);
+      })
+      .exportActiveStaffToExcel(cleanRows, exportCols, userPayload);
   } catch (e) {
-    console.error('[hr_view] styled Excel export failed, falling back to CSV', e);
     _hrDownloadCsv(rows, exportCols);
   }
-}
-
-// ──────────────────────────────────────────────────────────────────
-//  STYLED EXCEL EXPORT (client-side, via the xlsx-js-style build of
-//  XLSX loaded in index.html). Wrap text + borders on every cell,
-//  sized columns, bold header row, frozen header, and a row height
-//  tall enough to show multi-line Remarks (several Temporary Duty
-//  lines, or wrapped long text) without cutting anything off.
-// ──────────────────────────────────────────────────────────────────
-function _hrBuildStyledWorkbook(rows, cols, sheetName) {
-  const remarksCol = 'REMARKS';
-  const aoa = [cols, ...rows.map(r => cols.map(c => (r[c] !== undefined && r[c] !== null) ? r[c] : ''))];
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-  // Column widths — generous default, extra room for Remarks.
-  ws['!cols'] = cols.map(c => {
-    if (c === remarksCol) return { wch: 55 };
-    const sample = rows.slice(0, 500);
-    const maxLen = sample.reduce((m, r) => Math.max(m, String(r[c] ?? '').length), c.length);
-    return { wch: Math.min(Math.max(maxLen + 2, 10), 32) };
-  });
-
-  // Row heights — tall enough for wrapped/multi-line Remarks text.
-  const rowHeights = [{ hpt: 20 }]; // header row
-  rows.forEach(r => {
-    let maxLines = 1;
-    cols.forEach(c => {
-      const val = String(r[c] ?? '');
-      if (!val) return;
-      const wrapWidth = c === remarksCol ? 55 : 28;
-      const lines = val.split('\n').reduce((sum, part) => sum + Math.max(1, Math.ceil(part.length / wrapWidth)), 0);
-      maxLines = Math.max(maxLines, lines);
-    });
-    rowHeights.push({ hpt: Math.min(Math.max(16, maxLines * 15), 240) });
-  });
-  ws['!rows'] = rowHeights;
-
-  // Borders + wrap text + alignment on every cell; bold/filled header.
-  const thin = { style: 'thin', color: { rgb: 'FFB0B0B0' } };
-  const borderAll = { top: thin, bottom: thin, left: thin, right: thin };
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  for (let R = range.s.r; R <= range.e.r; R++) {
-    for (let C = range.s.c; C <= range.e.c; C++) {
-      const addr = XLSX.utils.encode_cell({ r: R, c: C });
-      const cell = ws[addr];
-      if (!cell) continue;
-      const isHeader = R === 0;
-      cell.s = {
-        border: borderAll,
-        alignment: { vertical: 'top', horizontal: isHeader ? 'center' : 'left', wrapText: true },
-        font: isHeader ? { bold: true, color: { rgb: 'FFFFFFFF' } } : { color: { rgb: 'FF1A1A1A' } },
-        fill: isHeader ? { patternType: 'solid', fgColor: { rgb: 'FF1F6FEB' } } : undefined,
-      };
-    }
-  }
-
-  // Freeze the header row so it stays visible while scrolling.
-  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-  if (!ws['!sheetViews']) {
-    ws['!sheetViews'] = [{ state: 'frozen', ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }];
-  }
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
-  return wb;
-}
-
-function _hrDownloadWorkbook(wb, filename) {
-  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([wbout], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 /**
