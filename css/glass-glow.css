@@ -1,0 +1,163 @@
+/* ════════════════════════════════════════════════════════════
+   GLASS / GLOW INTERACTIVE LAYER
+   Inspired by ankergames.net's modern glassy, glowing UI feel.
+   Pure visual layer — loads LAST, after theme.css. Never touches
+   colors, layout, spacing, or any class/ID the app's JS depends
+   on. Every rule here is additive: existing background-color,
+   border-radius, and palette tokens (--brand/--gold/etc.) are
+   left exactly as theme.css defines them; this file only layers
+   a glass sheen + glow + motion on top via attribute/tag
+   selectors, so no per-button duplication was needed anywhere.
+   ════════════════════════════════════════════════════════════ */
+
+:root{
+  /* Typography override — Arial Narrow primary, Times New Roman
+     fallback, per spec. Kept as a var so anything already using
+     var(--font) (most of the app) picks this up automatically. */
+  --font:'Arial Narrow','Arimo Narrow','Times New Roman',Arial,sans-serif;
+  --glass-glow-fast:.18s cubic-bezier(.4,0,.2,1);
+  --glass-glow-med:.28s cubic-bezier(.4,0,.2,1);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .glass-glow-target, .glass-glow-target::before,
+  select, input, textarea, [class*="card"]{ transition:none !important; transform:none !important; }
+}
+
+/* Form elements don't inherit font-family from the page by default
+   in most browsers — set explicitly so the override actually reaches
+   buttons/inputs/selects/tables, not just headings and paragraphs. */
+body, button, select, input, textarea, table, th, td, label,
+h1, h2, h3, h4, h5, h6, .hr-nav-label, .mc-title, .sfm-label{
+  font-family: var(--font);
+}
+
+/* ── GLASS/GLOW BASE — buttons, nav items, tabs ─────────────────
+   Broad selector on purpose: catches every existing button class
+   (hr-btn-*, btn-*, kpi-sub-btn*, tbl-btn, ia-tab-btn, nav-*-btn,
+   hr-nav-item, hr-view-btn, general-sub-tab, etc.) plus any future
+   one, without listing each individually. */
+button:not(.hr-nav-chevron):not(.material-icons-round),
+[class*="btn"],
+.hr-nav-item, .hr-view-btn, .hr-nav-group-header,
+.general-sub-tab, .ia-tab-btn, .admin-sub-tab{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+  transition:
+    transform var(--glass-glow-fast),
+    box-shadow var(--glass-glow-med),
+    filter var(--glass-glow-fast),
+    background-color var(--glass-glow-fast);
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* Glass sheen — a soft diagonal highlight sitting on top of the
+   element's own (unchanged) background-color, never replacing it. */
+button:not(.hr-nav-chevron):not(.material-icons-round)::before,
+[class*="btn"]::before,
+.hr-nav-item::before, .hr-view-btn::before{
+  content:"";
+  position:absolute; inset:0;
+  background:linear-gradient(135deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 55%);
+  opacity:.7;
+  pointer-events:none;
+  transition:opacity var(--glass-glow-fast), transform var(--glass-glow-med);
+  transform:translateX(-8%);
+  z-index:0;
+}
+button:not(.hr-nav-chevron):not(.material-icons-round) > *,
+[class*="btn"] > *,
+.hr-nav-item > *, .hr-view-btn > *{ position:relative; z-index:1; }
+
+/* Hover — subtle glow (tinted with the element's own currentColor
+   plus the brand accent), slight lift, sheen sweeps across. */
+@media (hover:hover) and (pointer:fine){
+  button:not(:disabled):not(.hr-nav-chevron):not(.material-icons-round):hover,
+  [class*="btn"]:not(:disabled):hover,
+  .hr-nav-item:not(:disabled):hover, .hr-view-btn:not(:disabled):hover,
+  .hr-nav-group-header:hover, .general-sub-tab:hover, .ia-tab-btn:hover, .admin-sub-tab:hover{
+    transform:translateY(-1.5px);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.16) inset,
+      0 6px 18px -6px rgba(11,110,79,.45),
+      0 2px 8px rgba(0,0,0,.12);
+    cursor:pointer;
+  }
+  button:not(:disabled):hover::before,
+  [class*="btn"]:not(:disabled):hover::before,
+  .hr-nav-item:not(:disabled):hover::before, .hr-view-btn:not(:disabled):hover::before{
+    opacity:1;
+    transform:translateX(8%);
+  }
+}
+
+/* Active/press — quick tactile feedback */
+button:not(:disabled):active,
+[class*="btn"]:not(:disabled):active,
+.hr-nav-item:not(:disabled):active, .hr-view-btn:not(:disabled):active{
+  transform:translateY(0) scale(.985);
+  transition-duration:.08s;
+}
+
+/* Currently-selected nav/tab items get a slightly stronger,
+   steady glow so "active" reads clearly without extra motion. */
+.hr-nav-item.hr-active, .hr-view-btn.hr-active,
+.general-sub-tab.active-admin-tab, .admin-sub-tab.active-admin-tab,
+.kpi-sub-btn-active{
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.14) inset,
+    0 4px 14px -4px rgba(11,110,79,.5);
+}
+
+button:disabled, [class*="btn"]:disabled,
+.hr-nav-item:disabled, .hr-view-btn:disabled{
+  cursor:not-allowed;
+  filter:saturate(.6) opacity(.65);
+}
+
+/* ── DROPDOWNS / FILTER INPUTS ───────────────────────────────── */
+select, input[type="text"], input[type="date"], input[type="number"],
+input[type="email"], input[type="tel"], input[type="search"], textarea{
+  transition:
+    box-shadow var(--glass-glow-fast),
+    border-color var(--glass-glow-fast),
+    background-color var(--glass-glow-fast);
+}
+select:hover, input[type="text"]:hover, input[type="date"]:hover,
+input[type="number"]:hover, input[type="email"]:hover, input[type="tel"]:hover,
+input[type="search"]:hover, textarea:hover{
+  filter:brightness(1.015);
+}
+select:focus, input[type="text"]:focus, input[type="date"]:focus,
+input[type="number"]:focus, input[type="email"]:focus, input[type="tel"]:focus,
+input[type="search"]:focus, textarea:focus{
+  box-shadow:0 0 0 3px rgba(11,110,79,.16), 0 2px 10px -2px rgba(11,110,79,.3);
+  outline:none;
+}
+
+/* ── CARDS ────────────────────────────────────────────────────── */
+[class*="card"]{
+  transition:
+    transform var(--glass-glow-med),
+    box-shadow var(--glass-glow-med);
+}
+@media (hover:hover) and (pointer:fine){
+  a[class*="card"]:hover, button[class*="card"]:hover,
+  [class*="card"][onclick]:hover, [class*="card"].clickable:hover{
+    transform:translateY(-3px);
+    box-shadow:0 14px 32px -12px rgba(11,110,79,.28), 0 4px 12px rgba(0,0,0,.08);
+    cursor:pointer;
+  }
+}
+
+/* ── MOBILE ───────────────────────────────────────────────────── */
+@media (max-width:860px){
+  /* Lighter-weight glow on touch devices: skip the lift/scale (no
+     hover state to trigger it anyway) and keep tap feedback snappy. */
+  button:not(:disabled):active,
+  [class*="btn"]:not(:disabled):active,
+  .hr-nav-item:not(:disabled):active, .hr-view-btn:not(:disabled):active{
+    transform:scale(.97);
+  }
+}
