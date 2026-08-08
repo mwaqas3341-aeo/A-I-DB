@@ -1283,9 +1283,10 @@ async function apiCall(action, payload) {
     case 'getStaffStatementExtras': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const emisList = [...new Set((p.emisList || []).filter(Boolean))];
-      if (!emisList.length) return { success: true, vacantRows: [], tdRows: [], remarksPatch: {} };
+      if (!emisList.length) return { success: true, vacantRows: [], remarksPatch: {} };
 
       const colLabel = key => STAFF_COL_MAP[key] || key;
+      const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
       // 1) Sanctioned seats (both categories) for schools in scope.
       const { data: seats } = await _sb.from('sne_subject_sanctioned')
@@ -1293,18 +1294,14 @@ async function apiCall(action, payload) {
         .in('emis', emisList);
 
       // 1b) Actual currently-working staff for the same schools — the
-      // real source of truth for which seats are occupied. Matched on
-      // EMIS + BPS (grade) first (non-teaching sanctioned seats all
-      // sit at grade 1, teaching seats start at grade 7+, so the two
-      // never collide at the same EMIS), then refined by designation
-      // text below so seats aren't just counted but correctly
-      // identified.
+      // ONLY source of truth for seat occupancy. Temporary Duty never
+      // fills or vacates a sanctioned seat (Core Principle): it only
+      // ever adds information to Remarks, so it must never enter this
+      // occupancy pool.
       const { data: occupants } = await _sb.from('staff')
-        .select('school_emis_code, bps, designation')
+        .select('personal_no, school_emis_code, bps, designation')
         .eq('status', 'active')
         .in('school_emis_code', emisList);
-
-      const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
       const occupantsByEmisGrade = {};
       (occupants || []).forEach(o => {
@@ -1312,44 +1309,45 @@ async function apiCall(action, payload) {
         (occupantsByEmisGrade[key] = occupantsByEmisGrade[key] || []).push(o);
       });
 
-      // 1c) Active Temporary Duty records touching any school in
-      // scope, fetched up front (rather than after vacancy is
-      // worked out) because a TD employee is physically covering
-      // their seat at the *destination* school — that seat is
-      // occupied there for as long as the TD is active, and must
-      // not also be reported as VACANT just because the TD employee's
-      // permanent posting (staff.school_emis_code) is elsewhere.
+      // 1c) Active Temporary Duty records landing at any school in
+      // scope. Used ONLY to build a Remarks line attached to whichever
+      // seat row (vacant or filled) represents that seat at the
+      // destination school — never to change vacancy status and never
+      // to create a standalone row for the TD employee.
       const { data: tds } = await _sb.from('staff_temporary_duty')
-        .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name')
+        .select('personal_no, original_school_emis, original_school_name, temporary_school_emis, order_number')
         .eq('status', 'active')
-        .or(`temporary_school_emis.in.(${emisList.join(',')}),original_school_emis.in.(${emisList.join(',')})`);
+        .in('temporary_school_emis', emisList);
 
-      let staffByPno = {};
+      // Remarks lines per destination EMIS+grade, each tagged with the
+      // seat's own designation so it can be matched to the right unit
+      // when a grade holds several distinct seat types.
+      const tdLinesByEmisGrade = {};
       if (tds && tds.length) {
         const personalNos = [...new Set(tds.map(t => t.personal_no))];
         const { data: tdStaffRows } = await _sb.from('staff').select('*').in('personal_no', personalNos);
+        const staffByPno = {};
         (tdStaffRows || []).forEach(s => { staffByPno[s.personal_no] = s; });
 
-        // Fold each TD employee into the destination school's occupant
-        // pool (only if the destination is one of the schools in
-        // scope) so the vacancy pass below sees them covering that
-        // seat — the same designation/BPS matching used for permanent
-        // staff applies here too.
         tds.forEach(t => {
-          if (!emisList.includes(t.temporary_school_emis)) return;
           const staffRow = staffByPno[t.personal_no];
           if (!staffRow) return;
           const key = `${t.temporary_school_emis}||${staffRow.bps}`;
-          (occupantsByEmisGrade[key] = occupantsByEmisGrade[key] || [])
-            .push({ school_emis_code: t.temporary_school_emis, bps: staffRow.bps, designation: staffRow.designation });
+          const line = `Temporary Duty: ${staffRow.name_of_teacher || ''}`
+            + ` | Personal No: ${t.personal_no || ''}`
+            + ` | Designation: ${staffRow.designation || ''}`
+            + (staffRow.bps ? ` | BPS-${String(staffRow.bps).padStart(2, '0')}` : '')
+            + ` | From EMIS: ${t.original_school_emis || ''}${t.original_school_name ? ' (' + t.original_school_name + ')' : ''}`
+            + (t.order_number ? ` | Order No: ${t.order_number}` : '');
+          (tdLinesByEmisGrade[key] = tdLinesByEmisGrade[key] || [])
+            .push({ designation: staffRow.designation, line });
         });
       }
 
       // 2) Expand each sanctioned row into individual seat "units" so
       // partially-filled rows (e.g. sanctioned_count=3) are handled
       // correctly, then bucket the units by EMIS + grade. Within a
-      // bucket, match units to real staff (permanent + TD-covering,
-      // from above) in two passes:
+      // bucket, match units to REAL staff only, in two passes:
       //   a) exact designation/subject-label match (handles cases
       //      like a grade sharing several distinct seat types, e.g.
       //      non-teaching grade 1 = C-IV / School Guard / Security
@@ -1363,7 +1361,8 @@ async function apiCall(action, payload) {
       //      shortfall for that grade).
       // Whatever units are left after both passes are the actual
       // vacant seats — never the whole bucket when it's already
-      // fully staffed, never more than the real shortfall.
+      // fully staffed, never more than the real shortfall, and never
+      // reduced by a Temporary Duty employee covering the seat.
       const bucketed = {};
       (seats || []).forEach(s => {
         const effective = Math.max((s.sanctioned_count || 0) - (s.abolished_count || 0), 0);
@@ -1374,33 +1373,67 @@ async function apiCall(action, payload) {
       });
 
       const vacantRows = [];
+      const remarksPatch = {}; // personal_no -> Remarks text, for already-filled seats
+
       Object.keys(bucketed).forEach(key => {
         const units = bucketed[key].sort((a, b) =>
           String(a.subject_label || '').localeCompare(String(b.subject_label || '')));
         const pool = (occupantsByEmisGrade[key] || []).slice(); // staff still available to match, this bucket
         const filled = new Array(units.length).fill(false);
+        const filledBy = new Array(units.length).fill(null);
 
         // Pass a) exact designation/subject-label text match.
         units.forEach((s, i) => {
           const label = norm(s.subject_label || s.designation);
           if (!label) return;
           const idx = pool.findIndex(o => norm(o.designation) === label);
-          if (idx !== -1) { pool.splice(idx, 1); filled[i] = true; }
+          if (idx !== -1) { filledBy[i] = pool[idx]; pool.splice(idx, 1); filled[i] = true; }
         });
 
         // Pass b) any remaining real staff in this grade fill whatever
         // units are still open, so genuine headcount is never reported
         // as vacant just because the wording didn't line up exactly.
         for (let i = 0; i < units.length && pool.length; i++) {
-          if (!filled[i]) { pool.pop(); filled[i] = true; }
+          if (!filled[i]) { filledBy[i] = pool.pop(); filled[i] = true; }
         }
 
+        // Any TD employees landing on this EMIS+grade, matched to a
+        // specific seat unit the same way (designation match first,
+        // else whichever line is left) — supports multiple TD lines
+        // per seat (Case E), each appended on its own line.
+        const tdLines = (tdLinesByEmisGrade[key] || []).slice();
+        const takeTdLine = (s) => {
+          if (!tdLines.length) return null;
+          const label = norm(s.subject_label || s.designation);
+          let idx = tdLines.findIndex(t => norm(t.designation) === label);
+          if (idx === -1) idx = 0;
+          return tdLines.splice(idx, 1)[0] || null;
+        };
+
         units.forEach((s, i) => {
-          if (filled[i]) return;
-          // "VACANT" goes in the employee-name cell — the DESIGNATION
-          // cell carries the actual seat name (e.g. "SST (School
-          // Head)", "C-IV") so the vacant row reads like a real staff
-          // row with an empty seat, not a designation of "VACANT".
+          if (filled[i]) {
+            // Filled seat: existing employee row stays exactly as-is;
+            // any matching TD info is appended to THEIR Remarks only
+            // (Case D). A seat can have more than one TD line (Case E).
+            const occ = filledBy[i];
+            if (occ) {
+              let match;
+              while ((match = takeTdLine(s))) {
+                remarksPatch[occ.personal_no] = [remarksPatch[occ.personal_no], match.line].filter(Boolean).join('\n');
+              }
+            }
+            return;
+          }
+          // Vacant seat: "VACANT" goes in the employee-name cell — the
+          // DESIGNATION cell carries the actual seat name (e.g. "SST
+          // (School Head)", "C-IV") so the row reads like a real staff
+          // row with an empty seat. Remarks stays blank unless a TD
+          // employee is covering it (Case A vs Case B) — the seat's
+          // own static `remarks` field (if any) is preserved too.
+          const tdMatches = [];
+          let match;
+          while ((match = takeTdLine(s))) tdMatches.push(match.line);
+          const staticRemark = (s.remarks && s.remarks.trim()) || '';
           vacantRows.push({
             [colLabel('school_emis_code')]: s.emis,
             [colLabel('school_name')]:      s.school_name || '',
@@ -1412,47 +1445,12 @@ async function apiCall(action, payload) {
             [colLabel('designation')]:      s.designation || s.subject_label || '',
             [colLabel('bps')]:              s.grade || '',
             [colLabel('subject')]:          s.subject_label || '',
-            'REMARKS': (s.remarks && s.remarks.trim()) || 'Vacant Seat — No Staff Currently Posted',
+            'REMARKS': [staticRemark, ...tdMatches].filter(Boolean).join('\n'),
           });
         });
       });
 
-      // 3) Build the TD cross-listing rows / origin remarks patch
-      // using the TD + staff data already fetched in step 1c above.
-      const tdRows = [];
-      const remarksPatch = {};
-      if (tds && tds.length) {
-        const tempEmisList = [...new Set(tds.map(t => t.temporary_school_emis))];
-        const [{ data: pubMeta }, { data: privMeta }] = await Promise.all([
-          _sb.from('public_schools').select('emis, markaz_name, tehsil').in('emis', tempEmisList),
-          _sb.from('private_schools').select('emis, markaz_name, tehsil').in('emis', tempEmisList),
-        ]);
-        const schoolMetaByEmis = {};
-        [...(pubMeta || []), ...(privMeta || [])].forEach(m => { schoolMetaByEmis[m.emis] = m; });
-
-        tds.forEach(t => {
-          const staffRow = staffByPno[t.personal_no];
-          if (!staffRow) return;
-          const meta = schoolMetaByEmis[t.temporary_school_emis] || {};
-          const remarksText = `On Temporary Duty at EMIS: ${t.temporary_school_emis}, ${t.temporary_school_name || ''}, ${meta.markaz_name || ''}, ${meta.tehsil || ''}`;
-
-          if (emisList.includes(t.original_school_emis)) {
-            remarksPatch[t.personal_no] = remarksText;
-          }
-          if (emisList.includes(t.temporary_school_emis)) {
-            const rowObj = { 'REMARKS': remarksText };
-            Object.entries(STAFF_COL_MAP).forEach(([key, label]) => { rowObj[label] = staffRow[key] ?? ''; });
-            // Placed against the TD school, not their permanent one.
-            rowObj[colLabel('school_emis_code')] = t.temporary_school_emis;
-            rowObj[colLabel('school_name')]      = t.temporary_school_name || '';
-            if (meta.markaz_name) rowObj[colLabel('markaz_name')] = meta.markaz_name;
-            if (meta.tehsil)      rowObj[colLabel('tehsil')]      = meta.tehsil;
-            tdRows.push(rowObj);
-          }
-        });
-      }
-
-      return { success: true, vacantRows, tdRows, remarksPatch };
+      return { success: true, vacantRows, remarksPatch };
     }
 
     case 'getSeatManagementList': {
