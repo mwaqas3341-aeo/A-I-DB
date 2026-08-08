@@ -1312,10 +1312,44 @@ async function apiCall(action, payload) {
         (occupantsByEmisGrade[key] = occupantsByEmisGrade[key] || []).push(o);
       });
 
+      // 1c) Active Temporary Duty records touching any school in
+      // scope, fetched up front (rather than after vacancy is
+      // worked out) because a TD employee is physically covering
+      // their seat at the *destination* school — that seat is
+      // occupied there for as long as the TD is active, and must
+      // not also be reported as VACANT just because the TD employee's
+      // permanent posting (staff.school_emis_code) is elsewhere.
+      const { data: tds } = await _sb.from('staff_temporary_duty')
+        .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name')
+        .eq('status', 'active')
+        .or(`temporary_school_emis.in.(${emisList.join(',')}),original_school_emis.in.(${emisList.join(',')})`);
+
+      let staffByPno = {};
+      if (tds && tds.length) {
+        const personalNos = [...new Set(tds.map(t => t.personal_no))];
+        const { data: tdStaffRows } = await _sb.from('staff').select('*').in('personal_no', personalNos);
+        (tdStaffRows || []).forEach(s => { staffByPno[s.personal_no] = s; });
+
+        // Fold each TD employee into the destination school's occupant
+        // pool (only if the destination is one of the schools in
+        // scope) so the vacancy pass below sees them covering that
+        // seat — the same designation/BPS matching used for permanent
+        // staff applies here too.
+        tds.forEach(t => {
+          if (!emisList.includes(t.temporary_school_emis)) return;
+          const staffRow = staffByPno[t.personal_no];
+          if (!staffRow) return;
+          const key = `${t.temporary_school_emis}||${staffRow.bps}`;
+          (occupantsByEmisGrade[key] = occupantsByEmisGrade[key] || [])
+            .push({ school_emis_code: t.temporary_school_emis, bps: staffRow.bps, designation: staffRow.designation });
+        });
+      }
+
       // 2) Expand each sanctioned row into individual seat "units" so
       // partially-filled rows (e.g. sanctioned_count=3) are handled
       // correctly, then bucket the units by EMIS + grade. Within a
-      // bucket, match units to real staff in two passes:
+      // bucket, match units to real staff (permanent + TD-covering,
+      // from above) in two passes:
       //   a) exact designation/subject-label match (handles cases
       //      like a grade sharing several distinct seat types, e.g.
       //      non-teaching grade 1 = C-IV / School Guard / Security
@@ -1383,25 +1417,16 @@ async function apiCall(action, payload) {
         });
       });
 
-      // 3) Active Temporary Duty records touching any school in scope,
-      // either as the TD destination or the employee's original posting.
-      const { data: tds } = await _sb.from('staff_temporary_duty')
-        .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name')
-        .eq('status', 'active')
-        .or(`temporary_school_emis.in.(${emisList.join(',')}),original_school_emis.in.(${emisList.join(',')})`);
-
+      // 3) Build the TD cross-listing rows / origin remarks patch
+      // using the TD + staff data already fetched in step 1c above.
       const tdRows = [];
       const remarksPatch = {};
       if (tds && tds.length) {
-        const personalNos = [...new Set(tds.map(t => t.personal_no))];
         const tempEmisList = [...new Set(tds.map(t => t.temporary_school_emis))];
-        const [{ data: staffRows }, { data: pubMeta }, { data: privMeta }] = await Promise.all([
-          _sb.from('staff').select('*').in('personal_no', personalNos),
+        const [{ data: pubMeta }, { data: privMeta }] = await Promise.all([
           _sb.from('public_schools').select('emis, markaz_name, tehsil').in('emis', tempEmisList),
           _sb.from('private_schools').select('emis, markaz_name, tehsil').in('emis', tempEmisList),
         ]);
-        const staffByPno = {};
-        (staffRows || []).forEach(s => { staffByPno[s.personal_no] = s; });
         const schoolMetaByEmis = {};
         [...(pubMeta || []), ...(privMeta || [])].forEach(m => { schoolMetaByEmis[m.emis] = m; });
 
