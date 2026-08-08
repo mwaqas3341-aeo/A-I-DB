@@ -151,9 +151,9 @@ function seatRenderTable() {
               <td>${escHtmlAp(r.designation || '')}</td>
               <td>${r.sanctioned_count ?? 0}</td>
               <td style="color:${r.abolished_count ? '#DC2626' : 'inherit'}">${r.abolished_count ?? 0}</td>
-              <td style="font-weight:700;color:#0d9488">${r.effective_sanctioned_count ?? (r.sanctioned_count - r.abolished_count)}</td>
-              <td>${r.filled_count ?? 0}</td>
-              <td style="font-weight:700;color:${r.vacant_count > 0 ? '#DC2626' : 'inherit'}">${r.vacant_count ?? 0}</td>
+              <td style="font-weight:700;color:#0d9488">${r.effective_computed ?? r.effective_sanctioned_count ?? (r.sanctioned_count - r.abolished_count)}</td>
+              <td title="Live count from current active staff, not the manually-typed Filled Seats value">${r.working_computed ?? r.filled_count ?? 0}</td>
+              <td style="font-weight:700;color:${(r.vacant_computed ?? r.vacant_count) > 0 ? '#DC2626' : 'inherit'}">${r.vacant_computed ?? r.vacant_count ?? 0}</td>
               <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:.76rem;color:var(--t3)">${escHtmlAp(r.remarks || '')}</td>
               <td class="actions-col">
                 <button class="hr-btn-ghost" style="padding:5px 10px;font-size:.74rem" onclick="openSeatModal('${r.id}')">Edit</button>
