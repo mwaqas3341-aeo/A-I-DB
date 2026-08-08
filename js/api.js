@@ -1268,6 +1268,18 @@ async function apiCall(action, payload) {
     // for the client to append (VACANT placeholders + TD cross-listing)
     // plus a small map of Remarks to patch onto already-exported rows
     // at the TD employee's original posting.
+    //
+    // IMPORTANT: vacancy is derived by comparing sanctioned seats
+    // against ACTUAL currently-working staff (status='active') for
+    // the same EMIS + BPS/grade — never against the sanctioned
+    // table's own `filled_count` column. `filled_count` is a manually
+    // typed field on the Seat Management screen (defaults to 0 and is
+    // routinely left un-updated), so trusting it here previously
+    // caused the whole sanctioned strength to be re-added as VACANT
+    // even when every seat was already occupied. Counting real staff
+    // rows is the only way to guarantee: sanctioned == occupied → 0
+    // vacant rows, and only the true shortfall (sanctioned - occupied)
+    // is ever appended.
     case 'getStaffStatementExtras': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const emisList = [...new Set((p.emisList || []).filter(Boolean))];
@@ -1277,15 +1289,80 @@ async function apiCall(action, payload) {
 
       // 1) Sanctioned seats (both categories) for schools in scope.
       const { data: seats } = await _sb.from('sne_subject_sanctioned')
-        .select('emis, school_name, district, wing, tehsil, markaz_name, category, designation, grade, subject_label, sanctioned_count, abolished_count, filled_count, remarks')
+        .select('emis, school_name, district, wing, tehsil, markaz_name, category, designation, grade, subject_label, sanctioned_count, abolished_count, remarks')
         .in('emis', emisList);
 
-      const vacantRows = [];
+      // 1b) Actual currently-working staff for the same schools — the
+      // real source of truth for which seats are occupied. Matched on
+      // EMIS + BPS (grade) first (non-teaching sanctioned seats all
+      // sit at grade 1, teaching seats start at grade 7+, so the two
+      // never collide at the same EMIS), then refined by designation
+      // text below so seats aren't just counted but correctly
+      // identified.
+      const { data: occupants } = await _sb.from('staff')
+        .select('school_emis_code, bps, designation')
+        .eq('status', 'active')
+        .in('school_emis_code', emisList);
+
+      const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+      const occupantsByEmisGrade = {};
+      (occupants || []).forEach(o => {
+        const key = `${o.school_emis_code}||${o.bps}`;
+        (occupantsByEmisGrade[key] = occupantsByEmisGrade[key] || []).push(o);
+      });
+
+      // 2) Expand each sanctioned row into individual seat "units" so
+      // partially-filled rows (e.g. sanctioned_count=3) are handled
+      // correctly, then bucket the units by EMIS + grade. Within a
+      // bucket, match units to real staff in two passes:
+      //   a) exact designation/subject-label match (handles cases
+      //      like a grade sharing several distinct seat types, e.g.
+      //      non-teaching grade 1 = C-IV / School Guard / Security
+      //      Guard — each must be checked against its own occupant,
+      //      not just the grade's total headcount);
+      //   b) any staff left unmatched by name fill whichever units
+      //      are still open (handles teaching designations that don't
+      //      literally match the sanctioned subject text, e.g. staff
+      //      "PST" vs sanctioned "ESE (Science)" — same seat, looser
+      //      wording — while still capping vacancy at the true
+      //      shortfall for that grade).
+      // Whatever units are left after both passes are the actual
+      // vacant seats — never the whole bucket when it's already
+      // fully staffed, never more than the real shortfall.
+      const bucketed = {};
       (seats || []).forEach(s => {
-        const effective = (s.sanctioned_count || 0) - (s.abolished_count || 0);
-        const vacant = effective - (s.filled_count || 0);
-        if (vacant <= 0) return;
-        for (let i = 0; i < vacant; i++) {
+        const effective = Math.max((s.sanctioned_count || 0) - (s.abolished_count || 0), 0);
+        if (effective <= 0) return;
+        const key = `${s.emis}||${s.grade}`;
+        if (!bucketed[key]) bucketed[key] = [];
+        for (let i = 0; i < effective; i++) bucketed[key].push(s);
+      });
+
+      const vacantRows = [];
+      Object.keys(bucketed).forEach(key => {
+        const units = bucketed[key].sort((a, b) =>
+          String(a.subject_label || '').localeCompare(String(b.subject_label || '')));
+        const pool = (occupantsByEmisGrade[key] || []).slice(); // staff still available to match, this bucket
+        const filled = new Array(units.length).fill(false);
+
+        // Pass a) exact designation/subject-label text match.
+        units.forEach((s, i) => {
+          const label = norm(s.subject_label || s.designation);
+          if (!label) return;
+          const idx = pool.findIndex(o => norm(o.designation) === label);
+          if (idx !== -1) { pool.splice(idx, 1); filled[i] = true; }
+        });
+
+        // Pass b) any remaining real staff in this grade fill whatever
+        // units are still open, so genuine headcount is never reported
+        // as vacant just because the wording didn't line up exactly.
+        for (let i = 0; i < units.length && pool.length; i++) {
+          if (!filled[i]) { pool.pop(); filled[i] = true; }
+        }
+
+        units.forEach((s, i) => {
+          if (filled[i]) return;
           vacantRows.push({
             [colLabel('school_emis_code')]: s.emis,
             [colLabel('school_name')]:      s.school_name || '',
@@ -1298,10 +1375,10 @@ async function apiCall(action, payload) {
             [colLabel('subject')]:          s.subject_label || '',
             'REMARKS': (s.remarks && s.remarks.trim()) || 'Vacant Seat — No Staff Currently Posted',
           });
-        }
+        });
       });
 
-      // 2) Active Temporary Duty records touching any school in scope,
+      // 3) Active Temporary Duty records touching any school in scope,
       // either as the TD destination or the employee's original posting.
       const { data: tds } = await _sb.from('staff_temporary_duty')
         .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name')
