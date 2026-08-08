@@ -915,6 +915,12 @@ function downloadActiveStaff() {
           });
         }
         allRows = allRows.concat(extras.vacantRows || [], extras.tdRows || []);
+        // Vacant rows arrive appended at the end — re-sort so each
+        // school's seats read top to bottom by BPS (16 → 1), and
+        // within the same EMIS + BPS the real/filled staff come
+        // first, immediately followed by that BPS's VACANT row(s),
+        // before moving on to the next BPS.
+        allRows = _sortStaffStatementRows(allRows);
       }
       _downloadActiveStaffFinish(allRows, exportCols);
     })
@@ -924,6 +930,31 @@ function downloadActiveStaff() {
       _downloadActiveStaffFinish(rows, exportCols);
     })
     .getStaffStatementExtras({ emisList });
+}
+
+// Groups the final Staff Statement (real staff + appended VACANT +
+// Temporary Duty rows) by Markaz → EMIS → BPS (descending), and
+// within an identical EMIS+BPS puts filled seats before the VACANT
+// seat(s) for that same BPS — e.g. all BPS 16 staff, then BPS 16
+// VACANT rows, then all BPS 15 staff, then BPS 15 VACANT rows, etc.
+function _sortStaffStatementRows(rows) {
+  return rows.slice().sort((a, b) => {
+    const markazA = (a['MARKAZ NAME'] || '').toString().toLowerCase();
+    const markazB = (b['MARKAZ NAME'] || '').toString().toLowerCase();
+    if (markazA !== markazB) return markazA < markazB ? -1 : 1;
+
+    const emisA = parseInt((a['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
+    const emisB = parseInt((b['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
+    if (emisA !== emisB) return emisA - emisB;
+
+    const bpsA = parseInt((a['BPS'] || '').toString(), 10) || 0;
+    const bpsB = parseInt((b['BPS'] || '').toString(), 10) || 0;
+    if (bpsA !== bpsB) return bpsB - bpsA; // Descending BPS
+
+    const aVacant = (a['NAME OF TEACHER'] || '').toString().trim().toUpperCase() === 'VACANT' ? 1 : 0;
+    const bVacant = (b['NAME OF TEACHER'] || '').toString().trim().toUpperCase() === 'VACANT' ? 1 : 0;
+    return aVacant - bVacant; // filled staff before the VACANT row(s) at the same BPS
+  });
 }
 
 function _downloadActiveStaffFinish(rows, exportCols) {
