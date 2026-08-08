@@ -889,10 +889,44 @@ function downloadActiveStaff() {
     return;
   }
 
-  // Export ALL columns that are present in the current sheet headers
-  const exportCols = hrCurrentHeaders.length > 0
-    ? hrCurrentHeaders
-    : Object.values(SF_MAP); // fallback
+  // Export ALL columns that are present in the current sheet headers,
+  // plus a Remarks column for Temporary Duty annotations (added even
+  // if the on-screen grid doesn't normally show one).
+  const exportCols = (hrCurrentHeaders.length > 0 ? hrCurrentHeaders.slice() : Object.values(SF_MAP));
+  if (!exportCols.includes('REMARKS')) exportCols.push('REMARKS');
+
+  const pnoCol = 'PERSONAL NO.';
+  const emisCol = 'SCHOOL EMIS CODE';
+  const emisList = [...new Set(rows.map(r => r[emisCol]).filter(Boolean))];
+
+  hrShowToast('Preparing Staff Statement (including vacant seats and Temporary Duty)…', true);
+
+  google.script.run
+    .withSuccessHandler(extras => {
+      let allRows = rows;
+      if (extras && extras.success) {
+        // Patch Remarks onto the TD employee's existing row at their
+        // original posting — that row itself is left otherwise
+        // untouched, per spec.
+        if (extras.remarksPatch && Object.keys(extras.remarksPatch).length) {
+          allRows = rows.map(r => {
+            const remark = extras.remarksPatch[r[pnoCol]];
+            return remark ? { ...r, 'REMARKS': [r['REMARKS'], remark].filter(Boolean).join(' | ') } : r;
+          });
+        }
+        allRows = allRows.concat(extras.vacantRows || [], extras.tdRows || []);
+      }
+      _downloadActiveStaffFinish(allRows, exportCols);
+    })
+    .withFailureHandler(() => {
+      // Extras are additive — if they fail to load, still deliver the
+      // normal Staff Statement rather than blocking the whole export.
+      _downloadActiveStaffFinish(rows, exportCols);
+    })
+    .getStaffStatementExtras({ emisList });
+}
+
+function _downloadActiveStaffFinish(rows, exportCols) {
 
   const userPayload = typeof currentUser !== 'undefined' ? currentUser : { name: 'Admin' };
   const cleanRows = rows.map(r => {
