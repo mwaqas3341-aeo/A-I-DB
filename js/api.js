@@ -1363,6 +1363,10 @@ async function apiCall(action, payload) {
 
         units.forEach((s, i) => {
           if (filled[i]) return;
+          // "VACANT" goes in the employee-name cell — the DESIGNATION
+          // cell carries the actual seat name (e.g. "SST (School
+          // Head)", "C-IV") so the vacant row reads like a real staff
+          // row with an empty seat, not a designation of "VACANT".
           vacantRows.push({
             [colLabel('school_emis_code')]: s.emis,
             [colLabel('school_name')]:      s.school_name || '',
@@ -1370,7 +1374,8 @@ async function apiCall(action, payload) {
             [colLabel('district')]:         s.district || '',
             [colLabel('wing')]:             s.wing || '',
             [colLabel('tehsil')]:           s.tehsil || '',
-            [colLabel('designation')]:      'VACANT',
+            [colLabel('name_of_teacher')]:  'VACANT',
+            [colLabel('designation')]:      s.designation || s.subject_label || '',
             [colLabel('bps')]:              s.grade || '',
             [colLabel('subject')]:          s.subject_label || '',
             'REMARKS': (s.remarks && s.remarks.trim()) || 'Vacant Seat — No Staff Currently Posted',
