@@ -160,7 +160,7 @@
       return;
     }
 
-    console.log('[preloader] 🚀 Starting parallel preload for', user.name);
+    console.log('[preloader] 🚀 Starting throttled preload for', user.name);
     _createBar();
     _setBar(5);
 
@@ -179,16 +179,42 @@
       }
     }
 
+    // ── Throttled queue ─────────────────────────────────────────────
+    // Firing all 9 GAS calls at once used to flood the main thread the
+    // instant login finished: 9 responses landing back-to-back each
+    // trigger their own DOM render (dropdowns/tables/KPI cards), which
+    // starves the browser of time to paint the .app-view fade-in
+    // transition that's running at the very same moment — on a slow
+    // connection (a few KB/s) that starvation window stretches out for
+    // seconds, so whatever view the user is on (e.g. opening the HR
+    // module right after login) visibly gets stuck mid-fade: pale,
+    // low-contrast, unreadable, looking "broken" even though the data
+    // underneath is fine. Capping concurrency keeps only a couple of
+    // responses landing at once, so the main thread always has room to
+    // finish rendering/painting between them.
+    var MAX_CONCURRENT = 3;
+    var _queue = [];
+
     function _fetch(action, payload) {
-      window.apiCall(action, payload)
-        .then(_tick)
-        .catch(function (err) {
-          console.warn('[preloader] ' + action + ' failed:', err.message || err);
-          _tick();   // still count it so bar completes
-        });
+      _queue.push({ action: action, payload: payload });
     }
 
-    // ── Fire all 9 simultaneously ────────────────────────────────────
+    function _runQueue() {
+      while (_inFlightCount < MAX_CONCURRENT && _queue.length) {
+        var job = _queue.shift();
+        _inFlightCount++;
+        window.apiCall(job.action, job.payload)
+          .catch(function (err) {
+            console.warn('[preloader] ' + job.action + ' failed:', err.message || err);
+          })
+          .then(function () {
+            _inFlightCount--;
+            _tick();
+            _runQueue();
+          });
+      }
+    }
+    var _inFlightCount = 0;
 
     // 1. KPI counts (dashboard numbers)
     _fetch('getSummaryCounts', user);
@@ -221,6 +247,9 @@
 
     // 9. HR Staff sheet
     _fetch('loadSheetForClient', ['Staff', user]);
+
+    // Kick off the throttled queue (max MAX_CONCURRENT in flight at once)
+    _runQueue();
   }
 
   // ═══════════════════════════════════════════════════════════════════

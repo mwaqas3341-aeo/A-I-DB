@@ -734,16 +734,33 @@ function invalidateCache(sheetName) {
 // =====================================================================
 function closeModal()        { document.getElementById('detailModal').classList.add('hidden'); }
 let _loadingOverlaySafetyTimer = null;
+let _loadingOverlayInFlight = 0;
 function showLoading() {
+  _loadingOverlayInFlight++;
   document.getElementById('loadingOverlay').classList.remove('hidden');
   // Safety net: an overlay left visible forever (e.g. an unhandled
   // rejection somewhere in the call chain) would exactly reproduce a
   // permanently "washed out" screen — auto-clear after 20s no matter
   // what, so a stuck request can never leave the whole app unreadable.
   clearTimeout(_loadingOverlaySafetyTimer);
-  _loadingOverlaySafetyTimer = setTimeout(hideLoading, 20000);
+  _loadingOverlaySafetyTimer = setTimeout(_forceHideLoading, 20000);
 }
 function hideLoading() {
+  // Was previously a plain show/hide toggle: if two showLoading() calls
+  // overlapped (e.g. two requests in flight at once) the first request's
+  // hideLoading() would close the overlay while the second request was
+  // still running, and that second request's own hideLoading() call
+  // would then be a no-op on an already-hidden element — harmless by
+  // itself, but the mirror case (second call's hideLoading() firing
+  // before the first's) could leave the overlay's "still open" state
+  // out of sync with reality. Track it as a counter instead so the
+  // overlay only actually closes once every in-flight caller is done.
+  _loadingOverlayInFlight = Math.max(0, _loadingOverlayInFlight - 1);
+  if (_loadingOverlayInFlight > 0) return;
+  _forceHideLoading();
+}
+function _forceHideLoading() {
+  _loadingOverlayInFlight = 0;
   document.getElementById('loadingOverlay').classList.add('hidden');
   clearTimeout(_loadingOverlaySafetyTimer);
 }
