@@ -48,8 +48,7 @@ h1, h2, h3, h4, h5, h6, .hr-nav-label, .mc-title, .sfm-label{
   text-decoration:none !important;
 }
 
-
-   Broad selector on purpose: catches every existing button class
+/* Broad selector on purpose: catches every existing button class
    (hr-btn-*, btn-*, kpi-sub-btn*, tbl-btn, ia-tab-btn, nav-*-btn,
    hr-nav-item, hr-view-btn, general-sub-tab, etc.) plus any future
    one, without listing each individually. */
