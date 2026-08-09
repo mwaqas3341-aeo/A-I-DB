@@ -1390,7 +1390,11 @@ async function apiCall(action, payload) {
           const key = seatKey(t.temporary_school_emis, staffRow.designation, staffRow.bps, staffRow.subject);
           const regulars = (regularBySeat[key] || []).filter(r => r.personal_no !== t.personal_no);
           const originSchoolName = originMeta.school_name || t.original_school_emis;
-          const tdText = `Temporary Duty: ${staffRow.name_of_teacher || 'Employee'} (Personal No: ${t.personal_no}) from ${originSchoolName}`;
+          // Personal No, original EMIS, original school name, markaz,
+          // tehsil — everything needed to trace the employee back to
+          // their original place of posting from this Remarks cell.
+          const tdText = `Temporary Duty: ${staffRow.name_of_teacher || 'Employee'}, Personal No: ${t.personal_no}, ` +
+            `Original Place of Posting: EMIS ${t.original_school_emis} - ${originSchoolName}, ${originMeta.markaz_name || ''}, ${originMeta.tehsil || ''}`;
 
           if (regulars.length) {
             // Case 3/4 — seat already filled: patch the actual seat
@@ -1432,12 +1436,20 @@ async function apiCall(action, payload) {
       // Designation + BPS + Subject combo). Surface as a clearly-
       // marked informational row rather than silently dropping the
       // employee, but keep it visually distinct from a real sanctioned
-      // vacant seat so it can't be mistaken for one.
+      // vacant seat so it can't be mistaken for one. Carries the same
+      // Markaz/EMIS/Tehsil/Wing fields as every other row so the export
+      // sort places it with its own school instead of floating to the
+      // top (a blank Markaz sorts first, ahead of everything).
       Object.entries(vacantSeatTdRemarks).forEach(([key, texts]) => {
         const [emis] = key.split('|');
         const originalCaseEmis = touchedEmis.find(e => norm(e) === emis) || emis;
+        const meta = schoolMetaByEmis[originalCaseEmis] || {};
         vacantRows.push({
           [colLabel('school_emis_code')]: originalCaseEmis,
+          [colLabel('school_name')]:      meta.school_name || '',
+          [colLabel('markaz_name')]:      meta.markaz_name || '',
+          [colLabel('tehsil')]:           meta.tehsil || '',
+          [colLabel('wing')]:             meta.wing || '',
           [colLabel('designation')]:      'TEMPORARY DUTY (NO SANCTIONED SEAT RECORD FOUND)',
           'REMARKS': texts.join(' | ') + ' — please verify sanctioned seat data for this post.',
         });
