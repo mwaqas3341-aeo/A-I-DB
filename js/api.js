@@ -1299,8 +1299,17 @@ async function apiCall(action, payload) {
 
       const colLabel = key => STAFF_COL_MAP[key] || key;
       const norm = v => String(v == null ? '' : v).trim().toLowerCase();
+      // BPS/grade needs numeric comparison, not string: sne_subject_
+      // sanctioned.grade is stored as a plain number (1, 14, 16...)
+      // while staff.bps is free-text and can arrive as "1", "01",
+      // etc. Comparing them as raw strings silently failed to match
+      // ("1" !== "01"), which was producing a duplicate row — the
+      // real vacant seat (generic remark, no match found) PLUS a
+      // separate "no matching seat" fallback row for the same TD
+      // employee. Parsing both to int fixes the match.
+      const normBps = v => { const n = parseInt(v, 10); return isNaN(n) ? norm(v) : String(n); };
       const seatKey = (emis, designation, bps, subject) =>
-        `${norm(emis)}|${norm(designation)}|${norm(bps)}|${norm(subject)}`;
+        `${norm(emis)}|${norm(designation)}|${normBps(bps)}|${norm(subject)}`;
 
       const plainVacantRow = (s, remarkOverride) => ({
         [colLabel('school_emis_code')]: s.emis,
