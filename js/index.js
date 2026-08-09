@@ -686,6 +686,22 @@ HR_SUB_SHEETS.forEach(sheet => {
 ROUTES['hr-seats-teaching'] = () => { if (typeof openSeatManagement === 'function') openSeatManagement('teaching'); };
 ROUTES['hr-seats-non_teaching'] = () => { if (typeof openSeatManagement === 'function') openSeatManagement('non_teaching'); };
 
+// Admin Panel sub-tabs
+const ADMIN_SUB_TABS = {
+  'admin-kpi':     { tab: 'kpi',     btnId: 'tabKpi' },
+  'admin-general': { tab: 'general', btnId: 'tabGeneral' },
+  'admin-ia':      { tab: 'ia',      btnId: 'tabIA' },
+  'admin-links':   { tab: 'links',   btnId: 'tabLinks' },
+  'admin-tools':   { tab: 'tools',   btnId: 'tabTools' },
+  'admin-users':   { tab: 'users',   btnId: 'tabUsers' },
+};
+Object.entries(ADMIN_SUB_TABS).forEach(([routeKey, cfg]) => {
+  ROUTES[routeKey] = () => {
+    if (typeof _rawOpenAdmin === 'function') _rawOpenAdmin();
+    if (typeof switchAdminTab === 'function') switchAdminTab(cfg.tab, document.getElementById(cfg.btnId));
+  };
+});
+
 let _navInFlight = false;
 
 function navigateTo(routeKey, push = true) {
@@ -721,6 +737,48 @@ window.addEventListener('popstate', e => {
   const routeKey = e.state.route || 'home';
   navigateTo(routeKey, false);
 });
+
+// ── GENERIC MODULE ROUTING (applies to every current AND future
+//    module with zero extra JS) ───────────────────────────────────
+// Convention: any nav element just needs href="#some-key" plus
+// data-route="some-key" — its EXISTING onclick/behavior is left
+// completely untouched. Two things then happen automatically:
+//
+// 1) A capture-phase delegated listener (runs before the element's
+//    own onclick) updates the URL hash via pushState on a plain
+//    left-click, then lets the element's own onclick run as normal —
+//    it never touches which function gets called, only the URL.
+//    Ctrl/Cmd/Shift/middle-click are left alone so the browser's
+//    native "open in new tab" fires exactly like any ordinary link.
+// 2) On boot, every data-route element not already covered by a
+//    hand-written ROUTES entry gets one auto-generated that simply
+//    re-clicks that same element — so a fresh tab/refresh landing on
+//    that hash reruns the exact same code path a real click would.
+//
+// Net effect: adding multi-tab support to a brand-new module is just
+// adding href+data-route to its button in HTML — no JS route to
+// write, no risk of the route drifting out of sync with the button.
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-route]');
+  if (!el) return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // native new-tab handling
+  const key = el.dataset.route;
+  if (el.tagName === 'A' && el.getAttribute('href')) e.preventDefault();
+  if (!_navInFlight) history.pushState({ route: key }, '', '#' + key);
+}, true);
+
+function _autoRegisterDataRoutes() {
+  document.querySelectorAll('[data-route]').forEach(el => {
+    const key = el.dataset.route;
+    if (!key || ROUTES[key]) return; // hand-written routes always win
+    ROUTES[key] = () => {
+      const prev = _navInFlight;
+      _navInFlight = true;
+      try { el.click(); } finally { _navInFlight = prev; }
+    };
+  });
+}
+window.addEventListener('load', _autoRegisterDataRoutes);
 
 let _rawOpenPublic  = null;
 let _rawOpenPrivate = null;
