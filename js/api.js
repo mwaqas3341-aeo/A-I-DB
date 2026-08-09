@@ -1311,6 +1311,19 @@ async function apiCall(action, payload) {
       const seatKey = (emis, designation, bps, subject) =>
         `${norm(emis)}|${norm(designation)}|${normBps(bps)}|${norm(subject)}`;
 
+      // Subject only means anything for Teaching posts (it disambiguates
+      // e.g. two SESE seats of the same BPS by subject). For Non-Teaching
+      // seats, "subject_label" in sne_subject_sanctioned is often reused
+      // for other text instead of being left blank, while the matching
+      // staff record's own "subject" field commonly holds a placeholder
+      // like "NIL" — neither is blank, so comparing them as text always
+      // fails and a real seat looks unmatched. Force subject out of the
+      // key entirely for anything that isn't Teaching.
+      const seatMatchKey = s => seatKey(
+        s.emis, s.designation, s.grade,
+        norm(s.category) === 'teaching' ? s.subject_label : ''
+      );
+
       const plainVacantRow = (s, remarkOverride) => ({
         [colLabel('school_emis_code')]: s.emis,
         [colLabel('school_name')]:      s.school_name || '',
@@ -1333,7 +1346,7 @@ async function apiCall(action, payload) {
       // 2) Active Temporary Duty records touching any school in scope,
       // either as the TD destination or the employee's original posting.
       const { data: tds } = await _sb.from('staff_temporary_duty')
-        .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name')
+        .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name, order_number')
         .eq('status', 'active')
         .or(`temporary_school_emis.in.(${emisList.join(',')}),original_school_emis.in.(${emisList.join(',')})`);
 
@@ -1370,10 +1383,26 @@ async function apiCall(action, payload) {
       const schoolMetaByEmis = {};
       [...(pubMeta || []), ...(privMeta || [])].forEach(m => { schoolMetaByEmis[m.emis] = m; });
 
+      // Every key a real seat actually resolves to (category-aware —
+      // see seatMatchKey above), so TD/staff-side lookups know whether
+      // to trust a subject-specific key or fall back to the
+      // subject-less one for that particular post.
+      const knownSeatKeys = new Set((seats || []).map(seatMatchKey));
+      const resolveMatchKey = (emis, designation, bps, subject) => {
+        const withSubj = seatKey(emis, designation, bps, subject);
+        if (knownSeatKeys.has(withSubj)) return withSubj;
+        const blank = seatKey(emis, designation, bps, '');
+        return knownSeatKeys.has(blank) ? blank : withSubj;
+      };
+
       const regularBySeat = {};
       (destStaff || []).forEach(st => {
-        const key = seatKey(st.school_emis_code, st.designation, st.bps, st.subject);
-        (regularBySeat[key] = regularBySeat[key] || []).push(st);
+        // Indexed under both the subject-specific and subject-less key
+        // so resolveMatchKey's chosen key always finds them.
+        const k1 = seatKey(st.school_emis_code, st.designation, st.bps, st.subject);
+        const k2 = seatKey(st.school_emis_code, st.designation, st.bps, '');
+        (regularBySeat[k1] = regularBySeat[k1] || []).push(st);
+        if (k2 !== k1) (regularBySeat[k2] = regularBySeat[k2] || []).push(st);
       });
 
       // TD text queued against a vacant seat key — consumed one per
@@ -1396,14 +1425,25 @@ async function apiCall(action, payload) {
 
         // (b) Destination side, if in scope.
         if (emisList.includes(t.temporary_school_emis)) {
-          const key = seatKey(t.temporary_school_emis, staffRow.designation, staffRow.bps, staffRow.subject);
+          const key = resolveMatchKey(t.temporary_school_emis, staffRow.designation, staffRow.bps, staffRow.subject);
           const regulars = (regularBySeat[key] || []).filter(r => r.personal_no !== t.personal_no);
           const originSchoolName = originMeta.school_name || t.original_school_emis;
-          // Personal No, original EMIS, original school name, markaz,
-          // tehsil — everything needed to trace the employee back to
-          // their original place of posting from this Remarks cell.
-          const tdText = `Temporary Duty: ${staffRow.name_of_teacher || 'Employee'}, Personal No: ${t.personal_no}, ` +
-            `Original Place of Posting: EMIS ${t.original_school_emis} - ${originSchoolName}, ${originMeta.markaz_name || ''}, ${originMeta.tehsil || ''}`;
+          const bpsLabel = staffRow.bps ? `BPS-${String(staffRow.bps).padStart(2, '0')}` : '';
+          // Personal No, Designation, BPS, original EMIS + school name,
+          // and Order No if one was recorded — everything needed to
+          // trace the employee back to their original place of posting
+          // straight from this Remarks cell.
+          const tdText = [
+            `Temporary Duty: ${staffRow.name_of_teacher || 'Employee'}`,
+            `Personal No: ${t.personal_no}`,
+            staffRow.designation ? `Designation: ${staffRow.designation}` : null,
+            bpsLabel || null,
+            `From EMIS: ${t.original_school_emis} (${originSchoolName})`,
+            (originMeta.markaz_name || originMeta.tehsil)
+              ? `${[originMeta.markaz_name, originMeta.tehsil].filter(Boolean).join(', ')}`
+              : null,
+            t.order_number ? `Order No: ${t.order_number}` : null,
+          ].filter(Boolean).join(' | ');
 
           if (regulars.length) {
             // Case 3/4 — seat already filled: patch the actual seat
@@ -1426,7 +1466,7 @@ async function apiCall(action, payload) {
       (seats || []).forEach(s => {
         const effective = (s.sanctioned_count || 0) - (s.abolished_count || 0);
         const vacant = Math.max(0, effective - (s.filled_count || 0));
-        const key = seatKey(s.emis, s.designation, s.grade, s.subject_label);
+        const key = seatMatchKey(s);
         const tdTexts = (vacantSeatTdRemarks[key] || []).slice();
         for (let i = 0; i < vacant; i++) vacantRows.push(plainVacantRow(s, tdTexts.shift()));
         // More TD employees landed on this vacant post than there are
