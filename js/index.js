@@ -683,8 +683,17 @@ HR_SUB_SHEETS.forEach(sheet => {
     if (typeof hrGoToSheet === 'function') hrGoToSheet(sheet);
   };
 });
+// Inspection Allowance sub-tabs
 ROUTES['hr-seats-teaching'] = () => { if (typeof openSeatManagement === 'function') openSeatManagement('teaching'); };
 ROUTES['hr-seats-non_teaching'] = () => { if (typeof openSeatManagement === 'function') openSeatManagement('non_teaching'); };
+
+const IA_SUB_TABS = { 'inspection-allowance-my-bill': 'myBill', 'inspection-allowance-performance': 'performance', 'inspection-allowance-budgetprep': 'budgetprep', 'inspection-allowance-aeobill': 'aeobill' };
+Object.entries(IA_SUB_TABS).forEach(([routeKey, tabKey]) => {
+  ROUTES[routeKey] = () => {
+    if (typeof _rawOpenIa === 'function') _rawOpenIa();
+    if (typeof iaSwitchTab === 'function') iaSwitchTab(tabKey);
+  };
+});
 
 // Admin Panel sub-tabs
 const ADMIN_SUB_TABS = {
