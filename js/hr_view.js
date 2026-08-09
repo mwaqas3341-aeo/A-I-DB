@@ -464,6 +464,26 @@ function applyHrFilter() {
   }
 }
 
+// Shared row order for every Staff view/export: Markaz (A→Z), then
+// EMIS Code (ascending), then BPS (descending). Pulled out so the
+// Staff Statement download can re-apply the exact same order after
+// merging in Vacant-seat placeholder rows — otherwise those land in
+// their own block at the end instead of alongside their own EMIS/BPS.
+function _hrRowSortComparator(a, b) {
+  const markazA = (a['MARKAZ NAME'] || a._markaz || '').toString().toLowerCase();
+  const markazB = (b['MARKAZ NAME'] || b._markaz || '').toString().toLowerCase();
+  if (markazA < markazB) return -1;
+  if (markazA > markazB) return 1;
+
+  const emisA = parseInt((a['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
+  const emisB = parseInt((b['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
+  if (emisA !== emisB) return emisA - emisB;
+
+  const bpsA = parseInt((a['BPS'] || '').toString(), 10) || 0;
+  const bpsB = parseInt((b['BPS'] || '').toString(), 10) || 0;
+  return bpsB - bpsA; // Descending BPS
+}
+
 function runHrClientFilter(sheet) {
   const cache = hrSheetDataCache[sheet];
   if (!cache || !cache.rows || !cache.rows.length) {
@@ -507,20 +527,7 @@ function runHrClientFilter(sheet) {
   // 1. Markaz Name (A → Z, case‑insensitive)
   // 2. EMIS Code (ascending, numeric)
   // 3. BPS (descending, numeric)  <-- changed to descending
-  filtered.sort((a, b) => {
-    const markazA = (a['MARKAZ NAME'] || a._markaz || '').toString().toLowerCase();
-    const markazB = (b['MARKAZ NAME'] || b._markaz || '').toString().toLowerCase();
-    if (markazA < markazB) return -1;
-    if (markazA > markazB) return 1;
-
-    const emisA = parseInt((a['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
-    const emisB = parseInt((b['SCHOOL EMIS CODE'] || '').toString(), 10) || 0;
-    if (emisA !== emisB) return emisA - emisB;
-
-    const bpsA = parseInt((a['BPS'] || '').toString(), 10) || 0;
-    const bpsB = parseInt((b['BPS'] || '').toString(), 10) || 0;
-    return bpsB - bpsA; // Descending BPS
-  });
+  filtered.sort(_hrRowSortComparator);
 
   hrFilteredResults = filtered;
 
@@ -933,6 +940,11 @@ function downloadActiveStaff() {
           });
         }
         allRows = allRows.concat(extras.vacantRows || [], extras.tdRows || []);
+        // Re-apply the same Markaz → EMIS → BPS(desc) order used
+        // everywhere else, so Vacant seat rows sit right next to the
+        // real staff of their own school/BPS instead of trailing the
+        // whole export as one block at the end.
+        allRows.sort(_hrRowSortComparator);
       }
       _downloadActiveStaffFinish(allRows, exportCols);
     })
