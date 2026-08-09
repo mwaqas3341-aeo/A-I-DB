@@ -733,5 +733,17 @@ function invalidateCache(sheetName) {
 //  MODAL HELPERS
 // =====================================================================
 function closeModal()        { document.getElementById('detailModal').classList.add('hidden'); }
-function showLoading()       { document.getElementById('loadingOverlay').classList.remove('hidden'); }
-function hideLoading()       { document.getElementById('loadingOverlay').classList.add('hidden'); }
+let _loadingOverlaySafetyTimer = null;
+function showLoading() {
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+  // Safety net: an overlay left visible forever (e.g. an unhandled
+  // rejection somewhere in the call chain) would exactly reproduce a
+  // permanently "washed out" screen — auto-clear after 20s no matter
+  // what, so a stuck request can never leave the whole app unreadable.
+  clearTimeout(_loadingOverlaySafetyTimer);
+  _loadingOverlaySafetyTimer = setTimeout(hideLoading, 20000);
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.add('hidden');
+  clearTimeout(_loadingOverlaySafetyTimer);
+}
