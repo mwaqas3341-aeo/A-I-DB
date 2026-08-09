@@ -292,7 +292,7 @@
           <div class="kpi-grid">
 
             <!-- ── GOVT / PUBLIC KPI CARD ── -->
-            <div class="kpi-card kpi-govt" style="cursor:pointer" onclick="openPublicModule('Public')" title="Click to open Public Schools">
+            <div class="kpi-card kpi-govt" style="cursor:pointer" data-route="public-Public" onclick="openPublicModule('Public')" title="Click to open Public Schools">
               <i class="bi bi-bank kpi-icon"></i>
               <div class="kpi-title">Govt / Public Schools</div>
               <div style="font-size:.72rem;color:var(--t3);font-weight:600;margin-top:2px">Active Public Schools</div>
@@ -303,11 +303,11 @@
                 Outsourced Public Schools: <span id="kpiOutsourced" style="font-family:var(--mono)">…</span>
               </div>
               <div class="kpi-actions">
-                <button class="kpi-sub-btn kpi-sub-btn-active"
+                <button class="kpi-sub-btn kpi-sub-btn-active" data-route="public-Public"
                         onclick="event.stopPropagation(); openPublicModule('Public')">
                   <i class="bi bi-check-circle-fill"></i> Active Schools
                 </button>
-                <button class="kpi-sub-btn kpi-sub-btn-outsourced"
+                <button class="kpi-sub-btn kpi-sub-btn-outsourced" data-route="public-OutSourced"
                         onclick="event.stopPropagation(); openPublicModule('Out Sourced School')">
                   <i class="bi bi-arrow-repeat"></i> Outsourced
                 </button>
@@ -315,7 +315,7 @@
             </div>
 
             <!-- ── PRIVATE KPI CARD ── -->
-            <div class="kpi-card kpi-private" style="cursor:pointer" onclick="openPrivateModule('Private')" title="Click to open Private Schools">
+            <div class="kpi-card kpi-private" style="cursor:pointer" data-route="private-Private" onclick="openPrivateModule('Private')" title="Click to open Private Schools">
               <i class="bi bi-building kpi-icon"></i>
               <div class="kpi-title">Private Schools</div>
               <div style="font-size:.72rem;color:var(--t3);font-weight:600;margin-top:2px">Active Private Schools</div>
@@ -326,11 +326,11 @@
                 Inactive Private Schools: <span id="kpiInactive" style="font-family:var(--mono)">…</span>
               </div>
               <div class="kpi-actions">
-                <button class="kpi-sub-btn kpi-sub-btn-private"
+                <button class="kpi-sub-btn kpi-sub-btn-private" data-route="private-Private"
                         onclick="event.stopPropagation(); openPrivateModule('Private')">
                   <i class="bi bi-building-fill"></i> Active
                 </button>
-                <button class="kpi-sub-btn kpi-sub-btn-inactive"
+                <button class="kpi-sub-btn kpi-sub-btn-inactive" data-route="private-Inactive"
                         onclick="event.stopPropagation(); openPrivateModule('Inactive')">
                   <i class="bi bi-archive-fill"></i> Inactive
                 </button>
@@ -403,18 +403,18 @@
 
         <!-- Tabs: My Bill (everyone) / Batch Generate (admin only) -->
         <div style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap">
-          <button class="ia-tab-btn active" id="iaTabMyBillBtn" onclick="iaSwitchTab('myBill')">
+          <a class="ia-tab-btn active" id="iaTabMyBillBtn" href="#inspection-allowance-my-bill" data-route="inspection-allowance-my-bill" onclick="return topNavLinkClick(event, 'inspection-allowance-my-bill')">
             <i class="bi bi-person-fill"></i> My Bill
-          </button>
-          <button class="ia-tab-btn" id="iaTabPerfBtn" onclick="iaSwitchTab('performance')">
+          </a>
+          <a class="ia-tab-btn" id="iaTabPerfBtn" href="#inspection-allowance-performance" data-route="inspection-allowance-performance" onclick="return topNavLinkClick(event, 'inspection-allowance-performance')">
             <i class="bi bi-clipboard-data-fill"></i> Performance Certificate
-          </button>
-          <button class="ia-tab-btn" id="iaTabBudgetPrepBtn" onclick="iaSwitchTab('budgetprep')" style="display:none">
+          </a>
+          <a class="ia-tab-btn" id="iaTabBudgetPrepBtn" href="#inspection-allowance-budgetprep" data-route="inspection-allowance-budgetprep" style="display:none" onclick="return topNavLinkClick(event, 'inspection-allowance-budgetprep')">
             <i class="bi bi-cash-coin"></i> Prepare Budget
-          </button>
-          <button class="ia-tab-btn" id="iaTabAeoBillBtn" onclick="iaSwitchTab('aeobill')" style="display:none">
+          </a>
+          <a class="ia-tab-btn" id="iaTabAeoBillBtn" href="#inspection-allowance-aeobill" data-route="inspection-allowance-aeobill" style="display:none" onclick="return topNavLinkClick(event, 'inspection-allowance-aeobill')">
             <i class="bi bi-download"></i> AEO Bills &amp; Performance
-          </button>
+          </a>
         </div>
 
         <!-- ══ MY BILL TAB ══ -->
