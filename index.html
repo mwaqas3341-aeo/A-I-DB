@@ -142,18 +142,18 @@
 
   <!-- ── NAV ─────────────────────────────── -->
   <nav class="top-nav">
-    <a class="nav-brand" href="#home" onclick="return topNavLinkClick(event, 'home')">
+    <a class="nav-brand" href="#home" data-route="home" onclick="return topNavLinkClick(event, 'home')">
       <i class="bi bi-building-fill"></i> AEO Portal <span class="live-dot" title="Live"></span>
     </a>
 
     <div class="nav-links" id="navLinksPanel">
-      <a class="nav-link-btn active" id="navHomeBtn" href="#home" onclick="closeMobileNav(); return topNavLinkClick(event, 'home')">
+      <a class="nav-link-btn active" id="navHomeBtn" href="#home" data-route="home" onclick="closeMobileNav(); return topNavLinkClick(event, 'home')">
         <i class="bi bi-grid-1x2-fill"></i> Dashboard
       </a>
-      <a class="nav-link-btn" id="navAdminBtn" style="display:none" href="#admin" onclick="closeMobileNav(); return topNavLinkClick(event, 'admin')">
+      <a class="nav-link-btn" id="navAdminBtn" style="display:none" href="#admin" data-route="admin" onclick="closeMobileNav(); return topNavLinkClick(event, 'admin')">
         <i class="bi bi-shield-lock-fill"></i> Admin Panel
       </a>
-      <a class="nav-link-btn" id="navMyProfileBtn" href="#profile" onclick="closeMobileNav(); return topNavLinkClick(event, 'profile')">
+      <a class="nav-link-btn" id="navMyProfileBtn" href="#profile" data-route="profile" onclick="closeMobileNav(); return topNavLinkClick(event, 'profile')">
         <i class="bi bi-person-circle"></i> My Profile
       </a>
       <div class="nav-links-contact">
@@ -227,7 +227,7 @@
           <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
 
             <!-- New compact card -->
-            <a class="module-card" href="#school-data" onclick="toggleKpiCards(true); return false;">
+            <a class="module-card" href="#school-data" data-route="school-data" onclick="return topNavLinkClick(event, 'school-data')">
               <i class="bi bi-folder-fill mc-icon"></i>
               <div class="mc-title">School General Data Management</div>
               <div class="mc-desc">Govt/Public · Outsourced · Private · Inactive</div>
@@ -235,14 +235,14 @@
             </a>
 
             <!-- Existing cards -->
-            <a class="module-card" href="#hr" onclick="return topNavLinkClick(event, 'hr')">
+            <a class="module-card" href="#hr" data-route="hr" onclick="return topNavLinkClick(event, 'hr')">
               <i class="bi bi-people-fill mc-icon"></i>
               <div class="mc-title">Staff Statement</div>
               <div class="mc-desc">Teaching &amp; non-teaching staff records</div>
               <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </a>
 
-            <a class="module-card" href="#tools" onclick="openToolsView(); return false;">
+            <a class="module-card" href="#tools" data-route="tools" onclick="return topNavLinkClick(event, 'tools')">
               <i class="bi bi-tools mc-icon" style="color:var(--purple)"></i>
               <div class="mc-title">Portal Tools</div>
               <div class="mc-desc">Utilities, calculators &amp; data helpers</div>
@@ -257,7 +257,7 @@
               <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </a>
 
-            <a class="module-card" href="#inspection-allowance" onclick="openInspectionAllowanceView(); return false;">
+            <a class="module-card" href="#inspection-allowance" data-route="inspection-allowance" onclick="return topNavLinkClick(event, 'inspection-allowance')">
               <i class="bi bi-file-earmark-medical-fill mc-icon" style="color:#0d9488"></i>
               <div class="mc-title">Inspection Allowance</div>
               <div class="mc-desc">Prepare your Inspection Allowance bill</div>
@@ -1495,35 +1495,35 @@
   </h3>
 
   <div class="admin-menu-grid" id="adminMenuGrid">
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabKpi"
+    <a class="btn-kpi btn-kpi-view admin-sub-tab" id="tabKpi"
       style="background:#0f766e;color:white"
-      onclick="switchAdminTab('kpi',this)">
+      href="#admin-kpi" data-route="admin-kpi" onclick="return topNavLinkClick(event, 'admin-kpi')">
       <i class="bi bi-grid-1x2-fill"></i> Dashboard Cards
-    </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabGeneral"
+    </a>
+    <a class="btn-kpi btn-kpi-view admin-sub-tab" id="tabGeneral"
       style="background:#b45309;color:white"
-      onclick="switchAdminTab('general',this)">
+      href="#admin-general" data-route="admin-general" onclick="return topNavLinkClick(event, 'admin-general')">
       <i class="bi bi-sliders"></i> General Management
-    </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabIA"
+    </a>
+    <a class="btn-kpi btn-kpi-view admin-sub-tab" id="tabIA"
       style="background:#0d9488;color:white"
-      onclick="switchAdminTab('ia',this)">
+      href="#admin-ia" data-route="admin-ia" onclick="return topNavLinkClick(event, 'admin-ia')">
       <i class="bi bi-file-earmark-medical-fill"></i> Inspection Allowance Management
-    </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabLinks"
+    </a>
+    <a class="btn-kpi btn-kpi-view admin-sub-tab" id="tabLinks"
       style="background:var(--teal);color:white"
-      onclick="switchAdminTab('links',this)">
+      href="#admin-links" data-route="admin-links" onclick="return topNavLinkClick(event, 'admin-links')">
       <i class="bi bi-link-45deg"></i> Links &amp; Apps Manager
-    </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabTools"
+    </a>
+    <a class="btn-kpi btn-kpi-view admin-sub-tab" id="tabTools"
       style="background:var(--purple);color:white"
-      onclick="switchAdminTab('tools',this)">
+      href="#admin-tools" data-route="admin-tools" onclick="return topNavLinkClick(event, 'admin-tools')">
       <i class="bi bi-tools"></i> Tools Manager
-    </button>
-    <button class="btn-kpi btn-kpi-view admin-sub-tab" id="tabUsers"
-      onclick="switchAdminTab('users',this)">
+    </a>
+    <a class="btn-kpi btn-kpi-view admin-sub-tab" id="tabUsers"
+      href="#admin-users" data-route="admin-users" onclick="return topNavLinkClick(event, 'admin-users')">
       <i class="bi bi-people-fill"></i> User Management
-    </button>
+    </a>
   </div>
 
   <div id="adminNoTabSelected" style="text-align:center;padding:60px 20px;color:var(--t3)">
@@ -2456,15 +2456,15 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items" id="grpActiveRecords">
-          <a class="hr-nav-item hr-active hr-view-btn" href="#hr-Staff" data-sheet="Staff">
+          <a class="hr-nav-item hr-active hr-view-btn" href="#hr-Staff" data-sheet="Staff" data-route="hr-Staff">
             <span class="material-icons-round hr-nav-icon">group</span>
             <span class="hr-nav-label">Active Staff</span>
           </a>
-          <a class="hr-nav-item hr-sub-nav-item hr-view-btn" href="#hr-AwaitingPosting" data-sheet="AwaitingPosting">
+          <a class="hr-nav-item hr-sub-nav-item hr-view-btn" href="#hr-AwaitingPosting" data-sheet="AwaitingPosting" data-route="hr-AwaitingPosting">
             <span class="material-icons-round hr-nav-icon">person_search</span>
             <span class="hr-nav-label">Awaiting Posting</span>
           </a>
-          <a class="hr-nav-item hr-sub-nav-item hr-view-btn" href="#hr-TemporaryDuty" data-sheet="TemporaryDuty">
+          <a class="hr-nav-item hr-sub-nav-item hr-view-btn" href="#hr-TemporaryDuty" data-sheet="TemporaryDuty" data-route="hr-TemporaryDuty">
             <span class="material-icons-round hr-nav-icon">schedule</span>
             <span class="hr-nav-label">Temporary Duty</span>
           </a>
@@ -2475,11 +2475,11 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpSeats">
-          <a class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" href="#hr-seats-teaching" onclick="return hrNavLinkClick(event, 'teaching')">
+          <a class="hr-nav-item hr-view-btn" id="hrNavTeachingSeats" href="#hr-seats-teaching" data-route="hr-seats-teaching" onclick="return hrNavLinkClick(event, 'teaching')">
             <span class="material-icons-round hr-nav-icon">school</span>
             <span class="hr-nav-label">Teaching Sanctioned &amp; Abolished Seats</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" href="#hr-seats-non_teaching" onclick="return hrNavLinkClick(event, 'non_teaching')">
+          <a class="hr-nav-item hr-view-btn" id="hrNavNonTeachingSeats" href="#hr-seats-non_teaching" data-route="hr-seats-non_teaching" onclick="return hrNavLinkClick(event, 'non_teaching')">
             <span class="material-icons-round hr-nav-icon">badge</span>
             <span class="hr-nav-label">Non-Teaching Sanctioned &amp; Abolished Seats</span>
           </a>
@@ -2490,23 +2490,23 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpSeparations">
-          <a class="hr-nav-item hr-view-btn" href="#hr-Retirement" data-sheet="Retirement">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Retirement" data-sheet="Retirement" data-route="hr-Retirement">
             <span class="material-icons-round hr-nav-icon">school</span>
             <span class="hr-nav-label">Retirements</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" href="#hr-Resignation" data-sheet="Resignation">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Resignation" data-sheet="Resignation" data-route="hr-Resignation">
             <span class="material-icons-round hr-nav-icon">assignment_return</span>
             <span class="hr-nav-label">Resignations</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" href="#hr-Deceased" data-sheet="Deceased">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Deceased" data-sheet="Deceased" data-route="hr-Deceased">
             <span class="material-icons-round hr-nav-icon">sentiment_very_dissatisfied</span>
             <span class="hr-nav-label">Death Cases</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" href="#hr-Termination" data-sheet="Termination">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Termination" data-sheet="Termination" data-route="hr-Termination">
             <span class="material-icons-round hr-nav-icon">block</span>
             <span class="hr-nav-label">Terminations</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" href="#hr-ContractEnded" data-sheet="ContractEnded">
+          <a class="hr-nav-item hr-view-btn" href="#hr-ContractEnded" data-sheet="ContractEnded" data-route="hr-ContractEnded">
             <span class="material-icons-round hr-nav-icon">description</span>
             <span class="hr-nav-label">Contract Ended Employees</span>
           </a>
@@ -2517,19 +2517,19 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpHistory">
-          <a class="hr-nav-item hr-view-btn" href="#hr-Transfer_History" data-sheet="Transfer_History">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Transfer_History" data-sheet="Transfer_History" data-route="hr-Transfer_History">
             <span class="material-icons-round hr-nav-icon">swap_horiz</span>
             <span class="hr-nav-label">Transfers</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" href="#hr-Promotions_History" data-sheet="Promotions_History">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Promotions_History" data-sheet="Promotions_History" data-route="hr-Promotions_History">
             <span class="material-icons-round hr-nav-icon">trending_up</span>
             <span class="hr-nav-label">Promotions</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" href="#hr-TD_History" data-sheet="TD_History" id="hrNavTdHistory">
+          <a class="hr-nav-item hr-view-btn" href="#hr-TD_History" data-sheet="TD_History" data-route="hr-TD_History" id="hrNavTdHistory">
             <span class="material-icons-round hr-nav-icon">history</span>
             <span class="hr-nav-label">Temporary Duty History</span>
           </a>
-          <a class="hr-nav-item hr-view-btn" href="#hr-AwaitingPosting_History" data-sheet="AwaitingPosting_History" id="hrNavAwaitingIssues">
+          <a class="hr-nav-item hr-view-btn" href="#hr-AwaitingPosting_History" data-sheet="AwaitingPosting_History" data-route="hr-AwaitingPosting_History" id="hrNavAwaitingIssues">
             <span class="material-icons-round hr-nav-icon">undo</span>
             <span class="hr-nav-label">Awaiting Posting Issues</span>
           </a>
@@ -2540,7 +2540,7 @@
           <span class="material-icons-round hr-nav-chevron">expand_more</span>
         </button>
         <div class="hr-nav-group-items collapsed" id="grpArchive">
-          <a class="hr-nav-item hr-view-btn" href="#hr-Deleted_Archive" data-sheet="Deleted_Archive">
+          <a class="hr-nav-item hr-view-btn" href="#hr-Deleted_Archive" data-sheet="Deleted_Archive" data-route="hr-Deleted_Archive">
             <span class="material-icons-round hr-nav-icon">archive</span>
             <span class="hr-nav-label">Deleted Archive</span>
           </a>
