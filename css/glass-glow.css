@@ -37,12 +37,14 @@ h1, h2, h3, h4, h5, h6, .hr-nav-label, .mc-title, .sfm-label{
    so the browser's native "Open in New Tab" works — this strips the
    default link underline/visited-color so they look identical to how
    they looked as buttons. No color/behavior change otherwise. */
-.hr-nav-item, .nav-link-btn, .nav-brand{
+.hr-nav-item, .nav-link-btn, .nav-brand, .module-card, .btn-kpi, [class*="btn"]{
   text-decoration:none !important;
 }
 .hr-nav-item:visited, .hr-nav-item:hover, .hr-nav-item:active,
 .nav-link-btn:visited, .nav-link-btn:hover, .nav-link-btn:active,
-.nav-brand:visited, .nav-brand:hover, .nav-brand:active{
+.nav-brand:visited, .nav-brand:hover, .nav-brand:active,
+.btn-kpi:visited, .btn-kpi:hover, .btn-kpi:active,
+[class*="btn"]:visited, [class*="btn"]:hover, [class*="btn"]:active{
   text-decoration:none !important;
 }
 
