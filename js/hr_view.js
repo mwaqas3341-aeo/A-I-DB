@@ -2170,6 +2170,8 @@ let hrRenewSchoolSearchDebounce = null;
 function openRenewContractModal(row) {
   if (!row) { hrShowToast('Row not found.', false); return; }
   hrRenewTargetRow = row;
+  const origEmis = row['SCHOOL EMIS CODE'] || '';
+  const origName = row['SCHOOL NAME'] || '';
   document.getElementById('hrActionModalTitle').textContent = '🔄 Renew Contract';
   document.getElementById('hrActionBody').innerHTML = `
     <div class="hr-info-box" style="margin-bottom:18px;">
@@ -2178,13 +2180,25 @@ function openRenewContractModal(row) {
       <div><b>Designation:</b> ${row['DESIGNATION']||''} | <b>BPS:</b> ${row['BPS']||''}</div>
       <div><b>Contract Ended:</b> ${row['CONTRACT END DATE']||row['Contract End Date']||'—'}</div>
     </div>
-    <div class="transfer-step">
+    <div class="transfer-step" id="rc_restoreBox">
+      <label>Posting on Renewal</label>
+      <div class="hr-info-box" style="margin-bottom:8px;">
+        <div>🏫 Restoring to original school: <b>${origName || '—'}</b> (EMIS ${origEmis || '—'})</div>
+      </div>
+      <button type="button" class="hr-btn-ghost" id="rc_reassignToggle" style="font-size:.82rem" onclick="hrRenewToggleReassign()">
+        Reassign to a different school instead
+      </button>
+    </div>
+    <div class="transfer-step" id="rc_schoolSearchBox" style="display:none;">
       <label>New School (search by name or EMIS) <span style="color:#EF4444">*</span></label>
       <input type="text" id="rc_schoolSearch" placeholder="Type school name or EMIS…" oninput="hrRenewSearchSchool()" autocomplete="off">
       <div id="rc_schoolResults" class="ap-school-result-list" style="max-height:180px;overflow-y:auto;"></div>
-      <input type="hidden" id="rc_targetEmis">
+      <button type="button" class="hr-btn-ghost" style="font-size:.82rem" onclick="hrRenewToggleReassign()">
+        Cancel — restore to original school instead
+      </button>
       <div class="transfer-err" id="rce_emis"></div>
     </div>
+    <input type="hidden" id="rc_targetEmis" value="${origEmis}">
     <div class="transfer-step">
       <label>Contract Renewal Order Number <span style="color:#EF4444">*</span></label>
       <input type="text" id="rc_orderNo">
@@ -2196,12 +2210,41 @@ function openRenewContractModal(row) {
       <div class="transfer-err" id="rce_newEndDate"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
-      <button type="button" class="hr-btn-primary" id="rc_confirmBtn" disabled onclick="submitRenewContract()">
+      <button type="button" class="hr-btn-primary" id="rc_confirmBtn" ${origEmis ? '' : 'disabled'} onclick="submitRenewContract()">
         Confirm Renewal
       </button>
       <button type="button" class="hr-btn-ghost" onclick="document.getElementById('hrActionModal').style.display='none'">Cancel</button>
     </div>`;
+  if (!origEmis) {
+    // No original EMIS on record (data gap) — fall back to requiring a
+    // manual school selection rather than silently renewing with no posting.
+    hrRenewToggleReassign();
+  }
   document.getElementById('hrActionModal').style.display = 'flex';
+}
+
+// Switches the Renew Contract modal between "restore to original school"
+// (default) and "reassign to a different school" (manual search), keeping
+// rc_targetEmis and rc_confirmBtn in sync with whichever mode is active.
+function hrRenewToggleReassign() {
+  const row = hrRenewTargetRow;
+  const origEmis = row && row['SCHOOL EMIS CODE'] || '';
+  const restoreBox = document.getElementById('rc_restoreBox');
+  const searchBox = document.getElementById('rc_schoolSearchBox');
+  const reassigning = searchBox.style.display === 'none';
+  if (reassigning) {
+    restoreBox.style.display = 'none';
+    searchBox.style.display = '';
+    document.getElementById('rc_targetEmis').value = '';
+    document.getElementById('rc_confirmBtn').disabled = true;
+  } else {
+    restoreBox.style.display = '';
+    searchBox.style.display = 'none';
+    document.getElementById('rc_schoolSearch').value = '';
+    document.getElementById('rc_schoolResults').innerHTML = '';
+    document.getElementById('rc_targetEmis').value = origEmis;
+    document.getElementById('rc_confirmBtn').disabled = !origEmis;
+  }
 }
 
 function hrRenewSearchSchool() {
