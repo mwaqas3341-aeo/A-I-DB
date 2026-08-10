@@ -36,7 +36,7 @@
 // included so a mixed-jurisdiction sheet still works, but are optional
 // per-row since the modal's batch defaults can supply them instead.
 const UI_TEMPLATE_HEADERS = [
-  UH.PERSONAL_NO, UH.CNIC, UH.NAME, UH.CELL, UH.EMAIL,
+  UH.PERSONAL_NO, UH.CNIC, UH.NAME, UH.CELL,
   UH.MARKAZ, UH.MARKAZ_UR, UH.DESIGNATION_UR,
   UH.PAGE_NO, UH.DDEO_CODE, UH.BPS_SCALE,
   UH.DISTRICT, UH.WING, UH.TEHSIL,
