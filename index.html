@@ -1312,6 +1312,38 @@
     </div>
   </div>
 
+  <!-- ══ FUND NSB column-mapping modal ══ -->
+  <div id="fundNsbMappingModal" class="modal hr-modal-generic hidden">
+    <div class="modal-content" style="max-width:640px">
+      <button class="close-btn" onclick="fundCloseMappingModal()" title="Close">&times;</button>
+      <h3 style="margin-bottom:4px">Map Columns — <span id="fundMappingFileName" style="font-weight:600"></span></h3>
+      <p style="font-size:.8rem;color:var(--t3);margin-bottom:16px">Column layouts can change between quarterly files — tell us which column is which for this upload.</p>
+
+      <div class="form-row">
+        <label>Header Row Number</label>
+        <input type="number" id="fundMappingHeaderRow" min="1" value="1" style="max-width:100px" onchange="fundRebuildMappingPreview()">
+      </div>
+      <div class="form-row">
+        <label>EMIS Code Column</label>
+        <select id="fundMappingEmisCol" onchange="fundRebuildMappingPreview()"></select>
+      </div>
+      <div class="form-row">
+        <label id="fundMappingAmountLabel">Amount Column</label>
+        <select id="fundMappingAmountCol" onchange="fundRebuildMappingPreview()"></select>
+      </div>
+
+      <div style="margin-top:14px">
+        <div class="section-title" style="font-size:.82rem">Preview (first few rows)<div class="title-line"></div></div>
+        <div id="fundMappingPreview" style="overflow-x:auto;max-height:220px;overflow-y:auto"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="button" class="btn btn-outline-secondary" style="flex:1" onclick="fundCloseMappingModal()">Cancel</button>
+        <button type="button" class="primary-btn" style="flex:1" onclick="fundConfirmMapping()">Confirm &amp; Upload</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ FUND shared income/expense modal ══ -->
   <div id="fundTxnModal" class="modal hr-modal-generic hidden">
     <div class="modal-content" style="max-width:480px">
