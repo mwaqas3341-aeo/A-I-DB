@@ -166,6 +166,18 @@
   border-color:var(--brand);
   transform:translateY(-1px);
 }
+/* Selected state — the only visual sign of which school is active, set
+   by clicking a card. No separate "selected school"/"change school"
+   control exists anywhere else in the UI. */
+.fund-school-card.selected{
+  background:var(--brand-light, #eef2ff);
+  border-color:var(--brand);
+  border-width:2px;
+  box-shadow:0 0 0 1px var(--brand);
+}
+.fund-school-card.selected .fsc-name{
+  color:var(--brand);
+}
 .fund-school-card .fsc-name{
   font-weight:700; font-size:.88rem; color:var(--t1);
   display:block; margin-bottom:3px;
@@ -182,27 +194,6 @@
     grid-template-columns:1fr;
     max-height:360px;
   }
-}
-
-/* Selected-school identity bar shown at the top of the NSB/FTF detail
-   view once a school has been picked from the list above. */
-.fund-selected-bar{
-  display:flex; align-items:center; justify-content:space-between; gap:12px;
-  flex-wrap:wrap;
-  margin:0 0 16px;
-  padding:14px 16px;
-  background:var(--brand-light, #eef2ff);
-  border:1px solid var(--b0);
-  border-radius:var(--r2, 10px);
-}
-.fund-selected-bar .fsb-name{
-  font-size:1.02rem; font-weight:800; color:var(--t1);
-}
-.fund-selected-bar .fsb-meta{
-  font-size:.8rem; color:var(--t3); margin-top:2px;
-}
-@media(max-width:600px){
-  .fund-selected-bar{ flex-direction:column; align-items:flex-start; }
 }
 
 /* Yearly summary identity strip (EMIS / School / Financial Year) shown
