@@ -1231,14 +1231,17 @@
           <div class="section-title"><i class="bi bi-pie-chart-fill"></i> Quarterly Income Summary<div class="title-line"></div></div>
           <div id="fund_nsb_quarterlyTable" style="overflow-x:auto;margin-bottom:24px"></div>
 
-          <!-- Admin-only: Drive connection + quarterly file upload -->
+          <!-- Admin-only: shared Drive connection used for archive storage.
+               Quarterly income is entered directly per school above (Edit
+               buttons in the Quarterly Income Summary) — there is no file
+               upload step in this workflow. -->
           <div id="fundNsbAdminPanel" style="display:none;margin-bottom:24px">
-            <div class="section-title"><i class="bi bi-google"></i> Official NSB Files (Google Drive)<div class="title-line"></div></div>
-            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--s0);border-radius:var(--r2);border:1px solid var(--b0);margin-bottom:12px">
+            <div class="section-title"><i class="bi bi-google"></i> FUND Google Drive Connection<div class="title-line"></div></div>
+            <p style="font-size:.78rem;color:var(--t3);margin:-4px 0 10px">Used to store the automatically-generated yearly archive workbooks. Quarterly income is entered directly against each school above — no file upload needed.</p>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--s0);border-radius:var(--r2);border:1px solid var(--b0)">
               <span id="fundDriveStatusLabel" style="flex:1;font-weight:600;font-size:.85rem"></span>
               <button id="fundDriveConnectBtn" class="btn btn-add" style="padding:6px 14px;font-size:.82rem"></button>
             </div>
-            <div id="fundNsbFilesTable" style="overflow-x:auto"></div>
           </div>
 
           <div class="section-title"><i class="bi bi-calendar3"></i> Monthly Expenses<div class="title-line"></div></div>
@@ -1308,38 +1311,6 @@
         <span id="fundArchivesGenerateBtn" style="display:none"></span>
 
         <div id="fundArchivesList" style="overflow-x:auto"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ FUND NSB column-mapping modal ══ -->
-  <div id="fundNsbMappingModal" class="modal hr-modal-generic hidden">
-    <div class="modal-content" style="max-width:640px">
-      <button class="close-btn" onclick="fundCloseMappingModal()" title="Close">&times;</button>
-      <h3 style="margin-bottom:4px">Map Columns — <span id="fundMappingFileName" style="font-weight:600"></span></h3>
-      <p style="font-size:.8rem;color:var(--t3);margin-bottom:16px">Column layouts can change between quarterly files — tell us which column is which for this upload.</p>
-
-      <div class="form-row">
-        <label>Header Row Number</label>
-        <input type="number" id="fundMappingHeaderRow" min="1" value="1" style="max-width:100px" onchange="fundRebuildMappingPreview()">
-      </div>
-      <div class="form-row">
-        <label>EMIS Code Column</label>
-        <select id="fundMappingEmisCol" onchange="fundRebuildMappingPreview()"></select>
-      </div>
-      <div class="form-row">
-        <label id="fundMappingAmountLabel">Amount Column</label>
-        <select id="fundMappingAmountCol" onchange="fundRebuildMappingPreview()"></select>
-      </div>
-
-      <div style="margin-top:14px">
-        <div class="section-title" style="font-size:.82rem">Preview (first few rows)<div class="title-line"></div></div>
-        <div id="fundMappingPreview" style="overflow-x:auto;max-height:220px;overflow-y:auto"></div>
-      </div>
-
-      <div style="display:flex;gap:10px;margin-top:18px">
-        <button type="button" class="btn btn-outline-secondary" style="flex:1" onclick="fundCloseMappingModal()">Cancel</button>
-        <button type="button" class="primary-btn" style="flex:1" onclick="fundConfirmMapping()">Confirm &amp; Upload</button>
       </div>
     </div>
   </div>
