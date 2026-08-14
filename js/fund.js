@@ -33,6 +33,18 @@ function fundIsAdmin() {
   return String(currentUser?.role || '').toLowerCase() === 'admin';
 }
 
+// Admin, or an Editor-access_type user acting within their own
+// jurisdiction. Schools only ever reach this screen via
+// fund_visible_schools() (jurisdiction-filtered), so any school already
+// selected here is one this user is allowed to write to — matches the
+// DB-side check (is_admin() or (is_editor() and fund_row_visible(...)))
+// used by fund_accounts / fund_transactions / nsb_receipts RLS. Same
+// pattern as _hrApplyPermissionGating() in hr_view.js.
+function fundCanEdit() {
+  if (fundState.isAdmin) return true;
+  return String(currentUser?.access_type || '').toLowerCase() === 'editor';
+}
+
 // ═══════════════════════════════════ HUB ═══════════════════════════
 function openFundModule() {
   switchGlobalTab('fundView', null);
@@ -225,7 +237,7 @@ async function fundLoadAccount(prefix) {
       <div style="padding:24px;text-align:center;color:var(--t3)">
         No ${fundType} account yet for ${escHtml(fundState.schoolName)} in FY ${fundState.financialYear}.<br>
         <div style="margin-top:8px;font-size:.85rem">${carryNote}</div>
-        ${fundState.isAdmin ? `
+        ${fundCanEdit() ? `
         <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;align-items:center">
           <label style="font-size:.8rem;color:var(--t3);font-weight:600">Opening Balance (as on 1 July)</label>
           <input type="number" id="fund_${prefix}_openingInput" value="${carryAmt}" min="0" step="1"
@@ -279,11 +291,11 @@ async function fundCreateAccount(prefix) {
   fundLoadAccount(prefix);
 }
 
-// Admin-only correction path — the figure is auto-computed on creation,
-// but a genuine correction (e.g. a prior-year data fix) should still be
-// possible without going around the app.
+// Admin, or jurisdiction Editor, correction path — the figure is
+// auto-computed on creation, but a genuine correction (e.g. a prior-year
+// data fix) should still be possible without going around the app.
 async function fundEditOpeningBalance(prefix, current) {
-  if (!fundState.isAdmin) return;
+  if (!fundCanEdit()) return;
   const amountStr = prompt(`Correct the Opening Balance for ${escHtml(fundState.schoolName)} (FY ${fundState.financialYear}):`, current);
   if (amountStr === null) return;
   const amount = parseFloat(amountStr);
@@ -511,25 +523,28 @@ async function fundRenderNsb(account) {
 
   document.getElementById('fund_nsb_summaryCards').innerHTML = fundSummaryCardsHtml(account.opening_balance, totalIncome, totalExpenses, closing, 'nsb');
 
+  const canEditNsb = fundCanEdit();
   document.getElementById('fund_nsb_quarterlyTable').innerHTML = `
     <table class="data-table">
-      <thead><tr><th>NSB Income Source</th><th>Amount</th>${fundState.isAdmin ? '<th></th>' : ''}</tr></thead>
+      <thead><tr><th>NSB Income Source</th><th>Amount</th>${canEditNsb ? '<th></th>' : ''}</tr></thead>
       <tbody>
-        <tr><td>Balance as on 1 July</td><td><b>${fundMoney(account.opening_balance)}</b></td><td></td></tr>
+        <tr><td>Balance as on 1 July</td><td><b>${fundMoney(account.opening_balance)}</b></td>
+          ${canEditNsb ? `<td><button class="btn-edit" style="padding:1px 8px;font-size:.72rem" onclick="fundEditOpeningBalance('nsb', ${Number(account.opening_balance) || 0})" title="Correct opening balance"><i class="bi bi-pencil"></i></button></td>` : ''}
+        </tr>
         ${[1,2,3,4].map(q => `<tr>
           <td>Quarter ${q}</td><td>${fundMoney(rByQ[q] || 0)}</td>
-          ${fundState.isAdmin ? `<td><button class="btn-edit" style="padding:2px 10px;font-size:.75rem" onclick="fundEditNsbReceipt('${q}', 'quarterly', ${rByQ[q] || 0})">Edit</button></td>` : '<td></td>'}
+          ${canEditNsb ? `<td><button class="btn-edit" style="padding:1px 8px;font-size:.72rem" onclick="fundEditNsbReceipt('${q}', 'quarterly', ${rByQ[q] || 0})"><i class="bi bi-pencil"></i></button></td>` : ''}
         </tr>`).join('')}
         <tr><td>Any Other Income</td><td>${fundMoney(other)}</td>
-          ${fundState.isAdmin ? `<td><button class="btn-edit" style="padding:2px 10px;font-size:.75rem" onclick="fundEditNsbReceipt(null, 'other', ${other})">Edit</button></td>` : '<td></td>'}</tr>
+          ${canEditNsb ? `<td><button class="btn-edit" style="padding:1px 8px;font-size:.72rem" onclick="fundEditNsbReceipt(null, 'other', ${other})"><i class="bi bi-pencil"></i></button></td>` : ''}</tr>
         <tr><td>Profit / Other Earnings</td><td>${fundMoney(profit)}</td>
-          ${fundState.isAdmin ? `<td><button class="btn-edit" style="padding:2px 10px;font-size:.75rem" onclick="fundEditNsbReceipt(null, 'profit', ${profit})">Edit</button></td>` : '<td></td>'}</tr>
-        <tr style="border-top:2px solid #0f172a"><td><b>Total Income</b></td><td><b>${fundMoney(totalIncome)}</b></td><td></td></tr>
-        <tr><td>Total Expenses</td><td style="color:#dc2626"><b>${fundMoney(totalExpenses)}</b></td><td></td></tr>
-        <tr><td><b>Closing Balance</b></td><td><b>${fundMoney(closing)}</b></td><td></td></tr>
+          ${canEditNsb ? `<td><button class="btn-edit" style="padding:1px 8px;font-size:.72rem" onclick="fundEditNsbReceipt(null, 'profit', ${profit})"><i class="bi bi-pencil"></i></button></td>` : ''}</tr>
+        <tr style="border-top:2px solid #0f172a"><td><b>Total Income</b></td><td><b>${fundMoney(totalIncome)}</b></td>${canEditNsb ? '<td></td>' : ''}</tr>
+        <tr><td>Total Expenses</td><td style="color:#dc2626"><b>${fundMoney(totalExpenses)}</b></td>${canEditNsb ? '<td></td>' : ''}</tr>
+        <tr><td><b>Closing Balance</b></td><td><b>${fundMoney(closing)}</b></td>${canEditNsb ? '<td></td>' : ''}</tr>
       </tbody>
     </table>
-    ${!fundState.isAdmin ? `<p style="font-size:.78rem;color:var(--t3);margin-top:6px">Quarterly figures are managed by Admin only.</p>` : ''}`;
+    ${!canEditNsb ? `<p style="font-size:.78rem;color:var(--t3);margin-top:6px">Quarterly figures are managed by Admin or an authorized Editor for your jurisdiction.</p>` : ''}`;
 
   const byMonth = {}; (summary || []).forEach(r => byMonth[r.month] = r);
   document.getElementById('fund_nsb_monthlyTable').innerHTML = `
@@ -742,7 +757,7 @@ function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
       <div class="kpi-card" style="border-left-color:#64748b">
         <div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Opening Balance</div>
         <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${fundMoney(opening)}
-          ${fundState.isAdmin && prefix ? `<button class="btn-edit" style="padding:1px 8px;font-size:.68rem;margin-left:6px;vertical-align:middle" onclick="fundEditOpeningBalance('${prefix}', ${Number(opening) || 0})" title="Correct opening balance"><i class="bi bi-pencil"></i></button>` : ''}
+          ${fundCanEdit() && prefix ? `<button class="btn-edit" style="padding:1px 8px;font-size:.68rem;margin-left:6px;vertical-align:middle" onclick="fundEditOpeningBalance('${prefix}', ${Number(opening) || 0})" title="Correct opening balance"><i class="bi bi-pencil"></i></button>` : ''}
         </div>
       </div>
       <div class="kpi-card" style="border-left-color:var(--ok)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Income</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--ok)">${fundMoney(income)}</div></div>
