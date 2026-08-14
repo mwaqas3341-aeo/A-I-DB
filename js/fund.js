@@ -90,27 +90,26 @@ async function fundInitSelectors(prefix) {
 
   const searchInput = document.getElementById(`fund_${prefix}_school_search`);
   searchInput.oninput = () => fundSearchSchool(prefix);
-  // Focusing the search box re-opens the picker (list below the search
-  // bar) even if a school is already selected, so the user can change it
-  // without hunting for a separate button first.
-  searchInput.onfocus = () => { if (fundState.emisCode) fundChangeSchool(prefix, false); fundSearchSchool(prefix); };
+  // The school list stays visible at all times (cards, not a picker that
+  // collapses) — focusing/typing just re-filters it, it never clears the
+  // current selection.
+  searchInput.onfocus = () => fundSearchSchool(prefix);
 
+  document.getElementById(`fund_${prefix}_school_list_wrap`).style.display = 'block';
   if (fundState.emisCode) {
     // A school is already selected (e.g. switching between NSB/FTF) —
-    // keep the picker collapsed and show the identity bar straight away.
-    fundShowSelectedBar(prefix);
-  } else {
-    document.getElementById(`fund_${prefix}_school_list_wrap`).style.display = 'block';
+    // pre-fill the search with its name so the card list (with this
+    // school highlighted) renders straight away, same as everyone else.
+    searchInput.value = fundState.schoolName || '';
+    fundSearchSchool(prefix);
+  } else if (!fundState.isAdmin) {
     // Non-admins have a small enough jurisdiction that we show it straight
-    // away — no need to click/focus the search box first. Admins still
-    // need to type (see fundSearchSchool) since "everything" is too big
-    // a list to dump on open.
-    if (!fundState.isAdmin) {
-      fundSearchSchool(prefix);
-    } else {
-      document.getElementById(`fund_${prefix}_school_list_meta`).textContent = 'Type at least 2 characters to search schools.';
-      document.getElementById(`fund_${prefix}_school_results`).innerHTML = '';
-    }
+    // away — no need to type first. Admins still need to type (see
+    // fundSearchSchool) since "everything" is too big a list to dump on open.
+    fundSearchSchool(prefix);
+  } else {
+    document.getElementById(`fund_${prefix}_school_list_meta`).textContent = 'Type at least 2 characters to search schools.';
+    document.getElementById(`fund_${prefix}_school_results`).innerHTML = '';
   }
 
   if (fundState.financialYearId && fundState.emisCode) fundLoadAccount(prefix);
@@ -121,10 +120,7 @@ function fundOnFyChange(prefix) {
   const opt = fySel.selectedOptions[0];
   fundState.financialYearId = fySel.value;
   fundState.financialYear = opt ? opt.textContent : '';
-  if (fundState.emisCode) {
-    fundShowSelectedBar(prefix);
-    fundLoadAccount(prefix);
-  }
+  if (fundState.emisCode) fundLoadAccount(prefix);
 }
 
 let fundSchoolSearchDebounce = null;
@@ -160,52 +156,25 @@ function fundSearchSchool(prefix) {
     }
     metaEl.textContent = `${data.length} school${data.length === 1 ? '' : 's'} — select one to open its ${prefix === 'nsb' ? 'NSB' : 'FTF'} record`;
     resultsEl.innerHTML = data.map(s => `
-      <div class="fund-school-card" onclick="fundSelectSchool('${prefix}', '${s.emis}', '${escHtml(s.school_name || '').replace(/'/g, "\\'")}')">
+      <div class="fund-school-card${fundState.emisCode === s.emis ? ' selected' : ''}" data-emis="${escHtml(s.emis)}"
+        onclick="fundSelectSchool('${prefix}', '${s.emis}', '${escHtml(s.school_name || '').replace(/'/g, "\\'")}', this)">
         <span class="fsc-name">${escHtml(s.school_name || '')}</span>
         <span class="fsc-meta">EMIS ${escHtml(s.emis)} · ${escHtml(s.tehsil || '')}, ${escHtml(s.district || '')}</span>
       </div>`).join('');
   }, 250);
 }
 
-function fundSelectSchool(prefix, emis, name) {
+// Selecting a school never hides the card list or opens a separate
+// "selected school" control — it just moves the highlight to the
+// clicked card and loads that EMIS code's record below. Clicking a
+// different card simply moves the highlight and reloads.
+function fundSelectSchool(prefix, emis, name, cardEl) {
   fundState.emisCode = emis;
   fundState.schoolName = name;
-  document.getElementById(`fund_${prefix}_school_search`).value = `${name} (EMIS ${emis})`;
-  fundShowSelectedBar(prefix);
+  const resultsEl = document.getElementById(`fund_${prefix}_school_results`);
+  resultsEl.querySelectorAll('.fund-school-card').forEach(el => el.classList.remove('selected'));
+  (cardEl || resultsEl.querySelector(`.fund-school-card[data-emis="${CSS.escape(emis)}"]`))?.classList.add('selected');
   fundLoadAccount(prefix);
-}
-
-// Collapses the picker and shows the "School Name — EMIS Code" identity
-// bar at the top of the detail area, per the intended workflow: Search →
-// list below the search bar → select → detail opens with the school
-// clearly identified.
-function fundShowSelectedBar(prefix) {
-  document.getElementById(`fund_${prefix}_school_list_wrap`).style.display = 'none';
-  document.getElementById(`fund_${prefix}_school_results`).innerHTML = '';
-  const bar = document.getElementById(`fund_${prefix}_selectedBar`);
-  bar.style.display = 'flex';
-  bar.innerHTML = `
-    <div>
-      <div class="fsb-name">${escHtml(fundState.schoolName || '')} — EMIS ${escHtml(fundState.emisCode || '')}</div>
-      <div class="fsb-meta">${prefix === 'nsb' ? 'NSB' : 'FTF'} record${fundState.financialYear ? ` · FY ${escHtml(fundState.financialYear)}` : ''}</div>
-    </div>
-    <button class="btn-edit" style="padding:5px 12px;font-size:.8rem" onclick="fundChangeSchool('${prefix}')"><i class="bi bi-arrow-repeat"></i> Change School</button>`;
-}
-
-// Clears the current selection and returns to the school picker. By
-// default also re-runs the search so the list reappears immediately.
-function fundChangeSchool(prefix, reSearch = true) {
-  fundState.emisCode = null;
-  fundState.schoolName = '';
-  fundState.accountId = null;
-  document.getElementById(`fund_${prefix}_selectedBar`).style.display = 'none';
-  document.getElementById(`fund_${prefix}_openingPrompt`).innerHTML = '';
-  document.getElementById(`fund_${prefix}_openingPrompt`).style.display = 'none';
-  document.getElementById(`fund_${prefix}_body`).style.display = 'none';
-  const input = document.getElementById(`fund_${prefix}_school_search`);
-  input.value = '';
-  input.focus();
-  if (reSearch) fundSearchSchool(prefix);
 }
 
 // ═══════════════════════════════ ACCOUNT LOAD ═══════════════════════
@@ -462,13 +431,14 @@ async function fundEditMonthlyExpense(prefix, month, current) {
   fundLoadAccount(prefix);
 }
 
-// FTF income, quick-edit path: same one-total-per-month method as
-// fundEditMonthlyExpense() above, for schools that just need a running
-// monthly income figure rather than itemized grants/receipts. The
-// "Add Income" button/modal still exists for genuinely itemized entries
-// (category + receipt#) — if a month already has more than one itemized
-// income row, this quick editor won't guess which one to touch and asks
-// you to manage those individually in Recent Transactions instead.
+// FTF income entry — same one-total-per-month quick-edit method as
+// fundEditMonthlyExpense() above (pencil next to the month's Income
+// figure). This is now the only income entry path in the UI; the
+// itemized fundOpenFtfTxnModal()/fundSubmitTxn() modal (category +
+// receipt#) is kept in the codebase but no button opens it — if a month
+// already has more than one itemized income row from before, this quick
+// editor won't guess which one to touch and asks you to manage those
+// individually in Recent Transactions instead.
 async function fundEditMonthlyIncome(prefix, month, current) {
   if (!fundState.accountId) { showToast('Select a financial year and school first.', false); return; }
   const label = fundMonthLabel(month);
@@ -756,9 +726,7 @@ function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="kpi-card" style="border-left-color:#64748b">
         <div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Opening Balance</div>
-        <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${fundMoney(opening)}
-          ${fundCanEdit() && prefix ? `<button class="btn-edit" style="padding:1px 8px;font-size:.68rem;margin-left:6px;vertical-align:middle" onclick="fundEditOpeningBalance('${prefix}', ${Number(opening) || 0})" title="Correct opening balance"><i class="bi bi-pencil"></i></button>` : ''}
-        </div>
+        <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${fundMoney(opening)}</div>
       </div>
       <div class="kpi-card" style="border-left-color:var(--ok)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Income</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--ok)">${fundMoney(income)}</div></div>
       <div class="kpi-card" style="border-left-color:#dc2626"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Expenses</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:#dc2626">${fundMoney(expenses)}</div></div>
