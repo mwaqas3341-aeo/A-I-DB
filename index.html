@@ -1216,12 +1216,21 @@
             <label>Financial Year</label>
             <select id="fund_nsb_fy"></select>
           </div>
-          <div class="form-row" style="margin:0;flex:1;min-width:240px;position:relative">
+          <div class="form-row" style="margin:0;flex:1;min-width:240px">
             <label>School (name or EMIS)</label>
             <input type="text" id="fund_nsb_school_search" placeholder="Start typing a school name or EMIS…" autocomplete="off">
-            <div id="fund_nsb_school_results" class="ap-school-result-list" style="position:absolute;z-index:20;background:#fff;width:100%;box-shadow:var(--sh2);border-radius:8px;max-height:240px;overflow:auto"></div>
           </div>
         </div>
+
+        <!-- School list renders in the free page space below the search
+             bar (not inside/under the search field). Hidden once a
+             school is selected; "Change School" below brings it back. -->
+        <div id="fund_nsb_school_list_wrap" class="fund-school-list-wrap" style="display:none">
+          <div id="fund_nsb_school_list_meta" class="fund-school-list-meta"></div>
+          <div id="fund_nsb_school_results" class="fund-school-list-grid"></div>
+        </div>
+
+        <div id="fund_nsb_selectedBar" class="fund-selected-bar" style="display:none"></div>
 
         <div id="fund_nsb_openingPrompt"></div>
 
@@ -1267,12 +1276,21 @@
             <label>Financial Year</label>
             <select id="fund_ftf_fy"></select>
           </div>
-          <div class="form-row" style="margin:0;flex:1;min-width:240px;position:relative">
+          <div class="form-row" style="margin:0;flex:1;min-width:240px">
             <label>School (name or EMIS)</label>
             <input type="text" id="fund_ftf_school_search" placeholder="Start typing a school name or EMIS…" autocomplete="off">
-            <div id="fund_ftf_school_results" class="ap-school-result-list" style="position:absolute;z-index:20;background:#fff;width:100%;box-shadow:var(--sh2);border-radius:8px;max-height:240px;overflow:auto"></div>
           </div>
         </div>
+
+        <!-- School list renders in the free page space below the search
+             bar (not inside/under the search field). Hidden once a
+             school is selected; "Change School" below brings it back. -->
+        <div id="fund_ftf_school_list_wrap" class="fund-school-list-wrap" style="display:none">
+          <div id="fund_ftf_school_list_meta" class="fund-school-list-meta"></div>
+          <div id="fund_ftf_school_results" class="fund-school-list-grid"></div>
+        </div>
+
+        <div id="fund_ftf_selectedBar" class="fund-selected-bar" style="display:none"></div>
 
         <div id="fund_ftf_openingPrompt"></div>
 
