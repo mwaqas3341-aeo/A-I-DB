@@ -208,19 +208,29 @@ async function fundLoadAccount(prefix) {
   if (!account) {
     document.getElementById(`fund_${prefix}_body`).style.display = 'none';
     document.getElementById(`fund_${prefix}_openingPrompt`).style.display = 'block';
-    // Preview what the auto-carried-forward opening balance will be, so
-    // the button isn't a mystery — but the figure itself is never typed
-    // in by hand (see fundCreateAccount).
+    // Pre-fill with the auto-carried-forward opening balance where one
+    // exists. When there's no earlier year on record for this school,
+    // this is exactly the case where the "true" opening balance (as on
+    // 1 July, from paper/manual records) is NOT zero and NOT derivable —
+    // so Admin gets an editable field right here instead of being forced
+    // to accept 0 and hunt for a separate correction step afterward.
     const { data: carry } = await _sb.rpc('fund_previous_year_closing_balance', {
       p_emis: fundState.emisCode, p_fund_type: fundType, p_financial_year_id: fundState.financialYearId,
     });
     const carryAmt = Number(carry || 0);
+    const carryNote = carryAmt
+      ? `Carried forward from the previous year's closing balance: <b>${fundMoney(carryAmt)}</b>. Adjust below if it needs correcting.`
+      : `No earlier year is on record for this school — enter the correct balance as on 1 July ${fundState.financialYear.split('-')[0]} below (leave at 0 only if it's genuinely zero).`;
     document.getElementById(`fund_${prefix}_openingPrompt`).innerHTML = `
       <div style="padding:24px;text-align:center;color:var(--t3)">
         No ${fundType} account yet for ${escHtml(fundState.schoolName)} in FY ${fundState.financialYear}.<br>
-        <div style="margin-top:8px;font-size:.85rem">
-          Opening balance will be set automatically${carryAmt ? ` to <b>${fundMoney(carryAmt)}</b> (carried forward from the previous year's closing balance)` : ` to <b>Rs 0</b> (no earlier year on record for this school)`}.
-        </div>
+        <div style="margin-top:8px;font-size:.85rem">${carryNote}</div>
+        ${fundState.isAdmin ? `
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;align-items:center">
+          <label style="font-size:.8rem;color:var(--t3);font-weight:600">Opening Balance (as on 1 July)</label>
+          <input type="number" id="fund_${prefix}_openingInput" value="${carryAmt}" min="0" step="1"
+            style="width:150px;padding:5px 8px;border:1px solid var(--b0);border-radius:6px;font-size:.85rem">
+        </div>` : ''}
         <button class="btn btn-add" style="margin-top:12px" onclick="fundCreateAccount('${prefix}')">
           <i class="bi bi-plus-circle"></i> Start Ledger for FY ${fundState.financialYear}
         </button>
@@ -236,19 +246,29 @@ async function fundLoadAccount(prefix) {
   else fundRenderNsb(account);
 }
 
-// Opening balance is never typed in by hand: it's carried forward
-// automatically from the previous financial year's closing balance (0 if
-// there is no earlier year on record for this school). See
-// fund_previous_year_closing_balance() in the DB. Admins can still
-// correct it afterward via fundEditOpeningBalance() if a genuine
-// correction is needed.
+// Opening balance defaults to the auto-carried-forward figure (0 if there
+// is no earlier year on record), but Admin can type a different value into
+// the input rendered above before starting the ledger — covers the "no
+// previous year entries in the system" case where the real balance still
+// needs to come from paper/manual records. Non-admins always get the
+// auto-carried value (no input is rendered for them). See
+// fund_previous_year_closing_balance() in the DB for the carry-forward
+// logic. fundEditOpeningBalance() remains available for correcting it
+// again later, after the ledger already exists.
 async function fundCreateAccount(prefix) {
   const fundType = prefix === 'nsb' ? 'NSB' : 'FTF';
-  const { data: carry, error: carryErr } = await _sb.rpc('fund_previous_year_closing_balance', {
-    p_emis: fundState.emisCode, p_fund_type: fundType, p_financial_year_id: fundState.financialYearId,
-  });
-  if (carryErr) { showToast(carryErr.message, false); return; }
-  const opening = Number(carry || 0);
+  let opening;
+  const input = document.getElementById(`fund_${prefix}_openingInput`);
+  if (input) {
+    opening = parseFloat(input.value);
+    if (isNaN(opening) || opening < 0) { showToast('Enter a valid, non-negative opening balance.', false); return; }
+  } else {
+    const { data: carry, error: carryErr } = await _sb.rpc('fund_previous_year_closing_balance', {
+      p_emis: fundState.emisCode, p_fund_type: fundType, p_financial_year_id: fundState.financialYearId,
+    });
+    if (carryErr) { showToast(carryErr.message, false); return; }
+    opening = Number(carry || 0);
+  }
 
   const { error } = await _sb.from('fund_accounts').insert({
     emis_code: fundState.emisCode, fund_type: fundType, financial_year_id: fundState.financialYearId,
@@ -294,7 +314,10 @@ async function fundRenderFtf(account) {
           return `<tr>
             <td><b>${fundMonthLabel(m)}</b></td>
             <td>${r ? fundMoney(r.opening_balance) : '—'}</td>
-            <td style="color:var(--ok)">${r ? fundMoney(r.total_income) : '—'}</td>
+            <td style="color:var(--ok)">
+              ${r ? fundMoney(r.total_income) : 'Rs 0'}
+              <button class="btn-edit" style="padding:1px 8px;font-size:.72rem;margin-left:6px" onclick="fundEditMonthlyIncome('ftf', ${m}, ${r ? r.total_income : 0})"><i class="bi bi-pencil"></i></button>
+            </td>
             <td style="color:#dc2626">
               ${r ? fundMoney(r.total_expenses) : 'Rs 0'}
               <button class="btn-edit" style="padding:1px 8px;font-size:.72rem;margin-left:6px" onclick="fundEditMonthlyExpense('ftf', ${m}, ${r ? r.total_expenses : 0})"><i class="bi bi-pencil"></i></button>
@@ -419,6 +442,48 @@ async function fundEditMonthlyExpense(prefix, month, current) {
       fund_account_id: fundState.accountId, emis_code: fundState.emisCode, fund_type: fundType,
       financial_year_id: fundState.financialYearId, transaction_type: 'expense',
       expense_category: 'Total Monthly Expense', month, transaction_date: fundMonthToDate(month),
+      amount, created_by: currentUser.id,
+    }));
+  }
+  if (error) { showToast(error.message, false); return; }
+  showToast('Saved.', true);
+  fundLoadAccount(prefix);
+}
+
+// FTF income, quick-edit path: same one-total-per-month method as
+// fundEditMonthlyExpense() above, for schools that just need a running
+// monthly income figure rather than itemized grants/receipts. The
+// "Add Income" button/modal still exists for genuinely itemized entries
+// (category + receipt#) — if a month already has more than one itemized
+// income row, this quick editor won't guess which one to touch and asks
+// you to manage those individually in Recent Transactions instead.
+async function fundEditMonthlyIncome(prefix, month, current) {
+  if (!fundState.accountId) { showToast('Select a financial year and school first.', false); return; }
+  const label = fundMonthLabel(month);
+  const amountStr = prompt(`Total income for ${label}:`, current || '');
+  if (amountStr === null) return;
+  const amount = parseFloat(amountStr);
+  if (isNaN(amount) || amount < 0) { showToast('Enter a valid, non-negative amount.', false); return; }
+
+  const { data: existingRows } = await _sb.from('fund_transactions').select('id')
+    .eq('fund_account_id', fundState.accountId).eq('month', month).eq('transaction_type', 'income');
+
+  if ((existingRows || []).length > 1) {
+    showToast('This month already has multiple itemized income entries — edit or delete them individually in Recent Transactions below.', false);
+    return;
+  }
+  const existingRow = existingRows && existingRows[0];
+
+  let error;
+  if (amount === 0 && existingRow) {
+    ({ error } = await _sb.from('fund_transactions').delete().eq('id', existingRow.id));
+  } else if (existingRow) {
+    ({ error } = await _sb.from('fund_transactions').update({ amount }).eq('id', existingRow.id));
+  } else if (amount > 0) {
+    ({ error } = await _sb.from('fund_transactions').insert({
+      fund_account_id: fundState.accountId, emis_code: fundState.emisCode, fund_type: 'FTF',
+      financial_year_id: fundState.financialYearId, transaction_type: 'income',
+      income_category: 'Total Monthly Income', month, transaction_date: fundMonthToDate(month),
       amount, created_by: currentUser.id,
     }));
   }
