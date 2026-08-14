@@ -149,6 +149,9 @@ async function fundUploadNsbFile(file, opts, callbacks = {}) {
       file_base64: fileBase64,
       confirm_replace: !!opts.confirmReplace,
       replacement_reason: opts.replacementReason || null,
+      header_row_index: opts.mapping ? opts.mapping.headerRowIndex : null,
+      emis_col_index: opts.mapping ? opts.mapping.emisColIndex : null,
+      amount_col_index: opts.mapping ? opts.mapping.amountColIndex : null,
     }),
   });
   const result = await res.json();

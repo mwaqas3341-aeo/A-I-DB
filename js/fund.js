@@ -439,14 +439,19 @@ async function fundLoadSourceFiles() {
 
   document.getElementById('fundNsbFilesTable').innerHTML = `
     <table class="data-table">
-      <thead><tr><th>Quarter</th><th>File</th><th>Status</th><th>Uploaded</th><th></th></tr></thead>
+      <thead><tr><th>Quarter</th><th>File</th><th>Status</th><th>Schools Imported</th><th>Uploaded</th><th></th></tr></thead>
       <tbody>
         ${[1,2,3,4].map(q => {
           const f = byQ[q];
+          const statusColor = f?.processing_status === 'PROCESSED' ? 'var(--ok)' : (f?.processing_status === 'FAILED' ? '#dc2626' : 'var(--t3)');
           return `<tr>
             <td><b>Q${q}</b></td>
             <td>${f ? `<a href="${escHtml(f.file_url || '#')}" target="_blank">${escHtml(f.file_name)}</a> <span style="color:var(--t3);font-size:.75rem">(v${f.file_version})</span>` : '—'}</td>
-            <td>${f ? escHtml(f.processing_status) : '<span style="color:var(--t3)">Not Uploaded</span>'}</td>
+            <td style="color:${statusColor}">
+              ${f ? escHtml(f.processing_status) : '<span style="color:var(--t3)">Not Uploaded</span>'}
+              ${f?.error_message ? `<div style="font-size:.72rem;color:var(--t3);max-width:220px">${escHtml(f.error_message)}</div>` : ''}
+            </td>
+            <td>${f?.row_count ?? '—'}</td>
             <td>${f ? new Date(f.uploaded_at).toLocaleDateString() : '—'}</td>
             <td>
               <input type="file" id="fundNsbFileInput_${q}" style="display:none" accept=".xlsx,.xls,.csv" onchange="fundHandleNsbFileSelect(${q}, this)">
@@ -464,13 +469,103 @@ async function fundHandleNsbFileSelect(quarter, inputEl) {
   const file = inputEl.files[0];
   inputEl.value = '';
   if (!file || !fundState.financialYear) return;
-  await fundDoNsbUpload(file, quarter, false);
+
+  let rows;
+  try { rows = await fundParseFileRows(file); }
+  catch (e) { showToast('Could not read this file — make sure it is a valid Excel or CSV file.', false); return; }
+  if (!rows || !rows.length) { showToast('This file appears to be empty.', false); return; }
+
+  fundOpenMappingModal(file, quarter, rows);
 }
 
-async function fundDoNsbUpload(file, quarter, confirmReplace) {
+// Client-side parse is ONLY for the mapping preview UI — the server
+// re-parses the same file with the confirmed mapping before writing any
+// financial data (see fund-nsb-upload edge function).
+function fundParseFileRows(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true, codepage: 65001 });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }));
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+let fundPendingUpload = null; // { file, quarter, rows }
+
+// NSB file layouts change between quarters, so the Admin maps which
+// column is EMIS and which is the amount EACH time, with a live preview
+// — nothing is hardcoded to a fixed column position.
+function fundOpenMappingModal(file, quarter, rows) {
+  fundPendingUpload = { file, quarter, rows };
+  document.getElementById('fundMappingFileName').textContent = file.name;
+  document.getElementById('fundMappingAmountLabel').textContent = `Quarter ${quarter} Amount Column`;
+  document.getElementById('fundMappingHeaderRow').value = 1;
+  fundRebuildMappingPreview();
+  document.getElementById('fundNsbMappingModal').classList.remove('hidden');
+}
+
+function fundCloseMappingModal() {
+  document.getElementById('fundNsbMappingModal').classList.add('hidden');
+  fundPendingUpload = null;
+}
+
+function fundRebuildMappingPreview() {
+  if (!fundPendingUpload) return;
+  const { rows } = fundPendingUpload;
+  const headerRowIdx = Math.max(0, (parseInt(document.getElementById('fundMappingHeaderRow').value, 10) || 1) - 1);
+  const headers = rows[headerRowIdx] || [];
+
+  const emisSel = document.getElementById('fundMappingEmisCol');
+  const amtSel = document.getElementById('fundMappingAmountCol');
+  const prevEmis = emisSel.value, prevAmt = amtSel.value;
+
+  const colOptions = headers.map((h, i) => `<option value="${i}">${escHtml(h && String(h).trim() ? String(h).trim() : `Column ${i + 1}`)}</option>`).join('');
+  emisSel.innerHTML = colOptions;
+  amtSel.innerHTML = colOptions;
+  // Keep prior selection if still valid, else best-guess by header text.
+  if (prevEmis && Number(prevEmis) < headers.length) emisSel.value = prevEmis;
+  else { const guess = headers.findIndex(h => /emis/i.test(h || '')); if (guess >= 0) emisSel.value = guess; }
+  if (prevAmt && Number(prevAmt) < headers.length) amtSel.value = prevAmt;
+  else { const guess = headers.findIndex(h => /amount|receipt|q\d/i.test(h || '')); if (guess >= 0) amtSel.value = guess; }
+
+  const emisCol = parseInt(emisSel.value, 10), amtCol = parseInt(amtSel.value, 10);
+  const dataRows = rows.slice(headerRowIdx + 1, headerRowIdx + 8);
+  const previewRows = dataRows.map(r => {
+    const emis = (r?.[emisCol] ?? '').toString().trim();
+    const amt = (r?.[amtCol] ?? '').toString().trim();
+    return { emis, amt, valid: !!emis && !isNaN(parseFloat(amt.replace(/,/g, ''))) };
+  }).filter(r => r.emis || r.amt);
+
+  document.getElementById('fundMappingPreview').innerHTML = previewRows.length
+    ? `<table class="data-table"><thead><tr><th>EMIS (mapped)</th><th>Amount (mapped)</th></tr></thead><tbody>
+        ${previewRows.map(r => `<tr style="${r.valid ? '' : 'color:#dc2626'}"><td>${escHtml(r.emis) || '—'}</td><td>${escHtml(r.amt) || '—'}</td></tr>`).join('')}
+       </tbody></table>`
+    : `<div style="padding:12px;color:var(--t3);font-size:.82rem">No data rows found below this header row — check the header row number.</div>`;
+}
+
+async function fundConfirmMapping() {
+  if (!fundPendingUpload) return;
+  const headerRowIdx = Math.max(0, (parseInt(document.getElementById('fundMappingHeaderRow').value, 10) || 1) - 1);
+  const emisCol = parseInt(document.getElementById('fundMappingEmisCol').value, 10);
+  const amtCol = parseInt(document.getElementById('fundMappingAmountCol').value, 10);
+  if (isNaN(emisCol) || isNaN(amtCol) || emisCol === amtCol) { showToast('Pick two different columns for EMIS Code and Amount.', false); return; }
+
+  const { file, quarter } = fundPendingUpload;
+  const mapping = { headerRowIndex: headerRowIdx, emisColIndex: emisCol, amountColIndex: amtCol };
+  fundCloseMappingModal();
+  await fundDoNsbUpload(file, quarter, false, mapping);
+}
+
+async function fundDoNsbUpload(file, quarter, confirmReplace, mapping) {
   showToast('Uploading to Google Drive…', true);
   const result = await fundUploadNsbFile(
-    file, { financialYear: fundState.financialYear, quarter, confirmReplace },
+    file, { financialYear: fundState.financialYear, quarter, confirmReplace, mapping },
     {
       onDuplicate: (existing, message) => { showToast(message, false); },
       onNeedsConfirmation: (existing, message) => {
@@ -480,13 +575,21 @@ async function fundDoNsbUpload(file, quarter, confirmReplace) {
           `The new file appears different. Replace the existing Q${quarter} file? ` +
           `(The old file is archived, never deleted.)`
         );
-        if (proceed) fundDoNsbUpload(file, quarter, true);
+        if (proceed) fundDoNsbUpload(file, quarter, true, mapping);
       },
     }
   );
   if (result.success) {
-    showToast(`Q${quarter} file uploaded (v${result.file.file_version}).`, true);
+    const imp = result.import;
+    if (imp) {
+      showToast(imp.imported > 0
+        ? `Q${quarter} file uploaded — ${imp.imported} school${imp.imported === 1 ? '' : 's'} imported${imp.skipped ? `, ${imp.skipped} skipped` : ''}.`
+        : (imp.message || 'File uploaded, but no rows could be imported — check your column mapping.'), imp.imported > 0);
+    } else {
+      showToast(`Q${quarter} file uploaded (v${result.file.file_version}).`, true);
+    }
     fundLoadSourceFiles();
+    if (fundState.accountId) fundLoadAccount('nsb');
   }
 }
 
