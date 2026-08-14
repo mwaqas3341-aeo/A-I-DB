@@ -78,13 +78,28 @@ async function fundInitSelectors(prefix) {
 
   const searchInput = document.getElementById(`fund_${prefix}_school_search`);
   searchInput.oninput = () => fundSearchSchool(prefix);
-  searchInput.onfocus = () => fundSearchSchool(prefix);
+  // Focusing the search box re-opens the picker (list below the search
+  // bar) even if a school is already selected, so the user can change it
+  // without hunting for a separate button first.
+  searchInput.onfocus = () => { if (fundState.emisCode) fundChangeSchool(prefix, false); fundSearchSchool(prefix); };
 
-  // Non-admins have a small enough jurisdiction that we show it straight
-  // away — no need to click/focus the search box first. Admins still
-  // need to type (see fundSearchSchool) since "everything" is too big
-  // a list to dump on open.
-  if (!fundState.isAdmin && !fundState.emisCode) fundSearchSchool(prefix);
+  if (fundState.emisCode) {
+    // A school is already selected (e.g. switching between NSB/FTF) —
+    // keep the picker collapsed and show the identity bar straight away.
+    fundShowSelectedBar(prefix);
+  } else {
+    document.getElementById(`fund_${prefix}_school_list_wrap`).style.display = 'block';
+    // Non-admins have a small enough jurisdiction that we show it straight
+    // away — no need to click/focus the search box first. Admins still
+    // need to type (see fundSearchSchool) since "everything" is too big
+    // a list to dump on open.
+    if (!fundState.isAdmin) {
+      fundSearchSchool(prefix);
+    } else {
+      document.getElementById(`fund_${prefix}_school_list_meta`).textContent = 'Type at least 2 characters to search schools.';
+      document.getElementById(`fund_${prefix}_school_results`).innerHTML = '';
+    }
+  }
 
   if (fundState.financialYearId && fundState.emisCode) fundLoadAccount(prefix);
 }
@@ -94,7 +109,10 @@ function fundOnFyChange(prefix) {
   const opt = fySel.selectedOptions[0];
   fundState.financialYearId = fySel.value;
   fundState.financialYear = opt ? opt.textContent : '';
-  if (fundState.emisCode) fundLoadAccount(prefix);
+  if (fundState.emisCode) {
+    fundShowSelectedBar(prefix);
+    fundLoadAccount(prefix);
+  }
 }
 
 let fundSchoolSearchDebounce = null;
@@ -102,22 +120,37 @@ let fundSchoolSearchDebounce = null;
 // is_admin()/fn_jurisdiction_visible() logic as the rest of the app, so
 // non-admins only ever see schools they're already authorized to see —
 // no manual EMIS entry, no separate jurisdiction system.
+// Renders results in the free page space BELOW the search bar (never
+// inside/under the search field itself) — see .fund-school-list-grid.
 function fundSearchSchool(prefix) {
   const kw = document.getElementById(`fund_${prefix}_school_search`).value.trim();
+  const wrapEl = document.getElementById(`fund_${prefix}_school_list_wrap`);
+  const metaEl = document.getElementById(`fund_${prefix}_school_list_meta`);
   const resultsEl = document.getElementById(`fund_${prefix}_school_results`);
   clearTimeout(fundSchoolSearchDebounce);
+  wrapEl.style.display = 'block';
   // Admins have a huge scope (everything) — require a couple of
   // characters before searching. Everyone else's jurisdiction is small
   // enough to just show the full list immediately (on focus/empty query).
-  if (fundState.isAdmin && kw.length < 2) { resultsEl.innerHTML = ''; return; }
-  resultsEl.innerHTML = `<div style="padding:8px;color:var(--t3);font-size:.82rem">Loading…</div>`;
+  if (fundState.isAdmin && kw.length < 2) {
+    metaEl.textContent = '';
+    resultsEl.innerHTML = `<div class="fund-school-empty">Type at least 2 characters to search schools.</div>`;
+    return;
+  }
+  metaEl.textContent = '';
+  resultsEl.innerHTML = `<div class="fund-school-empty"><span class="spinner-border spinner-border-sm"></span> Loading…</div>`;
   fundSchoolSearchDebounce = setTimeout(async () => {
     const { data, error } = await _sb.rpc('fund_visible_schools', { p_search: kw || null });
-    if (error || !data?.length) { resultsEl.innerHTML = `<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school in your jurisdiction.</div>`; return; }
+    if (error || !data?.length) {
+      metaEl.textContent = '';
+      resultsEl.innerHTML = `<div class="fund-school-empty">No matching school in your jurisdiction.</div>`;
+      return;
+    }
+    metaEl.textContent = `${data.length} school${data.length === 1 ? '' : 's'} — select one to open its ${prefix === 'nsb' ? 'NSB' : 'FTF'} record`;
     resultsEl.innerHTML = data.map(s => `
-      <div class="ap-school-result" onclick="fundSelectSchool('${prefix}', '${s.emis}', '${escHtml(s.school_name || '').replace(/'/g, "\\'")}')">
-        <strong>${escHtml(s.school_name || '')}</strong>
-        <span style="color:var(--t3);font-size:.78rem"> — EMIS ${escHtml(s.emis)} · ${escHtml(s.tehsil || '')}, ${escHtml(s.district || '')}</span>
+      <div class="fund-school-card" onclick="fundSelectSchool('${prefix}', '${s.emis}', '${escHtml(s.school_name || '').replace(/'/g, "\\'")}')">
+        <span class="fsc-name">${escHtml(s.school_name || '')}</span>
+        <span class="fsc-meta">EMIS ${escHtml(s.emis)} · ${escHtml(s.tehsil || '')}, ${escHtml(s.district || '')}</span>
       </div>`).join('');
   }, 250);
 }
@@ -126,8 +159,41 @@ function fundSelectSchool(prefix, emis, name) {
   fundState.emisCode = emis;
   fundState.schoolName = name;
   document.getElementById(`fund_${prefix}_school_search`).value = `${name} (EMIS ${emis})`;
-  document.getElementById(`fund_${prefix}_school_results`).innerHTML = '';
+  fundShowSelectedBar(prefix);
   fundLoadAccount(prefix);
+}
+
+// Collapses the picker and shows the "School Name — EMIS Code" identity
+// bar at the top of the detail area, per the intended workflow: Search →
+// list below the search bar → select → detail opens with the school
+// clearly identified.
+function fundShowSelectedBar(prefix) {
+  document.getElementById(`fund_${prefix}_school_list_wrap`).style.display = 'none';
+  document.getElementById(`fund_${prefix}_school_results`).innerHTML = '';
+  const bar = document.getElementById(`fund_${prefix}_selectedBar`);
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <div>
+      <div class="fsb-name">${escHtml(fundState.schoolName || '')} — EMIS ${escHtml(fundState.emisCode || '')}</div>
+      <div class="fsb-meta">${prefix === 'nsb' ? 'NSB' : 'FTF'} record${fundState.financialYear ? ` · FY ${escHtml(fundState.financialYear)}` : ''}</div>
+    </div>
+    <button class="btn-edit" style="padding:5px 12px;font-size:.8rem" onclick="fundChangeSchool('${prefix}')"><i class="bi bi-arrow-repeat"></i> Change School</button>`;
+}
+
+// Clears the current selection and returns to the school picker. By
+// default also re-runs the search so the list reappears immediately.
+function fundChangeSchool(prefix, reSearch = true) {
+  fundState.emisCode = null;
+  fundState.schoolName = '';
+  fundState.accountId = null;
+  document.getElementById(`fund_${prefix}_selectedBar`).style.display = 'none';
+  document.getElementById(`fund_${prefix}_openingPrompt`).innerHTML = '';
+  document.getElementById(`fund_${prefix}_openingPrompt`).style.display = 'none';
+  document.getElementById(`fund_${prefix}_body`).style.display = 'none';
+  const input = document.getElementById(`fund_${prefix}_school_search`);
+  input.value = '';
+  input.focus();
+  if (reSearch) fundSearchSchool(prefix);
 }
 
 // ═══════════════════════════════ ACCOUNT LOAD ═══════════════════════
@@ -596,8 +662,17 @@ if (typeof ROUTES === 'object') {
   ROUTES['fund-archives'] = () => openFundArchivesView();
 }
 
+// Yearly financial summary for the selected EMIS code — school identity
+// (EMIS/name/FY) plus opening/income/expenses/closing totals, computed
+// from the actual records already loaded for this account (no change to
+// the underlying calculations, just how they're presented).
 function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
   return `
+    <div class="fund-ys-head">
+      <div class="fys-item"><span class="fys-label">EMIS Code</span><span class="fys-value">${escHtml(fundState.emisCode || '')}</span></div>
+      <div class="fys-item"><span class="fys-label">School Name</span><span class="fys-value">${escHtml(fundState.schoolName || '')}</span></div>
+      <div class="fys-item"><span class="fys-label">Financial Year</span><span class="fys-value">${escHtml(fundState.financialYear || '')}</span></div>
+    </div>
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="kpi-card" style="border-left-color:#64748b">
         <div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Opening Balance</div>
