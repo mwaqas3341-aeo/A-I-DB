@@ -9,6 +9,16 @@
 const FUND_MONTH_NAMES = { 7:'July',8:'August',9:'September',10:'October',11:'November',12:'December',1:'January',2:'February',3:'March',4:'April',5:'May',6:'June' };
 const FUND_FISCAL_MONTHS = [7,8,9,10,11,12,1,2,3,4,5,6];
 
+// "July 2026" style label — never show a bare month number/name without
+// its actual calendar year, since July appears in both halves of an FY.
+function fundMonthLabel(month, financialYear) {
+  const fy = financialYear || fundState.financialYear;
+  if (!fy) return FUND_MONTH_NAMES[month];
+  const y1 = parseInt(fy.split('-')[0], 10);
+  const year = month >= 7 ? y1 : y1 + 1;
+  return `${FUND_MONTH_NAMES[month]} ${year}`;
+}
+
 let fundState = {
   fundType: null,          // 'FTF' | 'NSB'
   financialYearId: null,
@@ -47,43 +57,34 @@ function openFundFtfModule() {
 
 // ═══════════════════════════════ SELECTORS ══════════════════════════
 async function fundInitSelectors(prefix) {
+  // Idempotent — tops up years 2014-15 through 5 years ahead of today.
+  // No one ever needs to add a financial year by hand.
+  await _sb.rpc('fund_ensure_financial_years');
+
   const fySel = document.getElementById(`fund_${prefix}_fy`);
-  const { data: years } = await _sb.from('fund_financial_years').select('id, financial_year').order('financial_year', { ascending: false });
+  const { data: years } = await _sb.from('fund_financial_years').select('id, financial_year, start_date, end_date').order('financial_year', { ascending: false });
   const list = years || [];
   fySel.innerHTML = list.map(y => `<option value="${y.id}">${y.financial_year}</option>`).join('')
     || `<option value="">No financial years yet</option>`;
 
-  if (fundState.isAdmin) {
-    fySel.innerHTML += `<option value="__new__">+ Add new financial year…</option>`;
-  }
-
-  if (list.length) {
-    fySel.value = list[0].id;
-    fundState.financialYearId = list[0].id;
-    fundState.financialYear = list[0].financial_year;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const current = list.find(y => y.start_date <= todayStr && todayStr <= y.end_date) || list[0];
+  if (current) {
+    fySel.value = current.id;
+    fundState.financialYearId = current.id;
+    fundState.financialYear = current.financial_year;
   }
   fySel.onchange = () => fundOnFyChange(prefix);
 
-  document.getElementById(`fund_${prefix}_school_search`).oninput = () => fundSearchSchool(prefix);
+  const searchInput = document.getElementById(`fund_${prefix}_school_search`);
+  searchInput.oninput = () => fundSearchSchool(prefix);
+  searchInput.onfocus = () => fundSearchSchool(prefix);
 
   if (fundState.financialYearId && fundState.emisCode) fundLoadAccount(prefix);
 }
 
-async function fundOnFyChange(prefix) {
+function fundOnFyChange(prefix) {
   const fySel = document.getElementById(`fund_${prefix}_fy`);
-  if (fySel.value === '__new__') {
-    const label = prompt('New financial year (format: 2027-28):');
-    if (!label || !/^\d{4}-\d{2}$/.test(label)) {
-      if (label) showToast('Format must be like 2027-28.', false);
-      fySel.value = fundState.financialYearId || '';
-      return;
-    }
-    const { data, error } = await _sb.from('fund_financial_years').insert({ financial_year: label }).select('id, financial_year').single();
-    if (error) { showToast(error.message, false); fySel.value = fundState.financialYearId || ''; return; }
-    showToast(`Financial year ${label} created.`, true);
-    await fundInitSelectors(prefix);
-    return;
-  }
   const opt = fySel.selectedOptions[0];
   fundState.financialYearId = fySel.value;
   fundState.financialYear = opt ? opt.textContent : '';
@@ -91,23 +92,28 @@ async function fundOnFyChange(prefix) {
 }
 
 let fundSchoolSearchDebounce = null;
+// Jurisdiction-scoped: fund_visible_schools() reuses the exact same
+// is_admin()/fn_jurisdiction_visible() logic as the rest of the app, so
+// non-admins only ever see schools they're already authorized to see —
+// no manual EMIS entry, no separate jurisdiction system.
 function fundSearchSchool(prefix) {
   const kw = document.getElementById(`fund_${prefix}_school_search`).value.trim();
   const resultsEl = document.getElementById(`fund_${prefix}_school_results`);
   clearTimeout(fundSchoolSearchDebounce);
-  const isEmis = /^\d+$/.test(kw);
-  if (kw.length < (isEmis ? 5 : 2)) { resultsEl.innerHTML = ''; return; }
-  resultsEl.innerHTML = `<div style="padding:8px;color:var(--t3);font-size:.82rem">Searching…</div>`;
+  // Admins have a huge scope (everything) — require a couple of
+  // characters before searching. Everyone else's jurisdiction is small
+  // enough to just show the full list immediately (on focus/empty query).
+  if (fundState.isAdmin && kw.length < 2) { resultsEl.innerHTML = ''; return; }
+  resultsEl.innerHTML = `<div style="padding:8px;color:var(--t3);font-size:.82rem">Loading…</div>`;
   fundSchoolSearchDebounce = setTimeout(async () => {
-    const query = _sb.from('schools').select('emis, school_name, tehsil, district').limit(15);
-    const { data, error } = isEmis ? await query.ilike('emis', `${kw}%`) : await query.ilike('school_name', `%${kw}%`);
-    if (error || !data?.length) { resultsEl.innerHTML = `<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school.</div>`; return; }
+    const { data, error } = await _sb.rpc('fund_visible_schools', { p_search: kw || null });
+    if (error || !data?.length) { resultsEl.innerHTML = `<div style="padding:8px;color:var(--t3);font-size:.82rem">No matching school in your jurisdiction.</div>`; return; }
     resultsEl.innerHTML = data.map(s => `
       <div class="ap-school-result" onclick="fundSelectSchool('${prefix}', '${s.emis}', '${escHtml(s.school_name || '').replace(/'/g, "\\'")}')">
         <strong>${escHtml(s.school_name || '')}</strong>
         <span style="color:var(--t3);font-size:.78rem"> — EMIS ${escHtml(s.emis)} · ${escHtml(s.tehsil || '')}, ${escHtml(s.district || '')}</span>
       </div>`).join('');
-  }, 300);
+  }, 250);
 }
 
 function fundSelectSchool(prefix, emis, name) {
@@ -182,7 +188,7 @@ async function fundRenderFtf(account) {
         ${FUND_FISCAL_MONTHS.map(m => {
           const r = byMonth[m];
           return `<tr>
-            <td><b>${FUND_MONTH_NAMES[m]}</b></td>
+            <td><b>${fundMonthLabel(m)}</b></td>
             <td>${r ? fundMoney(r.opening_balance) : '—'}</td>
             <td style="color:var(--ok)">${r ? fundMoney(r.total_income) : '—'}</td>
             <td style="color:#dc2626">
@@ -289,8 +295,8 @@ function fundMonthToDate(month) {
 // = 'expense', so we select-then-insert/update rather than adding rows.
 async function fundEditMonthlyExpense(prefix, month, current) {
   if (!fundState.accountId) { showToast('Select a financial year and school first.', false); return; }
-  const label = FUND_MONTH_NAMES[month];
-  const amountStr = prompt(`Total expenses for ${label} (FY ${fundState.financialYear}):`, current || '');
+  const label = fundMonthLabel(month);
+  const amountStr = prompt(`Total expenses for ${label}:`, current || '');
   if (amountStr === null) return;
   const amount = parseFloat(amountStr);
   if (isNaN(amount) || amount < 0) { showToast('Enter a valid, non-negative amount.', false); return; }
@@ -364,7 +370,7 @@ async function fundRenderNsb(account) {
         ${FUND_FISCAL_MONTHS.map(m => {
           const r = byMonth[m];
           return `<tr>
-            <td><b>${FUND_MONTH_NAMES[m]}</b></td>
+            <td><b>${fundMonthLabel(m)}</b></td>
             <td style="color:#dc2626">
               ${r ? fundMoney(r.total_expenses) : 'Rs 0'}
               <button class="btn-edit" style="padding:1px 8px;font-size:.72rem;margin-left:6px" onclick="fundEditMonthlyExpense('nsb', ${m}, ${r ? r.total_expenses : 0})"><i class="bi bi-pencil"></i></button>
@@ -484,6 +490,83 @@ async function fundDoNsbUpload(file, quarter, confirmReplace) {
   }
 }
 
+// ═══════════════════════════ ANNUAL ARCHIVES ═════════════════════════
+// Consolidated NSB/FTF workbooks are generated automatically once a
+// financial year ends (daily server-side check, see fund-generate-
+// annual-archive edge function + pg_cron). This view is on-demand
+// access + an Admin "Generate Now" override — it doesn't trigger
+// generation on its own.
+let fundArchivesFundType = 'NSB';
+
+function openFundArchivesView() {
+  switchGlobalTab('fundArchivesView', null);
+  fundState.isAdmin = fundIsAdmin();
+  document.getElementById('fundArchivesGenerateBtn').style.display = fundState.isAdmin ? 'inline-flex' : 'none';
+  fundSetArchivesFundType(fundArchivesFundType);
+}
+
+function fundSetArchivesFundType(type) {
+  fundArchivesFundType = type;
+  document.getElementById('fundArchivesNsbTab').classList.toggle('active', type === 'NSB');
+  document.getElementById('fundArchivesFtfTab').classList.toggle('active', type === 'FTF');
+  fundLoadArchives();
+}
+
+async function fundLoadArchives() {
+  const listEl = document.getElementById('fundArchivesList');
+  listEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)"><span class="spinner-border"></span> Loading…</div>`;
+
+  const { data: years } = await _sb.from('fund_financial_years').select('id, financial_year, end_date').order('financial_year', { ascending: false });
+  const { data: archives } = await _sb.from('fund_annual_archives').select('*').eq('fund_type', fundArchivesFundType);
+  const byFy = {}; (archives || []).forEach(a => byFy[a.financial_year_id] = a);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const rows = (years || []).filter(y => y.end_date < todayStr); // only years that have actually ended
+
+  if (!rows.length) { listEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)">No completed financial years yet.</div>`; return; }
+
+  listEl.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Financial Year</th><th>Status</th><th>Schools</th><th>Generated</th><th></th></tr></thead>
+      <tbody>
+        ${rows.map(y => {
+          const a = byFy[y.id];
+          const status = a?.status || 'pending';
+          const badgeColor = status === 'completed' ? 'var(--ok)' : (status === 'failed' ? '#dc2626' : 'var(--t3)');
+          return `<tr>
+            <td><b>${y.financial_year}</b></td>
+            <td style="color:${badgeColor};text-transform:capitalize">${status}${a?.status === 'failed' && a?.error_message ? ` <span style="font-size:.72rem;color:var(--t3)">(${escHtml(a.error_message)})</span>` : ''}</td>
+            <td>${a?.school_count ?? '—'}</td>
+            <td>${a?.generated_at ? new Date(a.generated_at).toLocaleDateString() : '—'}</td>
+            <td style="white-space:nowrap">
+              ${a?.status === 'completed' ? `<a class="btn btn-add" style="padding:4px 10px;font-size:.78rem" href="${escHtml(a.google_drive_url)}" target="_blank"><i class="bi bi-download"></i> Open</a>` : ''}
+              ${fundState.isAdmin ? `<button class="btn-edit" style="padding:4px 10px;font-size:.78rem;margin-left:6px" onclick="fundGenerateArchiveNow('${y.id}', '${y.financial_year}', ${a?.status === 'completed'})"><i class="bi bi-arrow-repeat"></i> ${a?.status === 'completed' ? 'Regenerate' : 'Generate Now'}</button>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function fundGenerateArchiveNow(financialYearId, financialYearLabel, isRegenerate) {
+  if (isRegenerate && !confirm(`Regenerate the consolidated ${fundArchivesFundType} workbook for FY ${financialYearLabel}? This replaces the existing Drive file reference with a fresh export.`)) return;
+  showToast(`Generating ${fundArchivesFundType} archive for FY ${financialYearLabel}…`, true);
+
+  const { data: { session } } = await _sb.auth.getSession();
+  const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/fund-generate-annual-archive', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ financial_year_id: financialYearId, fund_type: fundArchivesFundType, force: true }),
+  });
+  const result = await res.json();
+  if (!result.success) { showToast(result.message || 'Failed to generate archive.', false); return; }
+
+  const outcome = result.results?.[0];
+  if (outcome?.status === 'completed') showToast('Archive generated and saved to Google Drive.', true);
+  else showToast(outcome?.message || 'Archive generation did not complete — check Drive connection.', false);
+  fundLoadArchives();
+}
+
 // ═══════════════════════════════════ helpers ═════════════════════════
 function fundMoney(n) {
   return 'Rs ' + Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -497,6 +580,7 @@ if (typeof ROUTES === 'object') {
   ROUTES['fund'] = () => openFundModule();
   ROUTES['fund-nsb'] = () => openFundNsbModule();
   ROUTES['fund-ftf'] = () => openFundFtfModule();
+  ROUTES['fund-archives'] = () => openFundArchivesView();
 }
 
 function fundSummaryCardsHtml(opening, income, expenses, closing) {
