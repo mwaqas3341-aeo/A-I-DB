@@ -3,9 +3,11 @@
  *
  * Unlike the old (removed) Report Dispatch System, this is ONE shared
  * connection for the whole module (fund_google_connection, singleton
- * row id=1) — not per logged-in user. The Admin who clicks "Connect"
- * must sign in as m.waqas3341@gmail.com; the edge function rejects any
- * other account.
+ * row id=1) — not per logged-in user. Any Admin can connect it; whichever
+ * Google account they authenticate with via the consent screen is the
+ * account that gets connected (the edge function reads that back from
+ * Google's own OAuth response — no account is hard-coded anywhere, so
+ * there's nothing to "sign out of" or open an incognito window for).
  *
  * Reuses the existing OAuth client (same GOOGLE_CLIENT_ID, same
  * oauth-callback.html redirect flow) already registered in Google Cloud
@@ -28,7 +30,9 @@ function _fundOauthCallbackUrl() {
 /**
  * Opens Google's consent screen for the Admin to connect the shared
  * FUND Drive account. prompt=consent forces Google to return a
- * refresh_token even on a re-connect.
+ * refresh_token even on a re-connect. select_account (instead of a
+ * hard-coded login_hint) lets the Admin pick whichever Google account
+ * they actually want to connect — no account is forced or assumed.
  */
 function fundConnectGoogleAccount() {
   const params = new URLSearchParams({
@@ -37,8 +41,7 @@ function fundConnectGoogleAccount() {
     response_type: 'code',
     scope: FUND_GOOGLE_OAUTH_SCOPES,
     access_type: 'offline',
-    prompt: 'consent',
-    login_hint: 'm.waqas3341@gmail.com',
+    prompt: 'consent select_account',
   });
   const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 
@@ -96,69 +99,3 @@ function fundRefreshGoogleConnectionStatus() {
   });
 }
 
-/** SHA-256 hash of a File/Blob, as a lowercase hex string. Computed
- * client-side so exact-duplicate uploads can be blocked before we ever
- * touch Drive or the edge function. */
-async function fundHashFile(file) {
-  const buf = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function _fundFileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Uploads an NSB quarterly file. Handles the full dedupe/replace flow:
- *   1. Hashes the file locally.
- *   2. Calls fund-nsb-upload. If it's an exact duplicate of the current
- *      active file, the function refuses without touching Drive.
- *   3. If a *different* file already exists for that FY+Quarter, the
- *      function returns needsConfirmation + the existing file's info —
- *      call opts.onNeedsConfirmation(existing) to show your compare/
- *      replace UI, then call this again with confirmReplace: true.
- *
- * @param {File} file
- * @param {{financialYear:string, quarter:number, confirmReplace?:boolean, replacementReason?:string}} opts
- * @param {{onNeedsConfirmation?:Function, onDuplicate?:Function}} callbacks
- * @returns {Promise<{success:boolean, file?:object, message?:string}>}
- */
-async function fundUploadNsbFile(file, opts, callbacks = {}) {
-  const { data: { session } } = await _sb.auth.getSession();
-  if (!session) return { success: false, message: 'Not logged in.' };
-
-  const fileHash = await fundHashFile(file);
-  const fileBase64 = await _fundFileToBase64(file);
-
-  const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/fund-nsb-upload', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
-    body: JSON.stringify({
-      financial_year: opts.financialYear,
-      quarter: opts.quarter,
-      file_name: file.name,
-      mime_type: file.type,
-      file_size: file.size,
-      file_hash: fileHash,
-      file_base64: fileBase64,
-      confirm_replace: !!opts.confirmReplace,
-      replacement_reason: opts.replacementReason || null,
-      header_row_index: opts.mapping ? opts.mapping.headerRowIndex : null,
-      emis_col_index: opts.mapping ? opts.mapping.emisColIndex : null,
-      amount_col_index: opts.mapping ? opts.mapping.amountColIndex : null,
-    }),
-  });
-  const result = await res.json();
-
-  if (!result.success) {
-    if (result.duplicate && typeof callbacks.onDuplicate === 'function') callbacks.onDuplicate(result.existing, result.message);
-    if (result.needsConfirmation && typeof callbacks.onNeedsConfirmation === 'function') callbacks.onNeedsConfirmation(result.existing, result.message);
-  }
-  return result;
-}

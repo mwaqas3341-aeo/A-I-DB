@@ -80,6 +80,12 @@ async function fundInitSelectors(prefix) {
   searchInput.oninput = () => fundSearchSchool(prefix);
   searchInput.onfocus = () => fundSearchSchool(prefix);
 
+  // Non-admins have a small enough jurisdiction that we show it straight
+  // away — no need to click/focus the search box first. Admins still
+  // need to type (see fundSearchSchool) since "everything" is too big
+  // a list to dump on open.
+  if (!fundState.isAdmin && !fundState.emisCode) fundSearchSchool(prefix);
+
   if (fundState.financialYearId && fundState.emisCode) fundLoadAccount(prefix);
 }
 
@@ -136,11 +142,21 @@ async function fundLoadAccount(prefix) {
   if (!account) {
     document.getElementById(`fund_${prefix}_body`).style.display = 'none';
     document.getElementById(`fund_${prefix}_openingPrompt`).style.display = 'block';
+    // Preview what the auto-carried-forward opening balance will be, so
+    // the button isn't a mystery — but the figure itself is never typed
+    // in by hand (see fundCreateAccount).
+    const { data: carry } = await _sb.rpc('fund_previous_year_closing_balance', {
+      p_emis: fundState.emisCode, p_fund_type: fundType, p_financial_year_id: fundState.financialYearId,
+    });
+    const carryAmt = Number(carry || 0);
     document.getElementById(`fund_${prefix}_openingPrompt`).innerHTML = `
       <div style="padding:24px;text-align:center;color:var(--t3)">
         No ${fundType} account yet for ${escHtml(fundState.schoolName)} in FY ${fundState.financialYear}.<br>
+        <div style="margin-top:8px;font-size:.85rem">
+          Opening balance will be set automatically${carryAmt ? ` to <b>${fundMoney(carryAmt)}</b> (carried forward from the previous year's closing balance)` : ` to <b>Rs 0</b> (no earlier year on record for this school)`}.
+        </div>
         <button class="btn btn-add" style="margin-top:12px" onclick="fundCreateAccount('${prefix}')">
-          <i class="bi bi-plus-circle"></i> Set Opening Balance &amp; Start Ledger
+          <i class="bi bi-plus-circle"></i> Start Ledger for FY ${fundState.financialYear}
         </button>
       </div>`;
     return;
@@ -154,19 +170,41 @@ async function fundLoadAccount(prefix) {
   else fundRenderNsb(account);
 }
 
+// Opening balance is never typed in by hand: it's carried forward
+// automatically from the previous financial year's closing balance (0 if
+// there is no earlier year on record for this school). See
+// fund_previous_year_closing_balance() in the DB. Admins can still
+// correct it afterward via fundEditOpeningBalance() if a genuine
+// correction is needed.
 async function fundCreateAccount(prefix) {
   const fundType = prefix === 'nsb' ? 'NSB' : 'FTF';
-  const openingStr = prompt(`Opening Balance as of 1 July (FY ${fundState.financialYear}):`, '0');
-  if (openingStr === null) return;
-  const opening = parseFloat(openingStr);
-  if (isNaN(opening) || opening < 0) { showToast('Enter a valid, non-negative amount.', false); return; }
+  const { data: carry, error: carryErr } = await _sb.rpc('fund_previous_year_closing_balance', {
+    p_emis: fundState.emisCode, p_fund_type: fundType, p_financial_year_id: fundState.financialYearId,
+  });
+  if (carryErr) { showToast(carryErr.message, false); return; }
+  const opening = Number(carry || 0);
 
   const { error } = await _sb.from('fund_accounts').insert({
     emis_code: fundState.emisCode, fund_type: fundType, financial_year_id: fundState.financialYearId,
     opening_balance: opening, created_by: currentUser.id,
   });
   if (error) { showToast(error.message, false); return; }
-  showToast('Account created.', true);
+  showToast(`Ledger started with opening balance ${fundMoney(opening)}.`, true);
+  fundLoadAccount(prefix);
+}
+
+// Admin-only correction path — the figure is auto-computed on creation,
+// but a genuine correction (e.g. a prior-year data fix) should still be
+// possible without going around the app.
+async function fundEditOpeningBalance(prefix, current) {
+  if (!fundState.isAdmin) return;
+  const amountStr = prompt(`Correct the Opening Balance for ${escHtml(fundState.schoolName)} (FY ${fundState.financialYear}):`, current);
+  if (amountStr === null) return;
+  const amount = parseFloat(amountStr);
+  if (isNaN(amount) || amount < 0) { showToast('Enter a valid, non-negative amount.', false); return; }
+  const { error } = await _sb.from('fund_accounts').update({ opening_balance: amount }).eq('id', fundState.accountId);
+  if (error) { showToast(error.message, false); return; }
+  showToast('Opening balance updated.', true);
   fundLoadAccount(prefix);
 }
 
@@ -179,7 +217,7 @@ async function fundRenderFtf(account) {
   const totalExpenses = (summary || []).reduce((s, r) => s + Number(r.total_expenses), 0);
   const closing = byMonth[6] ? Number(byMonth[6].closing_balance) : Number(account.opening_balance);
 
-  document.getElementById('fund_ftf_summaryCards').innerHTML = fundSummaryCardsHtml(account.opening_balance, totalIncome, totalExpenses, closing);
+  document.getElementById('fund_ftf_summaryCards').innerHTML = fundSummaryCardsHtml(account.opening_balance, totalIncome, totalExpenses, closing, 'ftf');
 
   document.getElementById('fund_ftf_monthlyTable').innerHTML = `
     <table class="data-table">
@@ -340,7 +378,7 @@ async function fundRenderNsb(account) {
   const totalExpenses = (summary || []).reduce((s, r) => s + Number(r.total_expenses), 0);
   const closing = Number(account.opening_balance) + totalIncome - totalExpenses;
 
-  document.getElementById('fund_nsb_summaryCards').innerHTML = fundSummaryCardsHtml(account.opening_balance, totalIncome, totalExpenses, closing);
+  document.getElementById('fund_nsb_summaryCards').innerHTML = fundSummaryCardsHtml(account.opening_balance, totalIncome, totalExpenses, closing, 'nsb');
 
   document.getElementById('fund_nsb_quarterlyTable').innerHTML = `
     <table class="data-table">
@@ -382,7 +420,6 @@ async function fundRenderNsb(account) {
     <p style="font-size:.78rem;color:var(--t3);margin-top:6px">NSB income arrives quarterly (above), so it isn't spread month-by-month here — only expenses are tracked monthly, as a single total per month.</p>`;
 
   fundLoadTransactions('nsb', account.id);
-  if (fundState.isAdmin) fundLoadSourceFiles();
 }
 
 async function fundEditNsbReceipt(quarter, incomeType, current) {
@@ -429,168 +466,6 @@ async function fundRefreshDriveStatus() {
     }
     btn.onclick = fundConnectGoogleAccount;
   });
-}
-
-async function fundLoadSourceFiles() {
-  const { data: files } = await _sb.from('fund_source_files').select('*')
-    .eq('financial_year_id', fundState.financialYearId).eq('fund_type', 'NSB').eq('file_kind', 'quarterly')
-    .eq('is_active', true);
-  const byQ = {}; (files || []).forEach(f => byQ[f.quarter] = f);
-
-  document.getElementById('fundNsbFilesTable').innerHTML = `
-    <table class="data-table">
-      <thead><tr><th>Quarter</th><th>File</th><th>Status</th><th>Schools Imported</th><th>Uploaded</th><th></th></tr></thead>
-      <tbody>
-        ${[1,2,3,4].map(q => {
-          const f = byQ[q];
-          const statusColor = f?.processing_status === 'PROCESSED' ? 'var(--ok)' : (f?.processing_status === 'FAILED' ? '#dc2626' : 'var(--t3)');
-          return `<tr>
-            <td><b>Q${q}</b></td>
-            <td>${f ? `<a href="${escHtml(f.file_url || '#')}" target="_blank">${escHtml(f.file_name)}</a> <span style="color:var(--t3);font-size:.75rem">(v${f.file_version})</span>` : '—'}</td>
-            <td style="color:${statusColor}">
-              ${f ? escHtml(f.processing_status) : '<span style="color:var(--t3)">Not Uploaded</span>'}
-              ${f?.error_message ? `<div style="font-size:.72rem;color:var(--t3);max-width:220px">${escHtml(f.error_message)}</div>` : ''}
-            </td>
-            <td>${f?.row_count ?? '—'}</td>
-            <td>${f ? new Date(f.uploaded_at).toLocaleDateString() : '—'}</td>
-            <td>
-              <input type="file" id="fundNsbFileInput_${q}" style="display:none" accept=".xlsx,.xls,.csv" onchange="fundHandleNsbFileSelect(${q}, this)">
-              <button class="btn btn-add" style="padding:4px 10px;font-size:.78rem" onclick="document.getElementById('fundNsbFileInput_${q}').click()">
-                <i class="bi bi-upload"></i> ${f ? 'Replace' : 'Upload'}
-              </button>
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>`;
-}
-
-async function fundHandleNsbFileSelect(quarter, inputEl) {
-  const file = inputEl.files[0];
-  inputEl.value = '';
-  if (!file || !fundState.financialYear) return;
-
-  let rows;
-  try { rows = await fundParseFileRows(file); }
-  catch (e) { showToast('Could not read this file — make sure it is a valid Excel or CSV file.', false); return; }
-  if (!rows || !rows.length) { showToast('This file appears to be empty.', false); return; }
-
-  fundOpenMappingModal(file, quarter, rows);
-}
-
-// Client-side parse is ONLY for the mapping preview UI — the server
-// re-parses the same file with the confirmed mapping before writing any
-// financial data (see fund-nsb-upload edge function).
-function fundParseFileRows(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true, codepage: 65001 });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        resolve(XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }));
-      } catch (err) { reject(err); }
-    };
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-let fundPendingUpload = null; // { file, quarter, rows }
-
-// NSB file layouts change between quarters, so the Admin maps which
-// column is EMIS and which is the amount EACH time, with a live preview
-// — nothing is hardcoded to a fixed column position.
-function fundOpenMappingModal(file, quarter, rows) {
-  fundPendingUpload = { file, quarter, rows };
-  document.getElementById('fundMappingFileName').textContent = file.name;
-  document.getElementById('fundMappingAmountLabel').textContent = `Quarter ${quarter} Amount Column`;
-  document.getElementById('fundMappingHeaderRow').value = 1;
-  fundRebuildMappingPreview();
-  document.getElementById('fundNsbMappingModal').classList.remove('hidden');
-}
-
-function fundCloseMappingModal() {
-  document.getElementById('fundNsbMappingModal').classList.add('hidden');
-  fundPendingUpload = null;
-}
-
-function fundRebuildMappingPreview() {
-  if (!fundPendingUpload) return;
-  const { rows } = fundPendingUpload;
-  const headerRowIdx = Math.max(0, (parseInt(document.getElementById('fundMappingHeaderRow').value, 10) || 1) - 1);
-  const headers = rows[headerRowIdx] || [];
-
-  const emisSel = document.getElementById('fundMappingEmisCol');
-  const amtSel = document.getElementById('fundMappingAmountCol');
-  const prevEmis = emisSel.value, prevAmt = amtSel.value;
-
-  const colOptions = headers.map((h, i) => `<option value="${i}">${escHtml(h && String(h).trim() ? String(h).trim() : `Column ${i + 1}`)}</option>`).join('');
-  emisSel.innerHTML = colOptions;
-  amtSel.innerHTML = colOptions;
-  // Keep prior selection if still valid, else best-guess by header text.
-  if (prevEmis && Number(prevEmis) < headers.length) emisSel.value = prevEmis;
-  else { const guess = headers.findIndex(h => /emis/i.test(h || '')); if (guess >= 0) emisSel.value = guess; }
-  if (prevAmt && Number(prevAmt) < headers.length) amtSel.value = prevAmt;
-  else { const guess = headers.findIndex(h => /amount|receipt|q\d/i.test(h || '')); if (guess >= 0) amtSel.value = guess; }
-
-  const emisCol = parseInt(emisSel.value, 10), amtCol = parseInt(amtSel.value, 10);
-  const dataRows = rows.slice(headerRowIdx + 1, headerRowIdx + 8);
-  const previewRows = dataRows.map(r => {
-    const emis = (r?.[emisCol] ?? '').toString().trim();
-    const amt = (r?.[amtCol] ?? '').toString().trim();
-    return { emis, amt, valid: !!emis && !isNaN(parseFloat(amt.replace(/,/g, ''))) };
-  }).filter(r => r.emis || r.amt);
-
-  document.getElementById('fundMappingPreview').innerHTML = previewRows.length
-    ? `<table class="data-table"><thead><tr><th>EMIS (mapped)</th><th>Amount (mapped)</th></tr></thead><tbody>
-        ${previewRows.map(r => `<tr style="${r.valid ? '' : 'color:#dc2626'}"><td>${escHtml(r.emis) || '—'}</td><td>${escHtml(r.amt) || '—'}</td></tr>`).join('')}
-       </tbody></table>`
-    : `<div style="padding:12px;color:var(--t3);font-size:.82rem">No data rows found below this header row — check the header row number.</div>`;
-}
-
-async function fundConfirmMapping() {
-  if (!fundPendingUpload) return;
-  const headerRowIdx = Math.max(0, (parseInt(document.getElementById('fundMappingHeaderRow').value, 10) || 1) - 1);
-  const emisCol = parseInt(document.getElementById('fundMappingEmisCol').value, 10);
-  const amtCol = parseInt(document.getElementById('fundMappingAmountCol').value, 10);
-  if (isNaN(emisCol) || isNaN(amtCol) || emisCol === amtCol) { showToast('Pick two different columns for EMIS Code and Amount.', false); return; }
-
-  const { file, quarter } = fundPendingUpload;
-  const mapping = { headerRowIndex: headerRowIdx, emisColIndex: emisCol, amountColIndex: amtCol };
-  fundCloseMappingModal();
-  await fundDoNsbUpload(file, quarter, false, mapping);
-}
-
-async function fundDoNsbUpload(file, quarter, confirmReplace, mapping) {
-  showToast('Uploading to Google Drive…', true);
-  const result = await fundUploadNsbFile(
-    file, { financialYear: fundState.financialYear, quarter, confirmReplace, mapping },
-    {
-      onDuplicate: (existing, message) => { showToast(message, false); },
-      onNeedsConfirmation: (existing, message) => {
-        const proceed = confirm(
-          `${message}\n\nExisting file: ${existing.file_name} (v${existing.file_version})\n` +
-          `Uploaded: ${new Date(existing.uploaded_at).toLocaleString()}\n\n` +
-          `The new file appears different. Replace the existing Q${quarter} file? ` +
-          `(The old file is archived, never deleted.)`
-        );
-        if (proceed) fundDoNsbUpload(file, quarter, true, mapping);
-      },
-    }
-  );
-  if (result.success) {
-    const imp = result.import;
-    if (imp) {
-      showToast(imp.imported > 0
-        ? `Q${quarter} file uploaded — ${imp.imported} school${imp.imported === 1 ? '' : 's'} imported${imp.skipped ? `, ${imp.skipped} skipped` : ''}.`
-        : (imp.message || 'File uploaded, but no rows could be imported — check your column mapping.'), imp.imported > 0);
-    } else {
-      showToast(`Q${quarter} file uploaded (v${result.file.file_version}).`, true);
-    }
-    fundLoadSourceFiles();
-    if (fundState.accountId) fundLoadAccount('nsb');
-  }
 }
 
 // ═══════════════════════════ ANNUAL ARCHIVES ═════════════════════════
@@ -642,7 +517,9 @@ async function fundLoadArchives() {
             <td>${a?.school_count ?? '—'}</td>
             <td>${a?.generated_at ? new Date(a.generated_at).toLocaleDateString() : '—'}</td>
             <td style="white-space:nowrap">
-              ${a?.status === 'completed' ? `<a class="btn btn-add" style="padding:4px 10px;font-size:.78rem" href="${escHtml(a.google_drive_url)}" target="_blank"><i class="bi bi-download"></i> Open</a>` : ''}
+              ${a?.status === 'completed' ? `
+                <button class="btn btn-add" style="padding:4px 10px;font-size:.78rem" onclick="fundDownloadArchive('${a.id}')"><i class="bi bi-download"></i> Download as Excel</button>
+                <a class="btn-edit" style="padding:4px 10px;font-size:.78rem;margin-left:4px" href="${escHtml(a.google_drive_url)}" target="_blank" title="View in Google Drive"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
               ${fundState.isAdmin ? `<button class="btn-edit" style="padding:4px 10px;font-size:.78rem;margin-left:6px" onclick="fundGenerateArchiveNow('${y.id}', '${y.financial_year}', ${a?.status === 'completed'})"><i class="bi bi-arrow-repeat"></i> ${a?.status === 'completed' ? 'Regenerate' : 'Generate Now'}</button>` : ''}
             </td>
           </tr>`;
@@ -670,6 +547,39 @@ async function fundGenerateArchiveNow(financialYearId, financialYearLabel, isReg
   fundLoadArchives();
 }
 
+// Streams the archive workbook down through fund-download-archive (the
+// server fetches it from Drive using the shared connection's own token),
+// so the person downloading never needs their own Google account/access.
+// Produces an actual .xlsx file save, not just a new tab.
+async function fundDownloadArchive(archiveId) {
+  showToast('Preparing download…', true);
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { showToast('Not logged in.', false); return; }
+
+  try {
+    const res = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/fund-download-archive?archive_id=${encodeURIComponent(archiveId)}`, {
+      headers: { Authorization: 'Bearer ' + session.access_token },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.message || 'Could not download the archive.', false);
+      return;
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const fileName = match ? match[1] : `${fundArchivesFundType}_archive.xlsx`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showToast(e.message || 'Download failed.', false);
+  }
+}
+
 // ═══════════════════════════════════ helpers ═════════════════════════
 function fundMoney(n) {
   return 'Rs ' + Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -686,10 +596,15 @@ if (typeof ROUTES === 'object') {
   ROUTES['fund-archives'] = () => openFundArchivesView();
 }
 
-function fundSummaryCardsHtml(opening, income, expenses, closing) {
+function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
   return `
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-      <div class="kpi-card" style="border-left-color:#64748b"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Opening Balance</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px">${fundMoney(opening)}</div></div>
+      <div class="kpi-card" style="border-left-color:#64748b">
+        <div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Opening Balance</div>
+        <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${fundMoney(opening)}
+          ${fundState.isAdmin && prefix ? `<button class="btn-edit" style="padding:1px 8px;font-size:.68rem;margin-left:6px;vertical-align:middle" onclick="fundEditOpeningBalance('${prefix}', ${Number(opening) || 0})" title="Correct opening balance"><i class="bi bi-pencil"></i></button>` : ''}
+        </div>
+      </div>
       <div class="kpi-card" style="border-left-color:var(--ok)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Income</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--ok)">${fundMoney(income)}</div></div>
       <div class="kpi-card" style="border-left-color:#dc2626"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Expenses</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:#dc2626">${fundMoney(expenses)}</div></div>
       <div class="kpi-card" style="border-left-color:var(--brand)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Closing Balance</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--brand)">${fundMoney(closing)}</div></div>
