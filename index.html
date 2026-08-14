@@ -1222,15 +1222,14 @@
           </div>
         </div>
 
-        <!-- School list renders in the free page space below the search
-             bar (not inside/under the search field). Hidden once a
-             school is selected; "Change School" below brings it back. -->
+        <!-- School list renders as cards in the free page space below the
+             search bar (not inside/under the search field), and stays
+             visible even after a school is picked — selecting a card just
+             highlights it, there is no separate "change school" control. -->
         <div id="fund_nsb_school_list_wrap" class="fund-school-list-wrap" style="display:none">
           <div id="fund_nsb_school_list_meta" class="fund-school-list-meta"></div>
           <div id="fund_nsb_school_results" class="fund-school-list-grid"></div>
         </div>
-
-        <div id="fund_nsb_selectedBar" class="fund-selected-bar" style="display:none"></div>
 
         <div id="fund_nsb_openingPrompt"></div>
 
@@ -1282,24 +1281,19 @@
           </div>
         </div>
 
-        <!-- School list renders in the free page space below the search
-             bar (not inside/under the search field). Hidden once a
-             school is selected; "Change School" below brings it back. -->
+        <!-- School list renders as cards in the free page space below the
+             search bar (not inside/under the search field), and stays
+             visible even after a school is picked — selecting a card just
+             highlights it, there is no separate "change school" control. -->
         <div id="fund_ftf_school_list_wrap" class="fund-school-list-wrap" style="display:none">
           <div id="fund_ftf_school_list_meta" class="fund-school-list-meta"></div>
           <div id="fund_ftf_school_results" class="fund-school-list-grid"></div>
         </div>
 
-        <div id="fund_ftf_selectedBar" class="fund-selected-bar" style="display:none"></div>
-
         <div id="fund_ftf_openingPrompt"></div>
 
         <div id="fund_ftf_body" style="display:none">
           <div id="fund_ftf_summaryCards" style="margin-bottom:20px"></div>
-
-          <div style="display:flex;gap:10px;margin-bottom:10px">
-            <button class="btn btn-add" onclick="fundOpenFtfTxnModal()"><i class="bi bi-plus-circle"></i> Add Income</button>
-          </div>
 
           <div class="section-title"><i class="bi bi-calendar3"></i> Monthly Ledger (July → June)<div class="title-line"></div></div>
           <p style="font-size:.78rem;color:var(--t3);margin:-4px 0 10px">Expenses are entered as one total per month — click the pencil next to a month's expense figure below to set or update it.</p>
