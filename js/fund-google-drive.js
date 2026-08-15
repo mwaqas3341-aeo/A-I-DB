@@ -29,10 +29,11 @@ function _fundOauthCallbackUrl() {
 
 /**
  * Opens Google's consent screen for the Admin to connect the shared
- * FUND Drive account. prompt=consent forces Google to return a
- * refresh_token even on a re-connect. select_account (instead of a
- * hard-coded login_hint) lets the Admin pick whichever Google account
- * they actually want to connect — no account is forced or assumed.
+ * FUND Drive account. ALL FUND files (every user's jurisdiction workbook,
+ * plus admin archives) live in ONE account — m.waqas3341@gmail.com — so
+ * this hints that account directly. The server (google-oauth-exchange)
+ * still rejects any other account regardless of what's picked here.
+ * prompt=consent forces Google to return a refresh_token even on reconnect.
  */
 function fundConnectGoogleAccount() {
   const params = new URLSearchParams({
@@ -41,7 +42,8 @@ function fundConnectGoogleAccount() {
     response_type: 'code',
     scope: FUND_GOOGLE_OAUTH_SCOPES,
     access_type: 'offline',
-    prompt: 'consent select_account',
+    prompt: 'consent',
+    login_hint: 'm.waqas3341@gmail.com',
   });
   const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 

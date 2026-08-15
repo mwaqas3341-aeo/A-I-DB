@@ -57,6 +57,7 @@ function openFundNsbModule() {
   fundState.isAdmin = fundIsAdmin();
   document.getElementById('fundNsbAdminPanel').style.display = fundState.isAdmin ? 'block' : 'none';
   fundInitSelectors('nsb');
+  fundInitMyWorkbookSelector();
   if (fundState.isAdmin) fundRefreshDriveStatus();
 }
 
@@ -65,6 +66,61 @@ function openFundFtfModule() {
   fundState.fundType = 'FTF';
   fundState.isAdmin = fundIsAdmin();
   fundInitSelectors('ftf');
+}
+
+// ═══════════════════ MY NSB WORKBOOK (any logged-in user) ═══════════
+// Every user's own jurisdiction-scoped NSB workbook lives as one
+// persistent file in the shared FUND Drive account, auto-synced daily
+// (current + previous FY). Download always works for ANY user — not
+// admin-only — since it's just "their own schools' data".
+async function fundInitMyWorkbookSelector() {
+  const sel = document.getElementById('fundMyWorkbookYear');
+  if (!sel) return;
+  const { data: years } = await _sb.from('fund_financial_years').select('financial_year').order('financial_year', { ascending: false });
+  sel.innerHTML = (years || []).map(y => `<option value="${y.financial_year}">${y.financial_year}</option>`).join('');
+}
+
+async function fundDownloadMyWorkbook(financialYear) {
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { showToast('Not logged in.', false); return; }
+
+  if (!financialYear) {
+    // Full multi-year workbook — sync first so "Download" always reflects
+    // the latest saved values, not just whatever the nightly job last wrote.
+    showToast('Syncing your workbook…', true);
+    try {
+      await fetch(CONFIG.SUPABASE_URL + '/functions/v1/fund-sync-user-nsb-workbook', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: '{}',
+      });
+    } catch (e) { /* non-fatal — download falls back to whatever's already in Drive */ }
+  } else {
+    showToast(`Preparing FY ${financialYear} file…`, true);
+  }
+
+  const params = new URLSearchParams();
+  if (financialYear) params.set('financial_year', financialYear);
+  const url = CONFIG.SUPABASE_URL + '/functions/v1/fund-download-user-workbook' + (params.toString() ? '?' + params.toString() : '');
+
+  try {
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + session.access_token } });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      showToast(errBody.message || 'Could not download the file.', false);
+      return;
+    }
+    const blob = await res.blob();
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dlUrl;
+    a.download = financialYear ? `NSB FY ${financialYear}.xlsx` : 'NSB.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(dlUrl);
+    showToast('Download started.', true);
+  } catch (e) {
+    showToast('Download failed — check your connection and try again.', false);
+  }
 }
 
 // ═══════════════════════════════ SELECTORS ══════════════════════════
