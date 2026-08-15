@@ -66,6 +66,7 @@ function openFundFtfModule() {
   fundState.fundType = 'FTF';
   fundState.isAdmin = fundIsAdmin();
   fundInitSelectors('ftf');
+  fundInitMyFtfWorkbookSelector();
 }
 
 // ═══════════════════ MY NSB WORKBOOK (any logged-in user) ═══════════
@@ -113,6 +114,57 @@ async function fundDownloadMyWorkbook(financialYear) {
     const a = document.createElement('a');
     a.href = dlUrl;
     a.download = financialYear ? `NSB FY ${financialYear}.xlsx` : 'NSB.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(dlUrl);
+    showToast('Download started.', true);
+  } catch (e) {
+    showToast('Download failed — check your connection and try again.', false);
+  }
+}
+
+// ═══════════════════ MY FTF WORKBOOK (any logged-in user) ═══════════
+// Same model as the NSB workbook above, just pointed at the FTF sync/
+// download edge functions and file.
+async function fundInitMyFtfWorkbookSelector() {
+  const sel = document.getElementById('fundMyFtfWorkbookYear');
+  if (!sel) return;
+  const { data: years } = await _sb.from('fund_financial_years').select('financial_year').order('financial_year', { ascending: false });
+  sel.innerHTML = (years || []).map(y => `<option value="${y.financial_year}">${y.financial_year}</option>`).join('');
+}
+
+async function fundDownloadMyFtfWorkbook(financialYear) {
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { showToast('Not logged in.', false); return; }
+
+  if (!financialYear) {
+    showToast('Syncing your workbook…', true);
+    try {
+      await fetch(CONFIG.SUPABASE_URL + '/functions/v1/fund-sync-user-ftf-workbook', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token }, body: '{}',
+      });
+    } catch (e) { /* non-fatal — download falls back to whatever's already in Drive */ }
+  } else {
+    showToast(`Preparing FY ${financialYear} file…`, true);
+  }
+
+  const params = new URLSearchParams();
+  if (financialYear) params.set('financial_year', financialYear);
+  const url = CONFIG.SUPABASE_URL + '/functions/v1/fund-download-user-ftf-workbook' + (params.toString() ? '?' + params.toString() : '');
+
+  try {
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + session.access_token } });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      showToast(errBody.message || 'Could not download the file.', false);
+      return;
+    }
+    const blob = await res.blob();
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dlUrl;
+    a.download = financialYear ? `FTF FY ${financialYear}.xlsx` : 'FTF.xlsx';
     document.body.appendChild(a);
     a.click();
     a.remove();
