@@ -1287,6 +1287,22 @@
         <div class="dash-heading"><i class="bi bi-wallet2" style="color:#0d9488"></i> FTF Fund</div>
         <button class="btn-back-kpi" onclick="switchGlobalTab('fundView', null)"><i class="bi bi-arrow-left"></i> Back to FUND Menu</button>
 
+        <!-- Visible to EVERY logged-in user — same jurisdiction scoping
+             as the NSB workbook above (fund_schools_for_user). -->
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0;padding:14px;background:var(--s0);border-radius:var(--r2);border:1px solid var(--b0)">
+          <div style="flex:1;min-width:220px">
+            <div style="font-weight:700;font-size:.9rem">My FTF Excel — all schools in my jurisdiction</div>
+            <div style="font-size:.78rem;color:var(--t3);margin-top:2px">Kept in sync automatically once a day; Download always fetches your latest saved values.</div>
+          </div>
+          <select id="fundMyFtfWorkbookYear" style="max-width:150px"></select>
+          <button class="btn-edit" style="padding:6px 14px;font-size:.82rem" onclick="fundDownloadMyFtfWorkbook(document.getElementById('fundMyFtfWorkbookYear').value)">
+            <i class="bi bi-download"></i> This Year
+          </button>
+          <button class="btn btn-add" style="padding:6px 14px;font-size:.82rem" onclick="fundDownloadMyFtfWorkbook('')">
+            <i class="bi bi-file-earmark-excel"></i> Full Workbook (All Years)
+          </button>
+        </div>
+
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:16px 0;padding:14px;background:var(--s0);border-radius:var(--r2);border:1px solid var(--b0)">
           <div class="form-row" style="margin:0;min-width:160px">
             <label>Financial Year</label>
