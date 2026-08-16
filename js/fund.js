@@ -825,6 +825,7 @@ if (typeof ROUTES === 'object') {
 // from the actual records already loaded for this account (no change to
 // the underlying calculations, just how they're presented).
 function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
+  const finalLabel = prefix === 'ftf' ? 'Total Remaining' : 'Closing Balance';
   return `
     <div class="fund-ys-head">
       <div class="fys-item"><span class="fys-label">EMIS Code</span><span class="fys-value">${escHtml(fundState.emisCode || '')}</span></div>
@@ -838,6 +839,6 @@ function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
       </div>
       <div class="kpi-card" style="border-left-color:var(--ok)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Income</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--ok)">${fundMoney(income)}</div></div>
       <div class="kpi-card" style="border-left-color:#dc2626"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Expenses</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:#dc2626">${fundMoney(expenses)}</div></div>
-      <div class="kpi-card" style="border-left-color:var(--brand)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Closing Balance</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--brand)">${fundMoney(closing)}</div></div>
+      <div class="kpi-card" style="border-left-color:var(--brand)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">${finalLabel}</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--brand)">${fundMoney(closing)}</div></div>
     </div>`;
 }
