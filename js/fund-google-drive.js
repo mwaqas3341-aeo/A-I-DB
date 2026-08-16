@@ -21,6 +21,7 @@
 const FUND_GOOGLE_CLIENT_ID = '908847014598-lpq4ohrh8oniek0a1k22sasn19jkao9b.apps.googleusercontent.com';
 const FUND_GOOGLE_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
 function _fundOauthCallbackUrl() {
