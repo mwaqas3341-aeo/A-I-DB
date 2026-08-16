@@ -1250,24 +1250,25 @@
 
         <div id="fund_nsb_openingPrompt"></div>
 
+        <!-- Admin-only: shared Drive connection used for archive storage.
+             Module-wide setting — NOT tied to any one school, so it lives
+             here rather than inside fund_nsb_body (which only renders
+             after a school is picked). Quarterly income is entered
+             directly per school below — no file upload step. -->
+        <div id="fundNsbAdminPanel" style="display:none;margin-bottom:24px">
+          <div class="section-title"><i class="bi bi-google"></i> FUND Google Drive Connection<div class="title-line"></div></div>
+          <p style="font-size:.78rem;color:var(--t3);margin:-4px 0 10px">Used to store the automatically-generated yearly archive workbooks and every user's jurisdiction workbook. Quarterly income is entered directly against each school below — no file upload needed.</p>
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--s0);border-radius:var(--r2);border:1px solid var(--b0)">
+            <span id="fundDriveStatusLabel" style="flex:1;font-weight:600;font-size:.85rem"></span>
+            <button id="fundDriveConnectBtn" class="btn btn-add" style="padding:6px 14px;font-size:.82rem"></button>
+          </div>
+        </div>
+
         <div id="fund_nsb_body" style="display:none">
           <div id="fund_nsb_summaryCards" style="margin-bottom:20px"></div>
 
           <div class="section-title"><i class="bi bi-pie-chart-fill"></i> Quarterly Income Summary<div class="title-line"></div></div>
           <div id="fund_nsb_quarterlyTable" style="overflow-x:auto;margin-bottom:24px"></div>
-
-          <!-- Admin-only: shared Drive connection used for archive storage.
-               Quarterly income is entered directly per school above (Edit
-               buttons in the Quarterly Income Summary) — there is no file
-               upload step in this workflow. -->
-          <div id="fundNsbAdminPanel" style="display:none;margin-bottom:24px">
-            <div class="section-title"><i class="bi bi-google"></i> FUND Google Drive Connection<div class="title-line"></div></div>
-            <p style="font-size:.78rem;color:var(--t3);margin:-4px 0 10px">Used to store the automatically-generated yearly archive workbooks. Quarterly income is entered directly against each school above — no file upload needed.</p>
-            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--s0);border-radius:var(--r2);border:1px solid var(--b0)">
-              <span id="fundDriveStatusLabel" style="flex:1;font-weight:600;font-size:.85rem"></span>
-              <button id="fundDriveConnectBtn" class="btn btn-add" style="padding:6px 14px;font-size:.82rem"></button>
-            </div>
-          </div>
 
           <div class="section-title"><i class="bi bi-calendar3"></i> Monthly Expenses<div class="title-line"></div></div>
           <p style="font-size:.78rem;color:var(--t3);margin:-4px 0 10px">Entered as one total per month — click the pencil next to a month's figure to set or update it.</p>
