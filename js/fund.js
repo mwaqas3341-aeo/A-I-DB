@@ -45,6 +45,29 @@ function fundCanEdit() {
   return String(currentUser?.access_type || '').toLowerCase() === 'editor';
 }
 
+// Fires the current user's own NSB/FTF Drive workbook sync right after a
+// save, so it reflects new values within seconds instead of waiting for
+// the nightly 4:00/4:15 AM cron. Deliberately NOT awaited by callers —
+// Drive round-trips take a few seconds and shouldn't block the UI or
+// delay the next thing the user does. Errors are swallowed here on
+// purpose: this is a best-effort freshness push, not the source of
+// truth (that's always the database) — the daily cron remains the
+// safety net if a background push ever fails silently (e.g. offline).
+function fundTriggerBackgroundSync(fundType) {
+  (async () => {
+    try {
+      const { data: { session } } = await _sb.auth.getSession();
+      if (!session) return;
+      const fnName = fundType === 'NSB' ? 'fund-sync-user-nsb-workbook' : 'fund-sync-user-ftf-workbook';
+      await fetch(CONFIG.SUPABASE_URL + '/functions/v1/' + fnName, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+        body: '{}',
+      });
+    } catch (e) { /* best-effort — daily cron covers any missed pushes */ }
+  })();
+}
+
 // ═══════════════════════════════════ HUB ═══════════════════════════
 function openFundModule() {
   switchGlobalTab('fundView', null);
@@ -365,6 +388,7 @@ async function fundCreateAccount(prefix) {
   });
   if (error) { showToast(error.message, false); return; }
   showToast(`Ledger started with opening balance ${fundMoney(opening)}.`, true);
+  fundTriggerBackgroundSync(fundType);
   fundLoadAccount(prefix);
 }
 
@@ -380,6 +404,7 @@ async function fundEditOpeningBalance(prefix, current) {
   const { error } = await _sb.from('fund_accounts').update({ opening_balance: amount }).eq('id', fundState.accountId);
   if (error) { showToast(error.message, false); return; }
   showToast('Opening balance updated.', true);
+  fundTriggerBackgroundSync(prefix === 'nsb' ? 'NSB' : 'FTF');
   fundLoadAccount(prefix);
 }
 
@@ -444,10 +469,11 @@ async function fundLoadTransactions(prefix, accountId) {
 }
 
 async function fundDeleteTransaction(prefix, txnId, accountId) {
-  if (!confirm('Delete this transaction? This cannot be undone (audit log will retain a record).')) return;
+  if (!confirm('Delete this transaction? This cannot be undone.')) return;
   const { error } = await _sb.from('fund_transactions').delete().eq('id', txnId);
   if (error) { showToast(error.message, false); return; }
   showToast('Transaction deleted.', true);
+  fundTriggerBackgroundSync(prefix === 'nsb' ? 'NSB' : 'FTF');
   fundLoadAccount(prefix);
 }
 
@@ -495,6 +521,7 @@ async function fundSubmitTxn(ev) {
 
   showToast('Saved.', true);
   fundCloseTxnModal();
+  fundTriggerBackgroundSync(fundType);
   fundLoadAccount(fundType === 'NSB' ? 'nsb' : 'ftf');
 }
 
@@ -536,6 +563,7 @@ async function fundEditMonthlyExpense(prefix, month, current) {
   }
   if (error) { showToast(error.message, false); return; }
   showToast('Saved.', true);
+  fundTriggerBackgroundSync(fundType);
   fundLoadAccount(prefix);
 }
 
@@ -579,6 +607,7 @@ async function fundEditMonthlyIncome(prefix, month, current) {
   }
   if (error) { showToast(error.message, false); return; }
   showToast('Saved.', true);
+  fundTriggerBackgroundSync('FTF');
   fundLoadAccount(prefix);
 }
 
@@ -673,6 +702,7 @@ async function fundEditNsbReceipt(quarter, incomeType, current) {
   }
   if (error) { showToast(error.message, false); return; }
   showToast('Saved.', true);
+  fundTriggerBackgroundSync('NSB');
   fundLoadAccount('nsb');
 }
 
