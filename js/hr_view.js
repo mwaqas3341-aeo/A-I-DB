@@ -1128,20 +1128,22 @@ function _appendSneSheet(wb, sheetName, data, titleText, includeGradeWiseBlocks)
   sorted.forEach((r, i) => {
     const row = [i + 1, r.markaz_name || '', r.emis || '', r.school_name || '', r.school_level || ''];
     subjectColumns.forEach(col => {
-      // "Sanctioned" shown here is the original/gross sanctioned figure
-      // (matches the reference template and keeps the audit trail
-      // visible); Vacant is still computed net of abolished posts —
-      // see effective_sanctioned_count in the pivot — so vacancy
-      // figures never overstate against an abolished post even though
-      // there's no separate "Abolished"/"Effective" column shown.
-      const v = r.subjects[col.code] || { sanctioned: 0, filled: 0, vacant: 0 };
-      row.push(v.sanctioned, v.filled, v.vacant);
+      // "Sanctioned" here means Active Sanctioned (Sanctioned − Abolished),
+      // i.e. r.subjects[code].effective — the same effective_sanctioned_count
+      // driven figure used everywhere else (Seat Management, vacancy checks).
+      // A fully-abolished post (effective = 0) therefore reports 0 Sanctioned
+      // and 0 Vacant here, not the gross pre-abolishment count. Abolished
+      // posts are excluded at this data-assembly step, not filtered in the UI.
+      const v = r.subjects[col.code] || { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 };
+      row.push(v.effective, v.filled, v.vacant);
     });
     const gt = r.grandTotal;
-    row.push(gt.sanctioned, gt.filled, gt.vacant);
+    row.push(gt.effective, gt.filled, gt.vacant);
     if (includeGradeWiseBlocks) {
       const g16 = r.grade16, g15 = r.grade15, g14 = r.grade14;
-      ['sanctioned', 'filled', 'vacant'].forEach(field => {
+      // Same substitution for the grade-wise (16/15/14) summary blocks —
+      // 'sanctioned' column here reports the Active (effective) count.
+      ['effective', 'filled', 'vacant'].forEach(field => {
         row.push(g16[field], g15[field], g14[field], g16[field] + g15[field] + g14[field]);
       });
     }
