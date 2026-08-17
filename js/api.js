@@ -1560,35 +1560,51 @@ async function apiCall(action, payload) {
       const category = p.category === 'non_teaching' ? 'non_teaching' : 'teaching';
       const isAdminOrTr = await _isAdminOrTr(user);
 
-      // Non-Teaching Sanctioned Seats (add, edit, and bulk import all
-      // route through this same action) are restricted to Admins and
-      // Tehsil Representatives.
-      if (category === 'non_teaching' && !isAdminOrTr) {
-        return { success: false, message: 'Only Admins and Tehsil Representatives can add, edit, or import Non-Teaching Sanctioned Seats.' };
-      }
-      // Teaching Sanctioned Seats: adding a brand-new seat record is
-      // restricted to Admins/TRs (so a missed seat doesn't have to
-      // wait on a direct Supabase upload — they can add it here now).
-      // Everyone else can still only edit an existing seat's Abolished
-      // count (see the Total Sanctioned lock below).
-      if (category === 'teaching' && !p.id && !isAdminOrTr) {
-        return { success: false, message: 'Only Admins and Tehsil Representatives can add new Teaching Sanctioned Seats.' };
+      // Bulk import (a single file can silently touch many schools at
+      // once) stays Admin/TR-only regardless of category. Individual
+      // add/edit through the modal is open to any user, scoped to their
+      // own jurisdiction (see the check below) — this is what lets a
+      // regular AEO mark a seat abolished at their own school instead of
+      // needing an Admin/TR to do it for them.
+      if (p.isImport && !isAdminOrTr) {
+        return { success: false, message: 'Only Admins and Tehsil Representatives can bulk-import Sanctioned Seats.' };
       }
 
       const emis = (p.emis || '').trim();
       if (!emis) return { success: false, message: 'EMIS Code is required.' };
       const grade = parseInt(p.grade);
       if (!grade || grade < 1) return { success: false, message: 'Grade/BPS is required.' };
+
+      let schoolMeta = { school_name: p.schoolName || '', district: p.district || '', wing: p.wing || '', tehsil: p.tehsil || '', markaz_name: p.markazName || '' };
+      if (!schoolMeta.school_name || !schoolMeta.district) {
+        const { data: school } = await _sb.from('public_schools').select('school_name, district, wing, tehsil, markaz_name').eq('emis', emis).maybeSingle();
+        if (school) schoolMeta = { ...schoolMeta, ...Object.fromEntries(Object.entries(school).filter(([, v]) => v)) };
+      }
+
+      // Jurisdiction enforcement — the one real access control now that
+      // this is open to everyone, not just Admin/TR. Admins/TRs keep
+      // their existing broader reach (unchanged); regular users can only
+      // touch seats at schools within their own jurisdiction, same rule
+      // as everywhere else in the app.
+      if (!isAdminOrTr) {
+        const schoolFilter = _buildUserSchoolFilter(user, { idKey: 'emis' });
+        if (schoolFilter && !schoolFilter({ ...schoolMeta, emis })) {
+          return { success: false, message: 'You can only add or edit seat records for schools in your own jurisdiction.' };
+        }
+      }
+
       let sanctioned = parseInt(p.sanctionedCount);
       const abolished  = parseInt(p.abolishedCount) || 0;
 
-      // Teaching Seat Rule: Total Sanctioned is locked on existing
-      // records for everyone EXCEPT Admins/TRs, who can correct a
-      // missed/wrong sanctioned count directly. Regular editors can
-      // still only change Abolished Seats. Enforced here (not just
-      // hidden in the UI) so bulk imports and direct API calls can't
-      // bypass it either.
-      if (category === 'teaching' && p.id && !isAdminOrTr) {
+      // Total Sanctioned is locked on EXISTING records for everyone
+      // except Admins/TRs, who can correct a missed/wrong sanctioned
+      // count directly. Everyone else can still change Abolished Seats
+      // freely (that's the whole point of opening this up) and can set
+      // an initial Total Sanctioned when adding a brand-new record —
+      // there's nothing to lock to yet on a first save. Enforced here
+      // (not just hidden in the UI) so bulk imports and direct API
+      // calls can't bypass it either. Applies to both categories now.
+      if (p.id && !isAdminOrTr) {
         const { data: existing } = await _sb.from('sne_subject_sanctioned')
           .select('sanctioned_count').eq('id', p.id).maybeSingle();
         if (existing) sanctioned = existing.sanctioned_count;
@@ -1606,12 +1622,6 @@ async function apiCall(action, payload) {
       const subjectCode = subject ? `${codePart(designation)}_${codePart(subject)}_G${grade}` : `${codePart(designation)}_G${grade}`;
       const subjectLabel = subject ? `${designation} (${subject})` : designation;
       const asOfDate = p.asOfDate || new Date().toISOString().slice(0, 10);
-
-      let schoolMeta = { school_name: p.schoolName || '', district: p.district || '', wing: p.wing || '', tehsil: p.tehsil || '', markaz_name: p.markazName || '' };
-      if (!schoolMeta.school_name || !schoolMeta.district) {
-        const { data: school } = await _sb.from('public_schools').select('school_name, district, wing, tehsil, markaz_name').eq('emis', emis).maybeSingle();
-        if (school) schoolMeta = { ...schoolMeta, ...Object.fromEntries(Object.entries(school).filter(([, v]) => v)) };
-      }
 
       // Non-Teaching filled seats are never taken from the client —
       // always computed live from the Staff Statement (EMIS +
@@ -1676,6 +1686,24 @@ async function apiCall(action, payload) {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       if (!p.id) return { success: false, message: 'Missing record.' };
+
+      // Same jurisdiction rule as saveSeatRecord — this was previously
+      // unchecked entirely (any logged-in user could delete any school's
+      // seat record), which only mattered less before because the
+      // Delete button happened to be hidden for non-teaching rows by a
+      // separate bug. Fixed properly here rather than relying on that.
+      const isAdminOrTr = await _isAdminOrTr(user);
+      if (!isAdminOrTr) {
+        const { data: existingRow } = await _sb.from('sne_subject_sanctioned')
+          .select('district, wing, tehsil, markaz_name, emis').eq('id', p.id).maybeSingle();
+        if (existingRow) {
+          const schoolFilter = _buildUserSchoolFilter(user, { idKey: 'emis' });
+          if (schoolFilter && !schoolFilter(existingRow)) {
+            return { success: false, message: 'You can only delete seat records for schools in your own jurisdiction.' };
+          }
+        }
+      }
+
       const r = await _checkedDelete('sne_subject_sanctioned', 'id', p.id);
       if (!r.ok) return { success: false, message: r.message };
       if (p.reason) {

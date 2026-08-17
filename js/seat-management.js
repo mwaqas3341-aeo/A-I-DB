@@ -60,12 +60,15 @@ function _seatApplyButtonPermissions() {
   const addBtn = document.getElementById('seatAddRecordBtn');
   const importBtn = document.getElementById('seatImportBtn');
   const applyVisibility = () => {
-    const allowed = seatPermissions.isAdminOrTr;
-    addBtn.style.display = allowed ? '' : 'none';
-    importBtn.style.display = allowed ? '' : 'none';
+    // Add/Edit is open to everyone now (jurisdiction-scoped server-side)
+    // — that's what lets a regular AEO mark a seat abolished at their
+    // own school without needing an Admin/TR. Bulk Import stays
+    // restricted since one file can touch many schools at once.
+    addBtn.style.display = '';
+    importBtn.style.display = seatPermissions.isAdminOrTr ? '' : 'none';
   };
   if (seatPermissions.checked) { applyVisibility(); return; }
-  addBtn.style.display = 'none';
+  addBtn.style.display = '';
   importBtn.style.display = 'none';
   google.script.run
     .withSuccessHandler(res => {
@@ -207,9 +210,8 @@ function seatRenderTable() {
               <td style="font-weight:700;color:${r.vacant_count > 0 ? '#DC2626' : 'inherit'}">${r.vacant_count ?? 0}</td>
               <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:.76rem;color:var(--t3)">${escHtmlAp(r.remarks || '')}</td>
               <td class="actions-col">
-                ${(seatState.category === 'non_teaching' && !seatPermissions.canEditNonTeaching) ? '' : `
                 <button class="hr-btn-ghost" style="padding:5px 10px;font-size:.74rem" onclick="openSeatModal('${r.id}')">Edit</button>
-                <button class="hr-btn-ghost" style="padding:5px 10px;font-size:.74rem;color:#DC2626" onclick="deleteSeatRecord('${r.id}')">Delete</button>`}
+                <button class="hr-btn-ghost" style="padding:5px 10px;font-size:.74rem;color:#DC2626" onclick="deleteSeatRecord('${r.id}')">Delete</button>
               </td>
             </tr>`).join('')}
         </tbody>
@@ -281,13 +283,13 @@ function openSeatModal(id) {
   document.getElementById('seat_subject').value = row?.subjects || '';
   document.getElementById('seat_grade').value = row?.grade || '';
   document.getElementById('seat_sanctioned').value = row?.sanctioned_count ?? 0;
-  // Teaching Seat Rule: Total Sanctioned is locked once a record
-  // exists — only Abolished Seats may be entered from here on — EXCEPT
-  // for Admins/TRs, who can correct a missed/wrong sanctioned count
-  // directly instead of needing a direct Supabase upload. A brand-new
-  // (never-saved) teaching record can always take an initial value
-  // since there's nothing yet to lock.
-  const lockSanctioned = seatState.category === 'teaching' && !!id && !seatPermissions.isAdminOrTr;
+  // Total Sanctioned is locked once a record exists — only Abolished
+  // Seats may be entered from here on — EXCEPT for Admins/TRs, who can
+  // correct a missed/wrong sanctioned count directly instead of needing
+  // a direct Supabase upload. A brand-new (never-saved) record can
+  // always take an initial value since there's nothing yet to lock.
+  // Applies to both Teaching and Non-Teaching now.
+  const lockSanctioned = !!id && !seatPermissions.isAdminOrTr;
   document.getElementById('seat_sanctioned').disabled = lockSanctioned;
   document.getElementById('seat_sanctioned').style.background = lockSanctioned ? '#f8fafc' : '';
   document.getElementById('seat_sanctionedLabel').innerHTML = lockSanctioned
@@ -492,7 +494,7 @@ function _seatImportRows(rows, idx, tally, errors) {
     .saveSeatRecord({
       category: seatState.category, emis: r.emis, designation: r.designation, subject: r.subject, grade: r.grade,
       sanctionedCount: r.sanctioned, abolishedCount: r.abolished, filledCount: r.filled,
-      remarks: r.remarks, reason: 'Bulk import',
+      remarks: r.remarks, reason: 'Bulk import', isImport: true,
     });
 }
 
