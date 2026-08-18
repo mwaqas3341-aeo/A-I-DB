@@ -222,7 +222,7 @@ async function _hiFetchAllStaff() {
   const PAGE = 1000;
   let from = 0, all = [];
   while (true) {
-    const { data, error } = await _sb.from('staff').select('*').range(from, from + PAGE - 1);
+    const { data, error } = await _db('staff').select('*').range(from, from + PAGE - 1);
     if (error) {
       showToast('Could not load existing staff for duplicate-checking: ' + error.message, false);
       break;
@@ -418,7 +418,7 @@ async function confirmHrImport() {
       row.status = 'active';
       return row;
     });
-    const { error } = await _sb.from('staff').insert(chunk);
+    const { error } = await _db('staff').insert(chunk);
     if (error) failed += chunk.length; else inserted += chunk.length;
     done += chunk.length;
     paint();
@@ -431,7 +431,7 @@ async function confirmHrImport() {
   await _hiRunWithConcurrency(updates, async (item) => {
     const dbRow = _hiBuildDbRow(item, reverseMap);
     delete dbRow.personal_no; // never overwrite the primary key
-    const { error } = await _sb.from('staff').update(dbRow).eq('personal_no', item.existing.personal_no);
+    const { error } = await _db('staff').update(dbRow).eq('personal_no', item.existing.personal_no);
     if (error) failed++; else updated++;
     done++;
     paint();

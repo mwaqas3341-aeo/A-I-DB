@@ -48,15 +48,165 @@ async function _hrGatewayCall(body) {
   return { data: json.data, error: null };
 }
 
+const HR_GATEWAY_TABLES = new Set([
+  'staff', 'staff_events', 'staff_awaiting_posting', 'staff_temporary_duty',
+  'staff_designations', 'sne_subject_sanctioned', 'sne_seat_audit_log', 'sne_audit_backup_files',
+]);
+
 const hrGateway = {
-  select: (table, filters) => _hrGatewayCall({ table, operation: 'select', filters }),
+  isGatewayTable: (table) => HR_GATEWAY_TABLES.has(table),
+  select: (table, { columns, filters, order, single } = {}) =>
+    _hrGatewayCall({ table, operation: 'select', columns, filters, order, single }),
   insert: (table, payload) => _hrGatewayCall({ table, operation: 'insert', payload }),
+  insertMany: (table, payload) => _hrGatewayCall({ table, operation: 'insertMany', payload }),
   update: (table, id_column, id_value, payload) => _hrGatewayCall({ table, operation: 'update', id_column, id_value, payload }),
   delete: (table, id_column, id_value) => _hrGatewayCall({ table, operation: 'delete', id_column, id_value }),
   checkGradeVacancy: (p_emis, p_grade) => _hrGatewayCall({ rpc: 'check_grade_vacancy', payload: { p_emis, p_grade } }),
   staffPrivilegedUpdate: (p_personal_no, p_updates) => _hrGatewayCall({ rpc: 'staff_privileged_update', payload: { p_personal_no, p_updates } }),
 };
 window.hrGateway = hrGateway;
+
+// ── _db(table) ───────────────────────────────────────────────────────
+// Drop-in replacement for _sb.from(table). For any of the 8 migrated
+// tables it builds up the same .select/.eq/.in/.order/.limit/.range/
+// .insert/.update/.delete/.single/.maybeSingle chain callers already
+// use, then executes it against hr-gateway when awaited. For every
+// other table it's a transparent passthrough to _sb.from(table) —
+// zero behavior change.
+function _db(table) {
+  if (!hrGateway.isGatewayTable(table)) return _sb.from(table);
+
+  const state = {
+    mode: 'select',       // 'select' | 'insert' | 'update' | 'delete'
+    columns: '*',
+    filters: {},
+    order: null,
+    limitN: null,
+    rangeFrom: null,
+    rangeTo: null,
+    single: false,
+    maybeSingle: false,
+    countHead: false,
+    insertPayload: null,
+    updatePayload: null,
+  };
+
+  function addFilter(col, val) { state.filters[col] = val; }
+
+  const builder = {
+    select(cols, opts) {
+      if (state.mode === 'select') state.columns = cols || '*';
+      if (opts && opts.count === 'exact' && opts.head) state.countHead = true;
+      return builder;
+    },
+    eq(col, val) { addFilter(col, val); return builder; },
+    in(col, vals) { state.filters[col] = { in: vals }; return builder; },
+    ilike(col, pattern) { state.ilike = { col, pattern }; return builder; },
+    not(col, op, val) { (state.post = state.post || []).push(r => !(op === 'is' && val === null ? r[col] == null : false)); return builder; },
+    neq(col, val) { (state.post = state.post || []).push(r => r[col] !== val); return builder; },
+    gte(col, val) { (state.post = state.post || []).push(r => r[col] != null && r[col] >= val); return builder; },
+    contains(col, obj) { (state.post = state.post || []).push(r => r[col] && Object.entries(obj).every(([k, v]) => r[col][k] === v)); return builder; },
+    or(filterStr) {
+      // Narrow parser: only handles comma-separated `col.in.(v1,v2,...)`
+      // clauses, OR'd together — the one real usage in this codebase
+      // (temporary_school_emis.in.(...),original_school_emis.in.(...)).
+      const clauses = filterStr.split(/,(?=[a-zA-Z_]+\.in\.\()/).map(c => {
+        const m = c.match(/^([a-zA-Z_]+)\.in\.\(([^)]*)\)$/);
+        if (!m) return () => false;
+        const [, col, vals] = m;
+        const set = new Set(vals.split(',').map(v => v.trim()));
+        return (r) => set.has(String(r[col]));
+      });
+      (state.post = state.post || []).push(r => clauses.some(fn => fn(r)));
+      return builder;
+    },
+    order(col, opts) { state.order = col; return builder; }, // gateway sorts ascending only; matches every current call site
+    limit(n) { state.limitN = n; return builder; },
+    range(from, to) { state.rangeFrom = from; state.rangeTo = to; return builder; },
+    single() { state.single = true; return builder; },
+    maybeSingle() { state.maybeSingle = true; return builder; },
+    insert(rows) { state.mode = 'insert'; state.insertPayload = rows; return builder; },
+    update(obj) { state.mode = 'update'; state.updatePayload = obj; return builder; },
+    delete() { state.mode = 'delete'; return builder; },
+
+    async _execute() {
+      if (state.mode === 'insert') {
+        const rows = Array.isArray(state.insertPayload) ? state.insertPayload : [state.insertPayload];
+        const { data, error } = rows.length > 1
+          ? await hrGateway.insertMany(table, rows)
+          : await hrGateway.insert(table, rows[0]);
+        if (error) return { data: null, error };
+        return _shape(data);
+      }
+
+      if (state.mode === 'update') {
+        const entries = Object.entries(state.filters);
+        if (entries.length !== 1) return { data: null, error: { message: '_db update requires exactly one .eq() filter as the row identifier.' } };
+        const [id_column, id_value] = entries[0];
+        const { data, error } = await hrGateway.update(table, id_column, id_value, state.updatePayload);
+        if (error) return { data: null, error };
+        return _shape(data);
+      }
+
+      if (state.mode === 'delete') {
+        // Supports arbitrary eq/in/ilike/not/neq/gte/contains/or filters
+        // (not just a single id match): find matching rows first, then
+        // delete each by id — every gateway table has an id primary key,
+        // and hr-gateway's delete already re-checks permission per row.
+        const { data: candidates, error: selErr } = await hrGateway.select(table, { columns: '*', filters: state.filters });
+        if (selErr) return { data: null, error: selErr };
+        let rows = candidates || [];
+        if (state.ilike) {
+          const re = new RegExp('^' + state.ilike.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i');
+          rows = rows.filter(r => re.test(String(r[state.ilike.col] ?? '')));
+        }
+        if (state.post) for (const fn of state.post) rows = rows.filter(fn);
+        for (const row of rows) {
+          const { error } = await hrGateway.delete(table, 'id', row.id);
+          if (error) return { data: null, error };
+        }
+        return { data: null, error: null };
+      }
+
+      // select
+      const { data, error } = await hrGateway.select(table, {
+        columns: state.columns, filters: state.filters, order: state.order,
+      });
+      if (error) return { data: null, error };
+      let rows = data || [];
+      if (state.ilike) {
+        const re = new RegExp('^' + state.ilike.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i');
+        rows = rows.filter(r => re.test(String(r[state.ilike.col] ?? '')));
+      }
+      if (state.post) for (const fn of state.post) rows = rows.filter(fn);
+      if (state.rangeFrom != null) rows = rows.slice(state.rangeFrom, state.rangeTo + 1);
+      if (state.limitN != null) rows = rows.slice(0, state.limitN);
+      if (state.countHead) return { data: null, error: null, count: rows.length };
+      return _shape(rows);
+    },
+
+    then(onFulfilled, onRejected) { return builder._execute().then(onFulfilled, onRejected); },
+    catch(onRejected) { return builder._execute().catch(onRejected); },
+  };
+
+  function _shape(rows) {
+    if (state.single) {
+      if (!rows || rows.length !== 1) return { data: null, error: { message: `Expected exactly one row, got ${rows ? rows.length : 0}.` } };
+      return { data: rows[0], error: null };
+    }
+    if (state.maybeSingle) {
+      if (!rows || rows.length === 0) return { data: null, error: null };
+      if (rows.length > 1) return { data: null, error: { message: 'Expected at most one row, got multiple.' } };
+      return { data: rows[0], error: null };
+    }
+    return { data: rows, error: null };
+  }
+
+  return builder;
+}
+window._db = _db;
+
+
 
 // ── Column-name maps (Supabase snake_case ↔ frontend display headers) ─
 // Staff table: Supabase column → display header used in SF_MAP
@@ -587,7 +737,7 @@ async function _tdHistoryRows(reqUser) {
  * (editor/admin + jurisdiction), same as the old dedicated loader did.
  */
 async function _awaitingPostingSheetRows() {
-  const { data, error } = await _sb.from('staff_awaiting_posting')
+  const { data, error } = await _db('staff_awaiting_posting')
     .select('*, staff(name_of_teacher, cnic, designation, bps)')
     .in('status', ['awaiting', 'on_temporary_duty'])
     .order('entry_date', { ascending: false });
@@ -628,7 +778,7 @@ async function _awaitingPostingSheetRows() {
 
 /** Live Temporary Duty list, same generic-table treatment as above. */
 async function _temporaryDutySheetRows() {
-  const { data, error } = await _sb.from('staff_temporary_duty')
+  const { data, error } = await _db('staff_temporary_duty')
     .select('*, staff(name_of_teacher, cnic, designation, bps)')
     .eq('status', 'active')
     .order('start_date', { ascending: false });
@@ -693,6 +843,17 @@ async function _callAdminFunction(action, payload) {
  * (schools: 38k+, public_schools: 38k+, staff: 7k+, etc).
  */
 async function _fetchAllRows(table, selectCols, queryBuilderFn, filterFn, keysetCol) {
+  if (window.hrGateway && hrGateway.isGatewayTable(table)) {
+    // hr-gateway already paginates server-side and returns everything
+    // in one response, so no manual paging/keyset loop is needed here.
+    let q = _db(table).select(selectCols);
+    if (queryBuilderFn) q = queryBuilderFn(q);
+    if (filterFn) q = filterFn(q);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
+  }
+
   const PAGE = 1000;
 
   if (keysetCol) {
@@ -745,6 +906,18 @@ async function _fetchAllRows(table, selectCols, queryBuilderFn, filterFn, keyset
  * RLS-blocked update, so callers were reporting false "success".
  */
 async function _checkedUpdate(table, dbRow, matchCol, matchVal) {
+  if (window.hrGateway && hrGateway.isGatewayTable(table)) {
+    // hr-gateway's update already does the authorization check against
+    // the EXISTING row (matching RLS USING semantics) before writing,
+    // and uses the service-role client to write+read back — so unlike
+    // the direct-RLS path below, a re-select here never fails just
+    // because the write moved the row outside the caller's own scope.
+    const { data, error } = await _db(table).update(dbRow).eq(matchCol, matchVal);
+    if (error) return { ok: false, message: error.message };
+    const count = Array.isArray(data) ? data.length : (data ? 1 : 0);
+    if (!count) return { ok: false, message: `Update blocked: no row was updated in "${table}".` };
+    return { ok: true, count };
+  }
   // IMPORTANT: use count instead of .select() here. .select() forces
   // Postgres to re-read the just-written row under the table's SELECT
   // policy to return it — and for tables like `staff` where UPDATE and
@@ -787,6 +960,14 @@ async function _staffPrivilegedUpdate(pno, updates) {
 }
 
 async function _checkedDelete(table, matchCol, matchVal) {
+  if (window.hrGateway && hrGateway.isGatewayTable(table)) {
+    // hr-gateway's delete already verifies the row exists and the
+    // caller is authorized before deleting, so any successful (non-
+    // error) response here means exactly one row was found and removed.
+    const { error } = await _db(table).delete().eq(matchCol, matchVal);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true, count: 1 };
+  }
   const { error, count } = await _sb.from(table).delete({ count: 'exact' }).eq(matchCol, matchVal);
   if (error) return { ok: false, message: error.message };
   if (!count || count === 0) {
@@ -1300,7 +1481,7 @@ async function apiCall(action, payload) {
     // subject-mapping gap where Staff Forms/Seat entry had no shared
     // subject list at all (previously plain free-text with no lookup).
     case 'getSubjectList': {
-      const { data, error } = await _sb.from('sne_subject_sanctioned')
+      const { data, error } = await _db('sne_subject_sanctioned')
         .select('subjects').eq('category', 'teaching').not('subjects', 'is', null).neq('subjects', '');
       if (error) return { success: false, message: error.message };
       const subjects = [...new Set((data || []).map(r => (r.subjects || '').trim()).filter(Boolean))].sort();
@@ -1377,13 +1558,13 @@ async function apiCall(action, payload) {
 
       // 1) Sanctioned seats (both categories) for schools in scope —
       // the source of truth for the actual sanctioned-seat structure.
-      const { data: seats } = await _sb.from('sne_subject_sanctioned')
+      const { data: seats } = await _db('sne_subject_sanctioned')
         .select('emis, school_name, district, wing, tehsil, markaz_name, category, designation, grade, subject_label, sanctioned_count, abolished_count, filled_count, remarks')
         .in('emis', emisList);
 
       // 2) Active Temporary Duty records touching any school in scope,
       // either as the TD destination or the employee's original posting.
-      const { data: tds } = await _sb.from('staff_temporary_duty')
+      const { data: tds } = await _db('staff_temporary_duty')
         .select('personal_no, original_school_emis, temporary_school_emis, temporary_school_name, order_number')
         .eq('status', 'active')
         .or(`temporary_school_emis.in.(${emisList.join(',')}),original_school_emis.in.(${emisList.join(',')})`);
@@ -1406,13 +1587,13 @@ async function apiCall(action, payload) {
       const touchedEmis = [...new Set(tds.flatMap(t => [t.original_school_emis, t.temporary_school_emis]).filter(Boolean))];
 
       const [{ data: staffRows }, { data: pubMeta }, { data: privMeta }, { data: destStaff }] = await Promise.all([
-        _sb.from('staff').select('*').in('personal_no', personalNos),
+        _db('staff').select('*').in('personal_no', personalNos),
         _sb.from('public_schools').select('emis, school_name, markaz_name, tehsil, wing').in('emis', touchedEmis),
         _sb.from('private_schools').select('emis, school_name, markaz_name, tehsil').in('emis', touchedEmis),
         // Active regular staff already posted at any in-scope school —
         // used to detect whether a TD destination post is already
         // filled by a real, non-TD employee.
-        _sb.from('staff').select('personal_no, name_of_teacher, designation, bps, subject, school_emis_code')
+        _db('staff').select('personal_no, name_of_teacher, designation, bps, subject, school_emis_code')
           .in('school_emis_code', emisList).eq('status', 'active'),
       ]);
 
@@ -1571,7 +1752,7 @@ async function apiCall(action, payload) {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       const category = p.category === 'non_teaching' ? 'non_teaching' : 'teaching';
-      let q = _sb.from('sne_subject_sanctioned').select('*').eq('category', category);
+      let q = _db('sne_subject_sanctioned').select('*').eq('category', category);
       if (p.district) q = q.eq('district', p.district);
       if (p.wing)     q = q.eq('wing', p.wing);
       if (p.tehsil)   q = q.eq('tehsil', p.tehsil);
@@ -1643,7 +1824,7 @@ async function apiCall(action, payload) {
       // (not just hidden in the UI) so bulk imports and direct API
       // calls can't bypass it either. Applies to both categories now.
       if (p.id && !isAdminOrTr) {
-        const { data: existing } = await _sb.from('sne_subject_sanctioned')
+        const { data: existing } = await _db('sne_subject_sanctioned')
           .select('sanctioned_count').eq('id', p.id).maybeSingle();
         if (existing) sanctioned = existing.sanctioned_count;
       }
@@ -1668,7 +1849,7 @@ async function apiCall(action, payload) {
       // this handles the moment a seat row is first created/edited.
       let filled = parseInt(p.filledCount) || 0;
       if (category === 'non_teaching') {
-        const { count } = await _sb.from('staff')
+        const { count } = await _db('staff')
           .select('id', { count: 'exact', head: true })
           .eq('school_emis_code', emis).eq('designation', designation).eq('status', 'active');
         filled = count || 0;
@@ -1701,10 +1882,10 @@ async function apiCall(action, payload) {
         const r = await _checkedUpdate('sne_subject_sanctioned', dbRow, 'id', p.id);
         if (!r.ok) return { success: false, message: r.message };
       } else {
-        const { data: dupe } = await _sb.from('sne_subject_sanctioned').select('id')
+        const { data: dupe } = await _db('sne_subject_sanctioned').select('id')
           .eq('emis', emis).eq('subject_code', subjectCode).eq('as_of_date', asOfDate).maybeSingle();
         if (dupe) return { success: false, message: 'A record already exists for this EMIS + Grade + Subject + Designation. Edit the existing row instead.' };
-        const { data: inserted, error } = await _sb.from('sne_subject_sanctioned').insert([dbRow]).select('id').single();
+        const { data: inserted, error } = await _db('sne_subject_sanctioned').insert([dbRow]).select('id').single();
         if (error) return { success: false, message: error.message };
         savedId = inserted?.id;
       }
@@ -1713,9 +1894,9 @@ async function apiCall(action, payload) {
       // its own transaction, so a prior "set the session var" call
       // wouldn't carry over to this one anyway).
       if (p.reason && savedId) {
-        const { data: latestAudit } = await _sb.from('sne_seat_audit_log')
+        const { data: latestAudit } = await _db('sne_seat_audit_log')
           .select('id').eq('sne_id', savedId).order('changed_at', { ascending: false }).limit(1).maybeSingle();
-        if (latestAudit) await _sb.from('sne_seat_audit_log').update({ reason: p.reason }).eq('id', latestAudit.id);
+        if (latestAudit) await _db('sne_seat_audit_log').update({ reason: p.reason }).eq('id', latestAudit.id);
       }
       return { success: true, message: 'Saved.' };
     }
@@ -1732,7 +1913,7 @@ async function apiCall(action, payload) {
       // separate bug. Fixed properly here rather than relying on that.
       const isAdminOrTr = await _isAdminOrTr(user);
       if (!isAdminOrTr) {
-        const { data: existingRow } = await _sb.from('sne_subject_sanctioned')
+        const { data: existingRow } = await _db('sne_subject_sanctioned')
           .select('district, wing, tehsil, markaz_name, emis').eq('id', p.id).maybeSingle();
         if (existingRow) {
           const schoolFilter = _buildUserSchoolFilter(user, { idKey: 'emis' });
@@ -1745,9 +1926,9 @@ async function apiCall(action, payload) {
       const r = await _checkedDelete('sne_subject_sanctioned', 'id', p.id);
       if (!r.ok) return { success: false, message: r.message };
       if (p.reason) {
-        const { data: latestAudit } = await _sb.from('sne_seat_audit_log')
+        const { data: latestAudit } = await _db('sne_seat_audit_log')
           .select('id').eq('sne_id', p.id).order('changed_at', { ascending: false }).limit(1).maybeSingle();
-        if (latestAudit) await _sb.from('sne_seat_audit_log').update({ reason: p.reason }).eq('id', latestAudit.id);
+        if (latestAudit) await _db('sne_seat_audit_log').update({ reason: p.reason }).eq('id', latestAudit.id);
       }
       return { success: true, message: 'Deleted.' };
     }
@@ -1761,7 +1942,7 @@ async function apiCall(action, payload) {
       if (!user || !user.id) return { success: true, required: false };
       const isAdmin = String(user.role || '').toLowerCase() === 'admin';
       if (isAdmin || !user.tehsil) return { success: true, required: false };
-      const { count } = await _sb.from('sne_subject_sanctioned')
+      const { count } = await _db('sne_subject_sanctioned')
         .select('id', { count: 'exact', head: true })
         .eq('tehsil', user.tehsil).eq('wing', user.wing || '');
       return { success: true, required: (count || 0) === 0 };
@@ -1770,7 +1951,7 @@ async function apiCall(action, payload) {
     case 'getSeatAuditLog': {
       if (!user || !user.id) return { success: false, message: 'Not logged in.' };
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      let q = _sb.from('sne_seat_audit_log').select('*').order('changed_at', { ascending: false }).limit(200);
+      let q = _db('sne_seat_audit_log').select('*').order('changed_at', { ascending: false }).limit(200);
       if (p.emis) q = q.eq('emis', p.emis);
       const { data, error } = await q;
       if (error) return { success: false, message: error.message };
@@ -1907,7 +2088,7 @@ async function apiCall(action, payload) {
         .from('staff').insert([cleanRow]).select().single();
       if (error) return { success: false, error: error.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:   inserted.personal_no,
         employee_name: inserted.name_of_teacher,
         event_type:    'create',
@@ -1953,7 +2134,7 @@ async function apiCall(action, payload) {
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty(dbRow));
       if (!r.ok) return { success: false, error: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:   pno,
         employee_name: row['NAME OF TEACHER'] || '',
         event_type:    'update',
@@ -1966,7 +2147,7 @@ async function apiCall(action, payload) {
     case 'deleteStaffRow': {
       const pno = Array.isArray(payload) ? payload[0] : (payload?.personal_no || payload);
       const reason = Array.isArray(payload) ? payload[1] : payload?.reason;
-      const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
+      const { data: s } = await _db('staff').select('name_of_teacher').eq('personal_no', pno).single();
 
       const r = await _staffPrivilegedUpdate(pno, {
         status: 'deleted',
@@ -1975,7 +2156,7 @@ async function apiCall(action, payload) {
       });
       if (!r.ok) return { success: false, error: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:   pno,
         employee_name: s?.name_of_teacher || '',
         event_type:    'delete',
@@ -1993,7 +2174,7 @@ async function apiCall(action, payload) {
       const targetEmis = p.targetEmis || p.to_emis || p['To EMIS'];
       if (!targetEmis) return { success: false, error: 'Missing destination EMIS.' };
 
-      const { data: s } = await _sb.from('staff')
+      const { data: s } = await _db('staff')
         .select('name_of_teacher, school_emis_code, markaz_name, tehsil, district, wing, bps')
         .eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
@@ -2033,7 +2214,7 @@ async function apiCall(action, payload) {
       }));
       if (!r.ok) return { success: false, error: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:   pno,
         employee_name: s?.name_of_teacher || '',
         event_type:    'transfer',
@@ -2081,7 +2262,7 @@ async function apiCall(action, payload) {
         // Fallback for installs that haven't run the SQL setup yet —
         // works, but is silently limited to the acting officer's own
         // jurisdiction by RLS until the RPC above is installed.
-        const { data: fallback } = await _sb.from('staff')
+        const { data: fallback } = await _db('staff')
           .select('personal_no, name_of_teacher, designation, working_as_head, bps, pps, school_emis_code, school_name, markaz_name, tehsil, district, wing, date_of_posting_present_school')
           .eq('school_emis_code', emis).eq('status', 'active');
         rows = (fallback || []).filter(r => String(r.bps || '').trim() === bps);
@@ -2147,7 +2328,7 @@ async function apiCall(action, payload) {
       if (!rpcRowsErr) {
         staffRows = rpcRows;
       } else {
-        const { data: fallbackRows } = await _sb.from('staff')
+        const { data: fallbackRows } = await _db('staff')
           .select('personal_no, name_of_teacher, school_emis_code, school_name, markaz_name, tehsil, district, wing, bps, status')
           .in('personal_no', [pnoA, pnoB]);
         staffRows = fallbackRows;
@@ -2222,7 +2403,7 @@ async function apiCall(action, payload) {
         return { success: false, error: `Mutual transfer could not be completed: ${mtErr.message}` };
       }
 
-      await _sb.from('staff_events').insert([
+      await _db('staff_events').insert([
         {
           personal_no: pnoA, employee_name: a.name_of_teacher || '', event_type: 'mutual_transfer',
           notification_no: notif, effective_date: dateA,
@@ -2256,7 +2437,7 @@ async function apiCall(action, payload) {
       const pno = p.personalNo || p['PERSONAL NO.'] || p.personal_no;
       if (!pno) return { success: false, error: 'Missing employee personal number.' };
 
-      const { data: s } = await _sb.from('staff').select('name_of_teacher, designation, bps').eq('personal_no', pno).single();
+      const { data: s } = await _db('staff').select('name_of_teacher, designation, bps').eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
       const targetEmis = p.targetEmis || p.to_emis;
@@ -2300,7 +2481,7 @@ async function apiCall(action, payload) {
       }));
       if (!r.ok) return { success: false, error: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:    pno,
         employee_name:  s?.name_of_teacher || '',
         event_type:     'promotion',
@@ -2334,7 +2515,7 @@ async function apiCall(action, payload) {
         terminated: 'Termination', deceased: 'Deceased',
       }[newStatus] || '';
 
-      const { data: s } = await _sb.from('staff').select('name_of_teacher').eq('personal_no', pno).single();
+      const { data: s } = await _db('staff').select('name_of_teacher').eq('personal_no', pno).single();
       if (!s) return { success: false, errors: [`No staff record found for personal number "${pno}".`] };
 
       const r = await _staffPrivilegedUpdate(pno, _sanitizeEmpty({
@@ -2344,7 +2525,7 @@ async function apiCall(action, payload) {
       }));
       if (!r.ok) return { success: false, errors: [r.message] };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:    pno,
         employee_name:  s?.name_of_teacher || '',
         event_type:     newStatus,
@@ -2365,7 +2546,7 @@ async function apiCall(action, payload) {
       const pno = p.personalNo || p.personal_no;
       if (!pno) return { success: false, message: 'Missing employee personal number.' };
 
-      const { data: s } = await _sb.from('staff')
+      const { data: s } = await _db('staff')
         .select('name_of_teacher, nature_of_job, status').eq('personal_no', pno).maybeSingle();
       if (!s) return { success: false, message: `No staff record found for personal number "${pno}".` };
       if ((s.nature_of_job || '').trim() !== 'Contract') {
@@ -2386,7 +2567,7 @@ async function apiCall(action, payload) {
       }));
       if (!r.ok) return { success: false, message: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no: pno,
         employee_name: s.name_of_teacher || '',
         event_type: 'contract_ended',
@@ -2411,7 +2592,7 @@ async function apiCall(action, payload) {
       if (!p.orderNumber) return { success: false, message: 'Contract Renewal Order Number is required.' };
       if (!p.newEndDate) return { success: false, message: 'New Contract End Date is required.' };
 
-      const { data: s } = await _sb.from('staff')
+      const { data: s } = await _db('staff')
         .select('name_of_teacher, status').eq('personal_no', pno).maybeSingle();
       if (!s) return { success: false, message: `No staff record found for personal number "${pno}".` };
       if (s.status !== 'contract_ended') {
@@ -2445,7 +2626,7 @@ async function apiCall(action, payload) {
       }));
       if (!r.ok) return { success: false, message: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no: pno,
         employee_name: s.name_of_teacher || '',
         event_type: 'contract_renewed',
@@ -2473,7 +2654,7 @@ async function apiCall(action, payload) {
       const pno = p.personalNo || p.personal_no || p['PERSONAL NO.'];
       if (!pno) return { success: false, retired: false, error: 'Missing personal number.' };
 
-      const { data: s } = await _sb.from('staff')
+      const { data: s } = await _db('staff')
         .select('personal_no, name_of_teacher, date_of_birth, status')
         .eq('personal_no', pno).maybeSingle();
       if (!s) return { success: false, retired: false, error: 'Staff record not found.' };
@@ -2508,7 +2689,7 @@ async function apiCall(action, payload) {
       }));
       if (!r.ok) return { success: false, retired: false, error: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:     pno,
         employee_name:   s.name_of_teacher || '',
         event_type:      'retired',
@@ -2542,7 +2723,7 @@ async function apiCall(action, payload) {
 
       if (sourceSheetName === 'Transfer_History') {
         if (!rowNum) return { success: false, error: 'Could not identify which transfer to undo (missing event id).' };
-        const { data: ev } = await _sb.from('staff_events').select('*').eq('id', rowNum).maybeSingle();
+        const { data: ev } = await _db('staff_events').select('*').eq('id', rowNum).maybeSingle();
         if (!ev) return { success: false, error: 'That transfer record could not be found — it may have already been reverted.' };
 
         const winErr = _checkRevertWindow(user, ev.created_at);
@@ -2585,7 +2766,7 @@ async function apiCall(action, payload) {
           // their side disappears from Transfer_History as well. Matched
           // by the JSONB details rather than notification_no/date, which
           // can be blank/shared across unrelated transfers.
-          await _sb.from('staff_events').delete()
+          await _db('staff_events').delete()
             .eq('personal_no', partnerPno).eq('event_type', 'mutual_transfer')
             .contains('details', { swapped_with_personal_no: pno });
         } else {
@@ -2597,8 +2778,8 @@ async function apiCall(action, payload) {
           if (!r.ok) return { success: false, error: r.message };
         }
 
-        await _sb.from('staff_events').delete().eq('id', rowNum);
-        await _sb.from('staff_events').insert([{
+        await _db('staff_events').delete().eq('id', rowNum);
+        await _db('staff_events').insert([{
           personal_no: pno, employee_name: ev.employee_name || '', event_type: 'revert',
           details: { reverted_event_type: ev.event_type, restored_to_emis: fromEmis },
           created_by: user?.name || '',
@@ -2608,7 +2789,7 @@ async function apiCall(action, payload) {
 
       if (sourceSheetName === 'Promotions_History') {
         if (!rowNum) return { success: false, error: 'Could not identify which promotion to undo (missing event id).' };
-        const { data: ev } = await _sb.from('staff_events').select('*').eq('id', rowNum).maybeSingle();
+        const { data: ev } = await _db('staff_events').select('*').eq('id', rowNum).maybeSingle();
         if (!ev) return { success: false, error: 'That promotion record could not be found — it may have already been reverted.' };
 
         const winErr = _checkRevertWindow(user, ev.created_at);
@@ -2621,8 +2802,8 @@ async function apiCall(action, payload) {
         }));
         if (!r.ok) return { success: false, error: r.message };
 
-        await _sb.from('staff_events').delete().eq('id', rowNum);
-        await _sb.from('staff_events').insert([{
+        await _db('staff_events').delete().eq('id', rowNum);
+        await _db('staff_events').insert([{
           personal_no: pno, employee_name: ev.employee_name || '', event_type: 'revert',
           details: { reverted_event_type: 'promotion', restored_designation: d.old_designation || '', restored_bps: d.old_bps || '' },
           created_by: user?.name || '',
@@ -2633,7 +2814,7 @@ async function apiCall(action, payload) {
       // ── Status-change reverts (Termination / Retirement / Resignation
       // / Deceased → back to Active). Unchanged apart from routing
       // through the shared _checkRevertWindow helper above.
-      const { data: s } = await _sb.from('staff').select('name_of_teacher, status, changes_made_at').eq('personal_no', pno).single();
+      const { data: s } = await _db('staff').select('name_of_teacher, status, changes_made_at').eq('personal_no', pno).single();
       if (!s) return { success: false, error: `No staff record found for personal number "${pno}".` };
 
       const winErr = _checkRevertWindow(user, s.changes_made_at);
@@ -2646,7 +2827,7 @@ async function apiCall(action, payload) {
       });
       if (!r.ok) return { success: false, error: r.message };
 
-      await _sb.from('staff_events').insert([{
+      await _db('staff_events').insert([{
         personal_no:   pno,
         employee_name: s?.name_of_teacher || '',
         event_type:    'revert',
@@ -2660,7 +2841,7 @@ async function apiCall(action, payload) {
     case 'checkPersonalNoDuplicate': {
       const pno  = Array.isArray(payload) ? payload[0] : payload?.personal_no ?? payload;
       const excl = Array.isArray(payload) ? payload[1] : payload?.exclude;
-      let q = _sb.from('staff').select('personal_no').eq('personal_no', String(pno).trim());
+      let q = _db('staff').select('personal_no').eq('personal_no', String(pno).trim());
       if (excl) q = q.neq('personal_no', excl);
       const { data } = await q;
       return { found: (data?.length || 0) > 0, sheet: 'Staff' };
@@ -2669,7 +2850,7 @@ async function apiCall(action, payload) {
     case 'checkCnicDuplicate': {
       const cnic = Array.isArray(payload) ? payload[0] : payload?.cnic ?? payload;
       const excl = Array.isArray(payload) ? payload[1] : payload?.exclude;
-      let q = _sb.from('staff').select('personal_no').eq('cnic', String(cnic).trim());
+      let q = _db('staff').select('personal_no').eq('cnic', String(cnic).trim());
       if (excl) q = q.neq('personal_no', excl);
       const { data } = await q;
       return { found: (data?.length || 0) > 0, sheet: 'Staff' };
@@ -2678,7 +2859,7 @@ async function apiCall(action, payload) {
     case 'checkIbanDuplicate': {
       const iban = Array.isArray(payload) ? payload[0] : payload?.iban ?? payload;
       const excl = Array.isArray(payload) ? payload[1] : payload?.exclude;
-      let q = _sb.from('staff').select('personal_no').eq('salary_account_iban_no', String(iban).trim());
+      let q = _db('staff').select('personal_no').eq('salary_account_iban_no', String(iban).trim());
       if (excl) q = q.neq('personal_no', excl);
       const { data } = await q;
       return { found: (data?.length || 0) > 0, sheet: 'Staff' };
@@ -3722,7 +3903,7 @@ function _hierarchyScopeDbFields(p) {
     case 'getStaffDesignations':
     case 'getPrivateCategories': {
       const table = action === 'getStaffDesignations' ? 'staff_designations' : 'private_school_categories';
-      let q = _sb.from(table).select('*').eq('active', true);
+      let q = _db(table).select('*').eq('active', true);
       // Designations are always A–Z automatically — no manual ordering
       // field for these. Categories keep their manual display_order.
       q = table === 'staff_designations' ? q.order('name') : q.order('display_order');
@@ -3745,7 +3926,7 @@ function _hierarchyScopeDbFields(p) {
     // Non-Teaching category from their already-saved Designation
     // without needing that category stored separately on the staff row.
     case 'getDesignationCategoryMap': {
-      const { data, error } = await _sb.from('staff_designations').select('name, category');
+      const { data, error } = await _db('staff_designations').select('name, category');
       if (error) return { success: false, message: error.message };
       const map = {};
       (data || []).forEach(r => { map[r.name] = r.category || 'teaching'; });
@@ -3755,7 +3936,7 @@ function _hierarchyScopeDbFields(p) {
     case 'getStaffDesignationsAdmin':
     case 'getPrivateCategoriesAdmin': {
       const table = action === 'getStaffDesignationsAdmin' ? 'staff_designations' : 'private_school_categories';
-      let q = _sb.from(table).select('*');
+      let q = _db(table).select('*');
       q = table === 'staff_designations' ? q.order('name') : q.order('display_order');
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
       if (table === 'staff_designations' && p && p.category) {
@@ -3797,9 +3978,9 @@ function _hierarchyScopeDbFields(p) {
         const r = await _checkedUpdate(table, dbRow, 'id', id);
         if (!r.ok) return { success: false, message: r.message };
       } else {
-        const { data: dupe } = await _sb.from(table).select('id').ilike('name', name).maybeSingle();
+        const { data: dupe } = await _db(table).select('id').ilike('name', name).maybeSingle();
         if (dupe) return { success: false, message: `"${name}" already exists.` };
-        const { error } = await _sb.from(table).insert([dbRow]);
+        const { error } = await _db(table).insert([dbRow]);
         if (error) return { success: false, message: error.message };
       }
       return { success: true, message: 'Saved.' };
@@ -3818,7 +3999,7 @@ function _hierarchyScopeDbFields(p) {
     // ── POSTING AWAITING STAFF ──────────────────────────────────────────
     case 'loadAwaitingPosting': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      let q = _sb.from('staff_awaiting_posting')
+      let q = _db('staff_awaiting_posting')
         .select('*, staff(name_of_teacher, cnic, designation, bps)')
         .order('entry_date', { ascending: false });
       if (p.status) q = q.eq('status', p.status);
@@ -3879,11 +4060,11 @@ function _hierarchyScopeDbFields(p) {
       const sinceIso = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString(); // last 60 days
 
       const [{ data: awaitingRows }, { data: retiredRows }] = await Promise.all([
-        _sb.from('staff_awaiting_posting')
+        _db('staff_awaiting_posting')
           .select('id, personal_no, previous_school_name, previous_district, previous_tehsil, previous_markaz, reason, remarks, entry_date, created_at, staff(name_of_teacher)')
           .gte('created_at', sinceIso)
           .order('created_at', { ascending: false }),
-        _sb.from('staff_events')
+        _db('staff_events')
           .select('id, personal_no, employee_name, created_at, details')
           .eq('event_type', 'retired')
           .eq('created_by', 'System (Auto - Age 60)')
@@ -3930,9 +4111,9 @@ function _hierarchyScopeDbFields(p) {
 
     case 'getHrSummaryCounts': {
       const [{ count: awaitingCount, error: e1 }, { count: tdActiveCount, error: e2 }] = await Promise.all([
-        _sb.from('staff_awaiting_posting').select('id', { count: 'exact', head: true })
+        _db('staff_awaiting_posting').select('id', { count: 'exact', head: true })
           .in('status', ['awaiting', 'on_temporary_duty']),
-        _sb.from('staff_temporary_duty').select('id', { count: 'exact', head: true })
+        _db('staff_temporary_duty').select('id', { count: 'exact', head: true })
           .eq('status', 'active'),
       ]);
       if (e1 || e2) return { success: false, message: (e1 || e2).message };
@@ -3941,7 +4122,7 @@ function _hierarchyScopeDbFields(p) {
 
     case 'loadTemporaryDuty': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      let q = _sb.from('staff_temporary_duty')
+      let q = _db('staff_temporary_duty')
         .select('*, staff(name_of_teacher, designation, bps)')
         .order('start_date', { ascending: false });
       if (p.status) q = q.eq('status', p.status);
