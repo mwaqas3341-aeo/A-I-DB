@@ -1116,7 +1116,7 @@ async function tfSubmit() {
   var currentBps = parseInt(safeVal(transferRowData['BPS']), 10);
   if (!isNaN(currentBps)) {
     try {
-      var vacCheck = await _sb.rpc('check_grade_vacancy', { p_emis: targetEmis, p_grade: currentBps });
+      var vacCheck = await hrGateway.checkGradeVacancy(targetEmis, currentBps);
       if (!vacCheck.error && vacCheck.data === false) {
         showToast('Vacant seat not available for BPS-' + currentBps + ' at EMIS ' + targetEmis + '.', 'error');
         return;
@@ -1664,7 +1664,7 @@ async function pmSubmit() {
   var newBpsNum = parseInt(bps, 10);
   if (!isNaN(newBpsNum)) {
     try {
-      var vacCheck = await _sb.rpc('check_grade_vacancy', { p_emis: targetEmis, p_grade: newBpsNum });
+      var vacCheck = await hrGateway.checkGradeVacancy(targetEmis, newBpsNum);
       if (!vacCheck.error && vacCheck.data === false) {
         showToast('Vacant seat not available for BPS-' + newBpsNum + ' at EMIS ' + targetEmis + '.', 'error');
         return;

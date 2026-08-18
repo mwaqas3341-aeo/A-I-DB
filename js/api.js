@@ -17,6 +17,47 @@
 const _sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 window._supabase = _sb;   // expose for any direct use elsewhere
 
+// ── HR Gateway ────────────────────────────────────────────────────────
+// staff / staff_events / staff_awaiting_posting / staff_temporary_duty /
+// staff_designations / sne_subject_sanctioned / sne_seat_audit_log /
+// sne_audit_backup_files now live in a separate Supabase project.
+// Auth still only exists on the main project, so the browser can't talk
+// to that project directly (different signing keys, auth.uid() would
+// never resolve). Instead every read/write to those 8 tables goes
+// through this Edge Function, deployed on MAIN, which verifies the
+// caller's session here, then uses the second project's service-role
+// key server-side to actually do the work.
+const HR_GATEWAY_URL = `${CONFIG.SUPABASE_URL}/functions/v1/hr-gateway`;
+
+async function _hrGatewayCall(body) {
+  const { data: sessionData } = await _sb.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) return { data: null, error: { message: 'Not logged in.' } };
+
+  const res = await fetch(HR_GATEWAY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'apikey': CONFIG.SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) return { data: null, error: { message: json.error || `Gateway error (${res.status})` } };
+  return { data: json.data, error: null };
+}
+
+const hrGateway = {
+  select: (table, filters) => _hrGatewayCall({ table, operation: 'select', filters }),
+  insert: (table, payload) => _hrGatewayCall({ table, operation: 'insert', payload }),
+  update: (table, id_column, id_value, payload) => _hrGatewayCall({ table, operation: 'update', id_column, id_value, payload }),
+  delete: (table, id_column, id_value) => _hrGatewayCall({ table, operation: 'delete', id_column, id_value }),
+  checkGradeVacancy: (p_emis, p_grade) => _hrGatewayCall({ rpc: 'check_grade_vacancy', payload: { p_emis, p_grade } }),
+  staffPrivilegedUpdate: (p_personal_no, p_updates) => _hrGatewayCall({ rpc: 'staff_privileged_update', payload: { p_personal_no, p_updates } }),
+};
+window.hrGateway = hrGateway;
+
 // ── Column-name maps (Supabase snake_case ↔ frontend display headers) ─
 // Staff table: Supabase column → display header used in SF_MAP
 const STAFF_COL_MAP = {
@@ -737,10 +778,7 @@ async function _checkedUpdate(table, dbRow, matchCol, matchVal) {
 // writes with elevated privilege — sidestepping that automatic
 // coupling entirely without weakening any other security boundary.
 async function _staffPrivilegedUpdate(pno, updates) {
-  const { data, error } = await _sb.rpc('staff_privileged_update', {
-    p_personal_no: pno,
-    p_updates: updates,
-  });
+  const { data, error } = await hrGateway.staffPrivilegedUpdate(pno, updates);
   if (error) return { ok: false, message: error.message };
   if (!data || data === 0) {
     return { ok: false, message: `No staff record found for personal number "${pno}", or you're not authorized to modify it.` };
@@ -1975,9 +2013,7 @@ async function apiCall(action, payload) {
       // that grade before moving them.
       const targetGrade = parseInt(s?.bps, 10);
       if (!isNaN(targetGrade)) {
-        const { data: hasVacancy, error: vacErr } = await _sb.rpc('check_grade_vacancy', {
-          p_emis: targetEmis, p_grade: targetGrade,
-        });
+        const { data: hasVacancy, error: vacErr } = await hrGateway.checkGradeVacancy(targetEmis, targetGrade);
         if (!vacErr && hasVacancy === false) {
           return { success: false, error: `Vacant seat not available for BPS-${targetGrade} at EMIS ${targetEmis}.` };
         }
@@ -2247,9 +2283,7 @@ async function apiCall(action, payload) {
       const newBps = parseInt(p.newBps || p.new_bps || p['New BPS'], 10);
       const checkEmis = targetEmis || s?.school_emis_code;
       if (!isNaN(newBps) && checkEmis) {
-        const { data: hasVacancy, error: vacErr } = await _sb.rpc('check_grade_vacancy', {
-          p_emis: checkEmis, p_grade: newBps,
-        });
+        const { data: hasVacancy, error: vacErr } = await hrGateway.checkGradeVacancy(checkEmis, newBps);
         if (!vacErr && hasVacancy === false) {
           return { success: false, error: `Vacant seat not available for BPS-${newBps} at EMIS ${checkEmis}.` };
         }
