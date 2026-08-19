@@ -63,6 +63,17 @@ const hrGateway = {
   delete: (table, id_column, id_value) => _hrGatewayCall({ table, operation: 'delete', id_column, id_value }),
   checkGradeVacancy: (p_emis, p_grade) => _hrGatewayCall({ rpc: 'check_grade_vacancy', payload: { p_emis, p_grade } }),
   staffPrivilegedUpdate: (p_personal_no, p_updates) => _hrGatewayCall({ rpc: 'staff_privileged_update', payload: { p_personal_no, p_updates } }),
+  applySchoolStatusChange: (p_emis, p_school_name, p_reason) => _hrGatewayCall({ rpc: 'apply_school_status_change', payload: { p_emis, p_school_name, p_reason } }),
+  staffByEmisBpsPrivileged: (p_emis, p_bps, p_exclude_personal_no) => _hrGatewayCall({ rpc: 'staff_by_emis_bps_privileged', payload: { p_emis, p_bps, p_exclude_personal_no } }),
+  staffByPersonalNoPrivileged: (p_personal_nos) => _hrGatewayCall({ rpc: 'staff_by_personal_no_privileged', payload: { p_personal_nos } }),
+  staffMutualTransferPrivileged: (p_personal_no_a, p_personal_no_b, p_updates_a, p_updates_b) =>
+    _hrGatewayCall({ rpc: 'staff_mutual_transfer_privileged', payload: { p_personal_no_a, p_personal_no_b, p_updates_a, p_updates_b } }),
+  revertAwaitingPostingAssignment: (p_event_id) => _hrGatewayCall({ rpc: 'revert_awaiting_posting_assignment', payload: { p_event_id } }),
+  assignAwaitingStaffToSchool: (p_awaiting_id, p_target_emis, p_order_number, p_order_date) =>
+    _hrGatewayCall({ rpc: 'assign_awaiting_staff_to_school', payload: { p_awaiting_id, p_target_emis, p_order_number, p_order_date } }),
+  createTemporaryDuty: (params) => _hrGatewayCall({ rpc: 'create_temporary_duty', payload: params }),
+  completeTemporaryDuty: (p_td_id) => _hrGatewayCall({ rpc: 'complete_temporary_duty', payload: { p_td_id } }),
+  cancelTemporaryDuty: (p_td_id) => _hrGatewayCall({ rpc: 'cancel_temporary_duty', payload: { p_td_id } }),
 };
 window.hrGateway = hrGateway;
 
@@ -2253,9 +2264,7 @@ async function apiCall(action, payload) {
       if (!bps)  return { success: false, error: 'Missing BPS to match against.' };
 
       let rows = null;
-      const { data: rpcData, error: rpcErr } = await _sb.rpc('staff_by_emis_bps_privileged', {
-        p_emis: emis, p_bps: bps, p_exclude_personal_no: excludePno || null,
-      });
+      const { data: rpcData, error: rpcErr } = await hrGateway.staffByEmisBpsPrivileged(emis, bps, excludePno || null);
       if (!rpcErr) {
         rows = rpcData;
       } else {
@@ -2322,9 +2331,7 @@ async function apiCall(action, payload) {
       // old plain-select behaviour kept only as a fallback for installs
       // that haven't run that SQL yet.
       let staffRows = null;
-      const { data: rpcRows, error: rpcRowsErr } = await _sb.rpc('staff_by_personal_no_privileged', {
-        p_personal_nos: [String(pnoA), String(pnoB)],
-      });
+      const { data: rpcRows, error: rpcRowsErr } = await hrGateway.staffByPersonalNoPrivileged([String(pnoA), String(pnoB)]);
       if (!rpcRowsErr) {
         staffRows = rpcRows;
       } else {
@@ -2395,10 +2402,9 @@ async function apiCall(action, payload) {
       // BOTH original records together and performs both updates in
       // one transaction -- they always succeed or fail together, with
       // no possibility of a one-sided move.
-      const { error: mtErr } = await _sb.rpc('staff_mutual_transfer_privileged', {
-        p_personal_no_a: pnoA, p_personal_no_b: pnoB,
-        p_updates_a: _sanitizeEmpty(updA), p_updates_b: _sanitizeEmpty(updB),
-      });
+      const { error: mtErr } = await hrGateway.staffMutualTransferPrivileged(
+        pnoA, pnoB, _sanitizeEmpty(updA), _sanitizeEmpty(updB)
+      );
       if (mtErr) {
         return { success: false, error: `Mutual transfer could not be completed: ${mtErr.message}` };
       }
@@ -2747,19 +2753,19 @@ async function apiCall(action, payload) {
             .select('district, wing, tehsil, markaz, school_name').eq('emis', toEmis).maybeSingle();
           if (!toSchool) return { success: false, error: `The swap partner's original school (EMIS ${toEmis}) could not be found.` };
 
-          const { error: mtErr } = await _sb.rpc('staff_mutual_transfer_privileged', {
-            p_personal_no_a: pno, p_personal_no_b: partnerPno,
-            p_updates_a: _sanitizeEmpty({
+          const { error: mtErr } = await hrGateway.staffMutualTransferPrivileged(
+            pno, partnerPno,
+            _sanitizeEmpty({
               school_emis_code: fromEmis, school_name: fromSchool.school_name, markaz_name: fromSchool.markaz,
               tehsil: fromSchool.tehsil, district: fromSchool.district, wing: fromSchool.wing,
               changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
             }),
-            p_updates_b: _sanitizeEmpty({
+            _sanitizeEmpty({
               school_emis_code: toEmis, school_name: toSchool.school_name, markaz_name: toSchool.markaz,
               tehsil: toSchool.tehsil, district: toSchool.district, wing: toSchool.wing,
               changes_made_by: user?.name || '', changes_made_at: new Date().toISOString(),
-            }),
-          });
+            })
+          );
           if (mtErr) return { success: false, error: `Could not undo mutual transfer: ${mtErr.message}` };
 
           // Remove the partner's matching mutual_transfer event too, so
@@ -2916,8 +2922,29 @@ async function apiCall(action, payload) {
       }
 
       delete dbRow.emis;  // don't overwrite PK
+
+      // Capture the pre-update status before the write, so we can tell
+      // whether this save is an active→outsourced/closed transition —
+      // same condition the old public_schools trigger used, just
+      // evaluated here now since it needs to reach across to the HR
+      // project's staff table (see apply_school_status_change in that
+      // project, called via hr-gateway below).
+      const { data: beforeRow } = await _sb.from('public_schools').select('status').eq('emis', emis).maybeSingle();
+      const prevStatus = beforeRow?.status;
+
       const r = await _checkedUpdate('public_schools', dbRow, 'emis', emis);
       if (!r.ok) return { success: false, message: r.message };
+
+      if (dbRow.status && dbRow.status !== prevStatus && (prevStatus == null || /active/i.test(prevStatus))) {
+        let reason = null;
+        if (/out\s*sourced|outsourced/i.test(dbRow.status)) reason = 'outsourced_school';
+        else if (/closed|inactive/i.test(dbRow.status)) reason = 'school_closed';
+        if (reason) {
+          const { error: moveErr } = await hrGateway.applySchoolStatusChange(emis, null, reason);
+          if (moveErr) console.error('apply_school_status_change failed:', moveErr.message);
+        }
+      }
+
       return { success: true, message: 'School record updated.' };
     }
 
@@ -2993,8 +3020,27 @@ async function apiCall(action, payload) {
       dbRow.updated_at = new Date().toISOString();
       if (uid) {
         delete dbRow.unique_id;
+        const { data: beforeRow } = await _sb.from('private_schools').select('school_name, status').eq('unique_id', uid).maybeSingle();
+        const prevStatus = beforeRow?.status;
+        const prevName = beforeRow?.school_name;
         const r = await _checkedUpdate('private_schools', dbRow, 'unique_id', uid);
         if (!r.ok) return { success: false, message: r.message };
+
+        if (dbRow.status && dbRow.status !== prevStatus && (prevStatus == null || /active/i.test(prevStatus))) {
+          let reason = null;
+          if (/out\s*sourced|outsourced/i.test(dbRow.status)) reason = 'outsourced_school';
+          else if (/closed|inactive/i.test(dbRow.status)) reason = 'school_closed';
+          // Private schools have no EMIS on staff — matched by name
+          // instead, same as the trigger this replaces. (Note: this
+          // only nulls staff.school_name; it does NOT auto-move them to
+          // Awaiting Posting, since that trigger only fires on
+          // school_emis_code changing — a pre-existing gap for private
+          // schools that predates this migration, not introduced by it.)
+          if (reason && prevName) {
+            const { error: moveErr } = await hrGateway.applySchoolStatusChange(null, prevName, reason);
+            if (moveErr) console.error('apply_school_status_change failed:', moveErr.message);
+          }
+        }
       } else {
         dbRow.status = dbRow.status || 'Active';
         // This column has no database-level default — without this,
@@ -4024,19 +4070,16 @@ function _hierarchyScopeDbFields(p) {
 
     case 'revertAwaitingPostingAssignment': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      const { data, error } = await _sb.rpc('revert_awaiting_posting_assignment', { p_event_id: p.eventId });
+      const { data, error } = await hrGateway.revertAwaitingPostingAssignment(p.eventId);
       if (error) return { success: false, message: error.message };
       return data;
     }
 
     case 'assignAwaitingStaffToSchool': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      const { data, error } = await _sb.rpc('assign_awaiting_staff_to_school', {
-        p_awaiting_id: p.awaitingId,
-        p_target_emis: p.targetEmis,
-        p_order_number: p.orderNumber || null,
-        p_order_date: p.orderDate || null,
-      });
+      const { data, error } = await hrGateway.assignAwaitingStaffToSchool(
+        p.awaitingId, p.targetEmis, p.orderNumber || null, p.orderDate || null
+      );
       if (error) return { success: false, message: error.message };
       return data; // RPC already returns {success, message}
     }
@@ -4140,7 +4183,7 @@ function _hierarchyScopeDbFields(p) {
 
     case 'createTemporaryDuty': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      const { data, error } = await _sb.rpc('create_temporary_duty', {
+      const { data, error } = await hrGateway.createTemporaryDuty({
         p_personal_no: p.personalNo,
         p_temp_emis: p.tempEmis,
         p_start_date: p.startDate,
@@ -4158,8 +4201,8 @@ function _hierarchyScopeDbFields(p) {
     case 'completeTemporaryDuty':
     case 'cancelTemporaryDuty': {
       const p = Array.isArray(payload) ? payload[0] : (payload || {});
-      const fn = action === 'completeTemporaryDuty' ? 'complete_temporary_duty' : 'cancel_temporary_duty';
-      const { data, error } = await _sb.rpc(fn, { p_td_id: p.tdId });
+      const call = action === 'completeTemporaryDuty' ? hrGateway.completeTemporaryDuty : hrGateway.cancelTemporaryDuty;
+      const { data, error } = await call(p.tdId);
       if (error) return { success: false, message: error.message };
       return data;
     }
