@@ -2095,8 +2095,7 @@ async function apiCall(action, payload) {
       }
 
       const cleanRow = _sanitizeEmpty(dbRow);
-      const { data: inserted, error } = await _sb
-        .from('staff').insert([cleanRow]).select().single();
+      const { data: inserted, error } = await _db('staff').insert([cleanRow]).select().single();
       if (error) return { success: false, error: error.message };
 
       await _db('staff_events').insert([{
