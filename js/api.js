@@ -55,8 +55,8 @@ const HR_GATEWAY_TABLES = new Set([
 
 const hrGateway = {
   isGatewayTable: (table) => HR_GATEWAY_TABLES.has(table),
-  select: (table, { columns, filters, order, single } = {}) =>
-    _hrGatewayCall({ table, operation: 'select', columns, filters, order, single }),
+  select: (table, { columns, filters, orders, single } = {}) =>
+    _hrGatewayCall({ table, operation: 'select', columns, filters, orders, single }),
   insert: (table, payload) => _hrGatewayCall({ table, operation: 'insert', payload }),
   insertMany: (table, payload) => _hrGatewayCall({ table, operation: 'insertMany', payload }),
   update: (table, id_column, id_value, payload) => _hrGatewayCall({ table, operation: 'update', id_column, id_value, payload }),
@@ -131,7 +131,7 @@ function _db(table) {
       (state.post = state.post || []).push(r => clauses.some(fn => fn(r)));
       return builder;
     },
-    order(col, opts) { state.order = col; return builder; }, // gateway sorts ascending only; matches every current call site
+    order(col, opts) { (state.orders = state.orders || []).push({ col, ascending: !(opts && opts.ascending === false) }); return builder; },
     limit(n) { state.limitN = n; return builder; },
     range(from, to) { state.rangeFrom = from; state.rangeTo = to; return builder; },
     single() { state.single = true; return builder; },
@@ -181,7 +181,7 @@ function _db(table) {
 
       // select
       const { data, error } = await hrGateway.select(table, {
-        columns: state.columns, filters: state.filters, order: state.order,
+        columns: state.columns, filters: state.filters, orders: state.orders,
       });
       if (error) return { data: null, error };
       let rows = data || [];
@@ -1769,7 +1769,7 @@ async function apiCall(action, payload) {
       if (p.tehsil)   q = q.eq('tehsil', p.tehsil);
       if (p.markaz)   q = q.eq('markaz_name', p.markaz);
       if (p.emis)     q = q.eq('emis', p.emis);
-      q = q.order('school_name').order('grade', { ascending: false }).order('subject_label');
+      q = q.order('emis', { ascending: true }).order('grade', { ascending: false }).order('subject_label');
       const { data, error } = await q.limit(5000);
       if (error) return { success: false, message: error.message };
 
