@@ -1478,6 +1478,10 @@
     <button class="btn-import-data" onclick="openSchoolImportModal('public')">
       <i class="bi bi-cloud-arrow-up-fill"></i> Update Data (Excel/CSV)
     </button>
+    <label class="row-edit-toggle" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--t2);margin:0 4px">
+      <input type="checkbox" id="pubRowEditToggle" onchange="togglePubRowEditMode()">
+      <i class="bi bi-table"></i> Enable Row Editing
+    </label>
     <div class="search-box">
       <i class="bi bi-search"></i>
       <input
@@ -1567,6 +1571,20 @@
     <div class="kpi-grid" id="privateKpiGrid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px"></div>
   </div>
 
+  <!-- ══ CATEGORY CARDS — dynamically generated from School Category data ══ -->
+  <div class="section-title" style="margin-top:4px">
+    <i class="bi bi-tags-fill"></i> Schools by Category
+    <div class="title-line"></div>
+  </div>
+  <div class="kpi-grid" id="privCategoryCards" style="margin-bottom:20px"></div>
+
+  <!-- ══ REGISTRATION STATUS CARDS — one card per valid status, incl. zero-count ══ -->
+  <div class="section-title">
+    <i class="bi bi-patch-check-fill"></i> Schools by Registration Status
+    <div class="title-line"></div>
+  </div>
+  <div class="kpi-grid" id="privRegStatusCards" style="margin-bottom:20px"></div>
+
   <div class="tbl-header-meta">
     <div class="active-sheet-badge">
       <i class="bi bi-building"></i> Viewing: <span id="privCurrentSheet">--</span>
@@ -1582,6 +1600,18 @@
       <select id="privFltCategory" onchange="openPrivateModule(this.value)">
         <option value="Private">Active Private Schools</option>
         <option value="Inactive">Inactive Private Schools</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Registration Status</label>
+      <select id="privFltRegStatus">
+        <option value="">All</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>School Category</label>
+      <select id="privFltSchoolCategory">
+        <option value="">All</option>
       </select>
     </div>
     <div class="filter-group">
@@ -1634,6 +1664,10 @@
     <button class="btn-import-data" onclick="openSchoolImportModal('private')">
       <i class="bi bi-cloud-arrow-up-fill"></i> Import Previous Data
     </button>
+    <label class="row-edit-toggle" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--t2);margin:0 4px">
+      <input type="checkbox" id="privRowEditToggle" onchange="togglePrivRowEditMode()">
+      <i class="bi bi-table"></i> Enable Row Editing
+    </label>
     <div class="search-box">
       <i class="bi bi-search"></i>
       <input
