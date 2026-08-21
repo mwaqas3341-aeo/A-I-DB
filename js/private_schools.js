@@ -285,22 +285,17 @@ function populatePrivSchoolCategoryFilter() {
 //  showing live counts from the currently loaded sheet (Active/Inactive).
 //  Clicking a card filters the table to that category.
 // ══════════════════════════════════════════════════════════════════════
-// `dataset` is the currently filtered rows (from applyPrivFilters), so
-// the counts always match what's in the table. Defaults to the full
-// jurisdiction-scoped privData when no filters are active yet (initial
-// module load), per the "no filter → show total" requirement.
-function renderPrivCategoryCards(dataset) {
+function renderPrivCategoryCards() {
   const grid = document.getElementById('privCategoryCards');
   if (!grid) return;
   const catField = PRIVATE_FIELD_CONFIG.find(f => f.header === 'School Category');
   const cats = catField ? catField.options : [];
   const header = privFHeaders.category;
-  const rows = dataset || privData;
 
   const counts = {};
   cats.forEach(c => counts[c] = 0);
   if (header) {
-    rows.forEach(r => {
+    privData.forEach(r => {
       const v = r[header];
       if (v) counts[v] = (counts[v] || 0) + 1;
     });
@@ -326,20 +321,17 @@ function selectPrivCategoryCard(cat) {
 //  (even with a count of 0). Clicking a card filters the table to that
 //  status.
 // ══════════════════════════════════════════════════════════════════════
-// See renderPrivCategoryCards() above for the `dataset` contract —
-// same filtered-rows-in, filtered-counts-out pattern.
-function renderPrivRegStatusCards(dataset) {
+function renderPrivRegStatusCards() {
   const grid = document.getElementById('privRegStatusCards');
   if (!grid) return;
   const statusField = PRIVATE_FIELD_CONFIG.find(f => f.header === 'Registeration Status');
   const statuses = statusField ? statusField.options : [];
   const header = privFHeaders.regStatus;
-  const rows = dataset || privData;
 
   const counts = {};
   statuses.forEach(s => counts[s] = 0);
   if (header) {
-    rows.forEach(r => {
+    privData.forEach(r => {
       const v = r[header];
       if (v) counts[v] = (counts[v] || 0) + 1;
     });
@@ -443,11 +435,6 @@ function applyPrivFilters() {
   }
 
   privFilteredCache = fData;
-
-  // Cards are derived from this same filtered array — never a separate
-  // query — so table rows and card counts can never disagree.
-  renderPrivCategoryCards(fData);
-  renderPrivRegStatusCards(fData);
 
   // Pagination
   const totalRecords = fData.length;
@@ -573,6 +560,14 @@ function _renderPrivRowEditCell(header, row, keyVal) {
     return `<td class="priv-row-locked" title="Locked — cannot be changed here">${_privEsc(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
   }
 
+  // District / Tehsil / Markaz Name are cascading selects sourced from
+  // privSchoolHierarchy (their PRIVATE_FIELD_CONFIG.options is always
+  // empty — same reason the full Add/Edit form populates them at
+  // runtime via _pfPopulateJurisdictionSelects instead of statically).
+  if (header === 'District' || header === 'Tehsil' || header === 'Markaz Name') {
+    return _renderPrivRowJurisdictionCell(header, row, keyVal);
+  }
+
   const f = PRIVATE_FIELD_CONFIG.find(fc => fc.header === header);
   if (!f) {
     // Unmapped/computed column (shouldn't normally happen) — show read-only.
@@ -591,47 +586,10 @@ function _renderPrivRowEditCell(header, row, keyVal) {
     // fields (reg no / reg exp / building cert / health cert) are
     // editable in this row — mirrors handleRegStatus() in the full form.
     const isRegStatusField = header === 'Registeration Status';
-
-    // District / Tehsil / Markaz are jurisdiction fields whose options
-    // are never static (PRIVATE_FIELD_CONFIG keeps `options: []` for
-    // them on purpose — see comment above _pfPopulateJurisdictionSelects).
-    // The full Add/Edit form derives them live from privSchoolHierarchy,
-    // so Row Editing Mode must build the same select options from the
-    // same source/relationships instead of the (always-empty) f.options.
-    const isDistrictField = header === 'District';
-    const isTehsilField   = header === 'Tehsil';
-    const isMarkazField   = header === 'Markaz Name';
-    const isJurisdictionField = isDistrictField || isTehsilField || isMarkazField;
-
-    let opts;
-    if (isJurisdictionField) {
-      const pool = privSchoolHierarchy || [];
-      const rowDistrict = row['District'] || '';
-      const rowTehsil   = row['Tehsil'] || '';
-      let list;
-      if (isDistrictField) {
-        list = [...new Set(pool.map(s => s.d).filter(Boolean))].sort();
-      } else if (isTehsilField) {
-        list = [...new Set(pool.filter(s => !rowDistrict || s.d === rowDistrict).map(s => s.t).filter(Boolean))].sort();
-      } else {
-        list = [...new Set(pool.filter(s => (!rowDistrict || s.d === rowDistrict) && (!rowTehsil || s.t === rowTehsil)).map(s => s.m).filter(Boolean))].sort();
-      }
-      // Keep the row's existing saved value selectable even if it falls
-      // outside the live hierarchy pool (e.g. a legacy/renamed entry),
-      // so opening Row Edit never silently blanks out a real value.
-      if (val && !list.includes(val)) list = [val, ...list];
-      opts = list.map(o => `<option ${o === val ? 'selected' : ''}>${_privEsc(o)}</option>`).join('');
-    } else {
-      opts = f.options.map(o =>
-        `<option ${o === val ? 'selected' : ''}>${_privEsc(o)}</option>`).join('');
-    }
-
-    let onchangeAttr = '';
-    if (isRegStatusField) onchangeAttr = `onchange="_onPrivRowRegStatusChange('${_privJsEsc(keyVal)}')"`;
-    else if (isDistrictField) onchangeAttr = `onchange="_onPrivRowDistrictChange('${_privJsEsc(keyVal)}')"`;
-    else if (isTehsilField)   onchangeAttr = `onchange="_onPrivRowTehsilChange('${_privJsEsc(keyVal)}')"`;
-
-    return `<td><select id="${cellId}" data-header="${_privEsc(header)}" style="width:100%" ${onchangeAttr}>
+    const opts = f.options.map(o =>
+      `<option ${o === val ? 'selected' : ''}>${_privEsc(o)}</option>`).join('');
+    return `<td><select id="${cellId}" data-header="${_privEsc(header)}" style="width:100%"
+              ${isRegStatusField ? `onchange="_onPrivRowRegStatusChange('${_privJsEsc(keyVal)}')"` : ''}>
               <option value="">Select</option>${opts}
             </select></td>`;
   }
@@ -648,6 +606,82 @@ function _renderPrivRowEditCell(header, row, keyVal) {
   return `<td><input type="${f.type || 'text'}" id="${cellId}" data-header="${_privEsc(header)}" value="${_privEsc(String(val))}" ${disabledAttr} style="width:100%"></td>`;
 }
 
+// District / Tehsil / Markaz Name cascading selects for a row-edit
+// cell, sourced from privSchoolHierarchy — same source and cascade
+// logic as _pfPopulateJurisdictionSelects() in the full form, just
+// scoped to this one row's element ids instead of the fixed
+// priv_district/priv_tehsil/priv_markaz ids.
+function _renderPrivRowJurisdictionCell(header, row, keyVal) {
+  const safe = _privSafeIdPart(keyVal);
+  const pool = privSchoolHierarchy || [];
+  const curDistrict = row['District'] || '';
+  const curTehsil   = row['Tehsil'] || '';
+  const curMarkaz   = row['Markaz Name'] || '';
+
+  const buildOptions = (items, current) => {
+    const list = [...items];
+    if (current && !list.includes(current)) list.push(current); // keep an out-of-scope saved value visible/selected
+    return list.map(v => `<option ${v === current ? 'selected' : ''}>${_privEsc(v)}</option>`).join('');
+  };
+
+  if (header === 'District') {
+    const dists = [...new Set(pool.map(s => s.d).filter(Boolean))].sort();
+    return `<td><select id="re_priv_district_${safe}" data-header="District" style="width:100%"
+              onchange="_onPrivRowDistrictChange('${_privJsEsc(keyVal)}')">
+              <option value="">Select</option>${buildOptions(dists, curDistrict)}
+            </select></td>`;
+  }
+
+  if (header === 'Tehsil') {
+    const tehsils = [...new Set(pool.filter(s => !curDistrict || s.d === curDistrict).map(s => s.t).filter(Boolean))].sort();
+    return `<td><select id="re_priv_tehsil_${safe}" data-header="Tehsil" style="width:100%"
+              onchange="_onPrivRowTehsilChange('${_privJsEsc(keyVal)}')">
+              <option value="">Select</option>${buildOptions(tehsils, curTehsil)}
+            </select></td>`;
+  }
+
+  // Markaz Name
+  const markazs = [...new Set(
+    pool.filter(s => (!curDistrict || s.d === curDistrict) && (!curTehsil || s.t === curTehsil)).map(s => s.m).filter(Boolean)
+  )].sort();
+  return `<td><select id="re_priv_markaz_${safe}" data-header="Markaz Name" style="width:100%">
+            <option value="">Select</option>${buildOptions(markazs, curMarkaz)}
+          </select></td>`;
+}
+
+function _onPrivRowDistrictChange(keyVal) {
+  const safe = _privSafeIdPart(keyVal);
+  const d = document.getElementById(`re_priv_district_${safe}`)?.value || '';
+  const pool = privSchoolHierarchy || [];
+  const tehsils = [...new Set(pool.filter(s => !d || s.d === d).map(s => s.t).filter(Boolean))].sort();
+
+  const tEl = document.getElementById(`re_priv_tehsil_${safe}`);
+  if (tEl) tEl.innerHTML = '<option value="">Select</option>' + tehsils.map(t => `<option>${_privEsc(t)}</option>`).join('');
+  const mEl = document.getElementById(`re_priv_markaz_${safe}`);
+  if (mEl) mEl.innerHTML = '<option value="">Select</option>';
+
+  if (tehsils.length === 1 && tEl) {
+    tEl.value = tehsils[0];
+    _onPrivRowTehsilChange(keyVal);
+  }
+}
+
+function _onPrivRowTehsilChange(keyVal) {
+  const safe = _privSafeIdPart(keyVal);
+  const d = document.getElementById(`re_priv_district_${safe}`)?.value || '';
+  const t = document.getElementById(`re_priv_tehsil_${safe}`)?.value || '';
+  const pool = privSchoolHierarchy || [];
+  const markazs = [...new Set(
+    pool.filter(s => (!d || s.d === d) && (!t || s.t === t)).map(s => s.m).filter(Boolean)
+  )].sort();
+
+  const mEl = document.getElementById(`re_priv_markaz_${safe}`);
+  if (mEl) {
+    mEl.innerHTML = '<option value="">Select</option>' + markazs.map(m => `<option>${_privEsc(m)}</option>`).join('');
+    if (markazs.length === 1) mEl.value = markazs[0];
+  }
+}
+
 // When the registration-status <select> changes inside an editing row,
 // toggle the registration-related inputs in that same row — mirrors
 // handleRegStatus() in the full Add/Edit form.
@@ -660,48 +694,6 @@ function _onPrivRowRegStatusChange(keyVal) {
     const el = document.getElementById(`re_${fid}_${safe}`);
     if (el) el.disabled = !unlock;
   });
-}
-
-// Row Editing Mode's own District → Tehsil → Markaz cascade. Mirrors
-// onPrivFormDistrictChange()/onPrivFormTehsilChange() from the full
-// Add/Edit form (same privSchoolHierarchy source, same filtering
-// relationships), just scoped to the one row's own <select> elements
-// instead of the form's fixed ids.
-function _onPrivRowDistrictChange(keyVal) {
-  const safe = _privSafeIdPart(keyVal);
-  const dEl = document.getElementById(`re_priv_district_${safe}`);
-  const tEl = document.getElementById(`re_priv_tehsil_${safe}`);
-  const mEl = document.getElementById(`re_priv_markaz_${safe}`);
-  if (!dEl) return;
-  const d = dEl.value;
-  const pool = privSchoolHierarchy || [];
-  const tehsils = [...new Set(pool.filter(s => !d || s.d === d).map(s => s.t).filter(Boolean))].sort();
-  if (tEl) {
-    tEl.innerHTML = '<option value="">Select</option>' +
-      tehsils.map(v => `<option>${_privEsc(v)}</option>`).join('');
-    tEl.value = '';
-  }
-  if (mEl) {
-    mEl.innerHTML = '<option value="">Select</option>';
-    mEl.value = '';
-  }
-}
-
-function _onPrivRowTehsilChange(keyVal) {
-  const safe = _privSafeIdPart(keyVal);
-  const dEl = document.getElementById(`re_priv_district_${safe}`);
-  const tEl = document.getElementById(`re_priv_tehsil_${safe}`);
-  const mEl = document.getElementById(`re_priv_markaz_${safe}`);
-  if (!tEl) return;
-  const d = dEl ? dEl.value : '';
-  const t = tEl.value;
-  const pool = privSchoolHierarchy || [];
-  const markazs = [...new Set(pool.filter(s => (!d || s.d === d) && (!t || s.t === t)).map(s => s.m).filter(Boolean))].sort();
-  if (mEl) {
-    mEl.innerHTML = '<option value="">Select</option>' +
-      markazs.map(v => `<option>${_privEsc(v)}</option>`).join('');
-    mEl.value = '';
-  }
 }
 
 // Sanitize a Unique ID for safe use inside an HTML element id attribute.
