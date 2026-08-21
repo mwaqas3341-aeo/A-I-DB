@@ -13,6 +13,10 @@ let pubDataLoaded     = false;
 let pubPageSize       = 50;
 let pubCurrentPage    = 1;
 
+// ── Row Editing Mode state ──────────────────────────────────────────
+let pubRowEditModeEnabled = false;
+let pubEditingRowKey      = null;   // Emis of the row currently being edited inline
+
 // Master (read-only) column count A-I
 const PUB_MASTER_COUNT = 9;
 
@@ -110,6 +114,12 @@ function openPublicModule(sheetName) {
       const el = document.getElementById(id);
       if (el) el.tagName === 'SELECT' ? (el.innerHTML = '<option value="">All</option>') : (el.value = '');
     });
+
+  // Leaving/re-entering the module always resets Row Editing Mode.
+  pubRowEditModeEnabled = false;
+  pubEditingRowKey = null;
+  const rowEditToggle = document.getElementById('pubRowEditToggle');
+  if (rowEditToggle) rowEditToggle.checked = false;
 
   // Step 1: Load filtered school hierarchy for dropdowns
   google.script.run
@@ -327,12 +337,33 @@ function applyPubFilters() {
     `<tr><th>Actions</th>${pubHeaders.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr>`;
 
   document.getElementById('pubTBody').innerHTML = pageData.map(row => {
-    const keyVal = String(row[pubHeaders[0]] || '').replace(/'/g, "\\'");
+    const keyVal = String(row[pubHeaders[0]] || '');
+    const keyValJs = _pubJsEsc(keyVal);
+    const isEditingThisRow = pubRowEditModeEnabled && pubEditingRowKey === keyVal;
+
+    if (isEditingThisRow) {
+      return `<tr class="pub-row-editing">
+        <td class="pub-row-edit-actions">
+          <button class="tbl-btn btn-save" title="Save" onclick="savePubRowEdit('${keyValJs}')">
+            <i class="bi bi-check-lg"></i>
+          </button>
+          <button class="tbl-btn btn-cancel" title="Cancel" onclick="cancelPubRowEdit()">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </td>
+        ${pubHeaders.map((h, i) => _renderPubRowEditCell(h, i, row, keyVal)).join('')}
+      </tr>`;
+    }
+
     return `<tr>
       <td>
-        <button class="tbl-btn btn-edit" onclick="editPublic('${keyVal}')">
+        <button class="tbl-btn btn-edit" title="Edit in form" onclick="editPublic('${keyValJs}')">
           <i class="bi bi-pencil-square"></i>
         </button>
+        ${pubRowEditModeEnabled ? `
+        <button class="tbl-btn btn-row-edit" title="Edit row inline" onclick="startPubRowEdit('${keyValJs}')">
+          <i class="bi bi-pencil-square"></i>
+        </button>` : ''}
       </td>
       ${pubHeaders.map(h => `<td>${escHtml(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
@@ -362,6 +393,105 @@ function pubGoPage(page) {
   if (page < 1 || page > total) return;
   pubCurrentPage = page;
   applyPubFilters();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ROW EDITING MODE — inline table editing without opening the full form
+//  Locked columns = the Master fields (A-I: Emis, School Name, District,
+//  Wing, Tehsil, Markaz Name, Level, Type, Area) — same set that's
+//  already read-only in the full Add/Edit form (buildPublicForm above).
+//  Only fields in PUB_EDITABLE_FIELDS can ever be changed here.
+// ══════════════════════════════════════════════════════════════════════
+
+function togglePubRowEditMode() {
+  pubRowEditModeEnabled = document.getElementById('pubRowEditToggle').checked;
+  pubEditingRowKey = null;
+  if (pubFilteredCache.length || pubDataLoaded) applyPubFilters();
+}
+
+function startPubRowEdit(keyVal) {
+  pubEditingRowKey = keyVal;
+  applyPubFilters();
+}
+
+function cancelPubRowEdit() {
+  pubEditingRowKey = null;
+  applyPubFilters();
+}
+
+// Build a single <td> for a row in inline-edit mode.
+// i < PUB_MASTER_COUNT → always locked/read-only (master/identity column).
+function _renderPubRowEditCell(header, i, row, keyVal) {
+  const val = row[header] != null ? row[header] : '';
+
+  if (i < PUB_MASTER_COUNT) {
+    return `<td class="pub-row-locked" title="Locked — cannot be changed here">${escHtml(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
+  }
+
+  const f = PUB_EDITABLE_FIELDS.find(fc => fc.header === header);
+  if (!f) {
+    return `<td>${escHtml(String(val))}</td>`;
+  }
+
+  const cellId = `pre_${f.id}_${_pubSafeIdPart(keyVal)}`;
+
+  if (f.readonly) {
+    // Computed fields (Total Area, Total Uncovered Area, etc.)
+    return `<td><input type="text" id="${cellId}" data-header="${escHtml(header)}" value="${escHtml(String(val))}" readonly style="width:100%;background:transparent;border:none"></td>`;
+  }
+
+  if (f.type === 'select') {
+    const opts = f.options.map(o =>
+      `<option ${o === val ? 'selected' : ''}>${escHtml(o)}</option>`).join('');
+    return `<td><select id="${cellId}" data-header="${escHtml(header)}" style="width:100%">
+              <option value="">Select</option>${opts}
+            </select></td>`;
+  }
+
+  return `<td><input type="${f.type || 'text'}" id="${cellId}" data-header="${escHtml(header)}" value="${escHtml(String(val))}" style="width:100%"></td>`;
+}
+
+function _pubSafeIdPart(v) {
+  return String(v).replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function _pubJsEsc(v) {
+  return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function savePubRowEdit(keyVal) {
+  const safe = _pubSafeIdPart(keyVal);
+  const dataObj = { 'Emis': keyVal }; // identifier only — master/locked columns are never included, so they can never be overwritten
+
+  PUB_EDITABLE_FIELDS.forEach(f => {
+    if (f.readonly) return; // computed fields aren't user-editable here either
+    const el = document.getElementById(`pre_${f.id}_${safe}`);
+    if (el) dataObj[f.header] = el.value;
+  });
+
+  const btn = event?.currentTarget;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+
+  const activeUser = (typeof currentUser !== 'undefined') ? currentUser : null;
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res && res.success) {
+        if (typeof showToast === 'function') showToast('Row saved successfully', true);
+        pubEditingRowKey = null;
+        // Reload from the database so the table reflects the
+        // authoritative saved state (same pattern the full form uses).
+        openPublicModule(currentPubSheet);
+      } else {
+        alert('Save Failed: ' + (res ? res.message : 'Unknown error'));
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i>'; }
+      }
+    })
+    .withFailureHandler(err => {
+      alert('Row save crash: ' + err.message);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i>'; }
+    })
+    .savePublicSchool(dataObj, activeUser, currentPubSheet);
 }
 
 // ══════════════════════════════════════════════════════════════════════

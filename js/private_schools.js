@@ -14,11 +14,20 @@ let nameCheckModalInstance;
 let privPageSize         = 50;
 let privCurrentPage      = 1;
 
+// ── Row Editing Mode state ──────────────────────────────────────────
+let privRowEditModeEnabled = false;   // "Enable Row Editing" toggle
+let privEditingRowKey      = null;    // Unique ID of the row currently being edited inline (only one at a time)
+
+// Columns that must never be edited via Row Editing Mode — the School
+// column and the school's primary identifier. Never remove entries
+// from this list without a very deliberate reason.
+const PRIV_ROW_EDIT_LOCKED_HEADERS = ['Unique ID', 'School Name'];
+
 // ★ NEW: Store filtered school hierarchy for dropdowns
 let privSchoolHierarchy = [];
 
 // Header keys for cascade filters
-let privFHeaders = { district: '', tehsil: '', markaz: '', status: '', name: '', regNo: '' };
+let privFHeaders = { district: '', tehsil: '', markaz: '', status: '', name: '', regNo: '', regStatus: '', category: '' };
 
 // ═══════════════════════════════════════════════════════════════════
 //  FIELD CONFIG — Columns A to AK
@@ -30,7 +39,7 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'Markaz Name', col: 'markaz_name',                                                                                  id: 'priv_markaz',      type: 'select', options: [] },
   { header: 'School Category', col: 'school_category',   hint: 'School Category',                       id: 'priv_cat',         type: 'select', options: [] },
   { header: 'School Name', col: 'school_name',                                                                                  id: 'priv_name',        wide: true },
-  { header: 'Registeration Status', col: 'registration_status', hint: 'Registeration Status (Registered/Non Registered/Expired)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired'], onchange: 'handleRegStatus()' },
+  { header: 'Registeration Status', col: 'registration_status', hint: 'Registeration Status (Registered/Non Registered/Expired/In Process/Provisional E-License Issued)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired', 'In Process', 'Provisional E-License Issued'], onchange: 'handleRegStatus()' },
   { header: 'Registeration No', col: 'registration_no',  hint: 'Registeration No in Case of registered (EMIS Code)',                id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
   { header: 'Date of Expiry of Registeration', col: 'registration_expiry_date', hint: 'Date of Expiry of Registeration',                     id: 'priv_reg_exp',     type: 'date'   },
   { header: 'Level', col: 'level',             hint: 'Level (Primary,Middle,High,Higher Secondary)',                      id: 'priv_level',       type: 'select', options: ['Primary', 'Middle', 'High', 'Higher Secondary'] },
@@ -111,7 +120,7 @@ function openPrivateModule(sheetName) {
     _privShowEmptyState('Loading data…', true);
 
     // Reset filter dropdowns
-    ['privFltDistrict','privFltTehsil','privFltMarkaz','privFltStatus','privFltSearch','privSearchInput']
+    ['privFltDistrict','privFltTehsil','privFltMarkaz','privFltStatus','privFltRegStatus','privFltSchoolCategory','privFltSearch','privSearchInput']
       .forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -155,7 +164,13 @@ function openPrivateModule(sheetName) {
               );
             }
 
-            refreshPrivateCategoryOptions(buildPrivateForm);
+            refreshPrivateCategoryOptions(() => {
+              buildPrivateForm();
+              populatePrivRegStatusFilter();
+              populatePrivSchoolCategoryFilter();
+              renderPrivCategoryCards();
+              renderPrivRegStatusCards();
+            });
 
             // Show "apply filter" prompt — do NOT render rows yet
             _privShowEmptyState('Select your filters above and click Filter Data to load records.', false);
@@ -199,12 +214,19 @@ function _privShowEmptyState(msg, isLoading) {
 function setupPrivFilterHeaders() {
   const findH = (keys) =>
     privHeaders.find(h => keys.some(k => String(h).toLowerCase().includes(k))) || '';
-  privFHeaders.district = findH(['district']);
-  privFHeaders.tehsil   = findH(['tehsil']);
-  privFHeaders.markaz   = findH(['markaz name', 'markaz']);
-  privFHeaders.status   = findH(['status']);
-  privFHeaders.name     = findH(['school name']);
-  privFHeaders.regNo    = findH(['emis code', 'reg no', 'registeration no']);
+  // Exact-match lookup, used where a substring match would risk
+  // colliding with another header (e.g. "Registeration Status" also
+  // contains the substring "status").
+  const findHExact = (h2) =>
+    privHeaders.find(h => String(h).toLowerCase() === h2.toLowerCase()) || '';
+  privFHeaders.district  = findH(['district']);
+  privFHeaders.tehsil    = findH(['tehsil']);
+  privFHeaders.markaz    = findH(['markaz name', 'markaz']);
+  privFHeaders.status    = findH(['status']);
+  privFHeaders.name      = findH(['school name']);
+  privFHeaders.regNo     = findH(['emis code', 'reg no', 'registeration no']);
+  privFHeaders.regStatus = findHExact('Registeration Status');
+  privFHeaders.category  = findHExact('School Category');
 }
 
 // ★ NEW: Populate dropdowns from schoolHierarchy
@@ -225,6 +247,115 @@ function populatePrivFiltersFromHierarchy() {
   popSelect('privFltDistrict', dists);
   popSelect('privFltTehsil', tehsils);
   popSelect('privFltMarkaz', markazs);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  REGISTRATION STATUS FILTER — always lists every valid status
+//  (including ones with 0 current records), sourced from the same
+//  PRIVATE_FIELD_CONFIG options list the form's dropdown uses, so
+//  adding/renaming a status there is the only place it needs to change.
+// ══════════════════════════════════════════════════════════════════════
+function populatePrivRegStatusFilter() {
+  const el = document.getElementById('privFltRegStatus');
+  if (!el) return;
+  const cur = el.value;
+  const statusField = PRIVATE_FIELD_CONFIG.find(f => f.header === 'Registeration Status');
+  const statuses = statusField ? statusField.options : [];
+  el.innerHTML = '<option value="">All</option>' +
+    statuses.map(s => `<option value="${_privEsc(s)}">${_privEsc(s)}</option>`).join('');
+  if (statuses.includes(cur)) el.value = cur;
+}
+
+// School Category filter — sourced dynamically from admin-managed
+// categories (same list the Add/Edit form uses via
+// refreshPrivateCategoryOptions), never hard-coded.
+function populatePrivSchoolCategoryFilter() {
+  const el = document.getElementById('privFltSchoolCategory');
+  if (!el) return;
+  const cur = el.value;
+  const catField = PRIVATE_FIELD_CONFIG.find(f => f.header === 'School Category');
+  const cats = catField ? catField.options : [];
+  el.innerHTML = '<option value="">All</option>' +
+    cats.map(c => `<option value="${_privEsc(c)}">${_privEsc(c)}</option>`).join('');
+  if (cats.includes(cur)) el.value = cur;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  CATEGORY CARDS — one card per School Category, dynamically generated,
+//  showing live counts from the currently loaded sheet (Active/Inactive).
+//  Clicking a card filters the table to that category.
+// ══════════════════════════════════════════════════════════════════════
+function renderPrivCategoryCards() {
+  const grid = document.getElementById('privCategoryCards');
+  if (!grid) return;
+  const catField = PRIVATE_FIELD_CONFIG.find(f => f.header === 'School Category');
+  const cats = catField ? catField.options : [];
+  const header = privFHeaders.category;
+
+  const counts = {};
+  cats.forEach(c => counts[c] = 0);
+  if (header) {
+    privData.forEach(r => {
+      const v = r[header];
+      if (v) counts[v] = (counts[v] || 0) + 1;
+    });
+  }
+
+  grid.innerHTML = cats.map(c => `
+    <div class="kpi-card" style="cursor:pointer" onclick="selectPrivCategoryCard('${_privJsEsc(c)}')">
+      <div class="kpi-title">${_privEsc(c)}</div>
+      <div class="kpi-value">${counts[c] || 0}</div>
+      <i class="bi bi-mortarboard-fill kpi-icon"></i>
+    </div>
+  `).join('') || '<div style="color:var(--t3);font-size:.85rem;padding:8px">No categories configured yet.</div>';
+}
+
+function selectPrivCategoryCard(cat) {
+  const el = document.getElementById('privFltSchoolCategory');
+  if (el) el.value = cat;
+  applyPrivFilters();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  REGISTRATION STATUS CARDS — one card per valid status, always shown
+//  (even with a count of 0). Clicking a card filters the table to that
+//  status.
+// ══════════════════════════════════════════════════════════════════════
+function renderPrivRegStatusCards() {
+  const grid = document.getElementById('privRegStatusCards');
+  if (!grid) return;
+  const statusField = PRIVATE_FIELD_CONFIG.find(f => f.header === 'Registeration Status');
+  const statuses = statusField ? statusField.options : [];
+  const header = privFHeaders.regStatus;
+
+  const counts = {};
+  statuses.forEach(s => counts[s] = 0);
+  if (header) {
+    privData.forEach(r => {
+      const v = r[header];
+      if (v) counts[v] = (counts[v] || 0) + 1;
+    });
+  }
+
+  grid.innerHTML = statuses.map(s => `
+    <div class="kpi-card" style="cursor:pointer" onclick="selectPrivRegStatusCard('${_privJsEsc(s)}')">
+      <div class="kpi-title">${_privEsc(s)}</div>
+      <div class="kpi-value">${counts[s] || 0}</div>
+      <i class="bi bi-patch-check-fill kpi-icon"></i>
+    </div>
+  `).join('');
+}
+
+function selectPrivRegStatusCard(status) {
+  const el = document.getElementById('privFltRegStatus');
+  if (el) el.value = status;
+  applyPrivFilters();
+}
+
+// Escape a value for safe embedding inside a single-quoted JS string
+// literal in generated onclick="" HTML attributes.
+function _privJsEsc(v) {
+  return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -275,17 +406,21 @@ function applyPrivFilters() {
     return;
   }
 
-  const d  = document.getElementById('privFltDistrict').value;
-  const t  = document.getElementById('privFltTehsil').value;
-  const m  = document.getElementById('privFltMarkaz').value;
-  const st = document.getElementById('privFltStatus').value;
-  const q  = document.getElementById('privFltSearch').value.toLowerCase().trim();
+  const d   = document.getElementById('privFltDistrict').value;
+  const t   = document.getElementById('privFltTehsil').value;
+  const m   = document.getElementById('privFltMarkaz').value;
+  const st  = document.getElementById('privFltStatus').value;
+  const rs  = document.getElementById('privFltRegStatus')?.value || '';
+  const cat = document.getElementById('privFltSchoolCategory')?.value || '';
+  const q   = document.getElementById('privFltSearch').value.toLowerCase().trim();
 
   let fData = [...privData];
-  if (d  && privFHeaders.district) fData = fData.filter(r => r[privFHeaders.district] === d);
-  if (t  && privFHeaders.tehsil)   fData = fData.filter(r => r[privFHeaders.tehsil]   === t);
-  if (m  && privFHeaders.markaz)   fData = fData.filter(r => r[privFHeaders.markaz]   === m);
-  if (st && privFHeaders.status)   fData = fData.filter(r => r[privFHeaders.status]   === st);
+  if (d   && privFHeaders.district)  fData = fData.filter(r => r[privFHeaders.district]  === d);
+  if (t   && privFHeaders.tehsil)    fData = fData.filter(r => r[privFHeaders.tehsil]    === t);
+  if (m   && privFHeaders.markaz)    fData = fData.filter(r => r[privFHeaders.markaz]    === m);
+  if (st  && privFHeaders.status)    fData = fData.filter(r => r[privFHeaders.status]    === st);
+  if (rs  && privFHeaders.regStatus) fData = fData.filter(r => r[privFHeaders.regStatus] === rs);
+  if (cat && privFHeaders.category)  fData = fData.filter(r => r[privFHeaders.category]  === cat);
   if (q) fData = fData.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
 
   // ★ NEW: Sort filtered results by School Name (A → Z) alphabetically
@@ -330,14 +465,35 @@ function renderPrivateTable(dataArr, totalRecords) {
     return;
   }
   document.getElementById('privTHead').innerHTML =
-    `<tr><th>Edit</th>${privHeaders.map(h => `<th>${_privEsc(h)}</th>`).join('')}</tr>`;
+    `<tr><th>Actions</th>${privHeaders.map(h => `<th>${_privEsc(h)}</th>`).join('')}</tr>`;
   document.getElementById('privTBody').innerHTML = dataArr.map(row => {
-    const keyVal = String(row['Unique ID'] || '').replace(/'/g, "\\'");
+    const keyVal = String(row['Unique ID'] || '');
+    const keyValJs = _privJsEsc(keyVal);
+    const isEditingThisRow = privRowEditModeEnabled && privEditingRowKey === keyVal;
+
+    if (isEditingThisRow) {
+      return `<tr class="priv-row-editing">
+        <td class="priv-row-edit-actions">
+          <button class="tbl-btn btn-save" title="Save" onclick="savePrivRowEdit('${keyValJs}')">
+            <i class="bi bi-check-lg"></i>
+          </button>
+          <button class="tbl-btn btn-cancel" title="Cancel" onclick="cancelPrivRowEdit()">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </td>
+        ${privHeaders.map(h => _renderPrivRowEditCell(h, row, keyVal)).join('')}
+      </tr>`;
+    }
+
     return `<tr>
       <td>
-        <button class="tbl-btn btn-edit" onclick="editPrivate('${keyVal}')">
+        <button class="tbl-btn btn-edit" title="Edit in form" onclick="editPrivate('${keyValJs}')">
           <i class="bi bi-pencil"></i>
         </button>
+        ${privRowEditModeEnabled ? `
+        <button class="tbl-btn btn-row-edit" title="Edit row inline" onclick="startPrivRowEdit('${keyValJs}')">
+          <i class="bi bi-pencil-square"></i>
+        </button>` : ''}
       </td>
       ${privHeaders.map(h => `<td>${_privEsc(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
@@ -361,6 +517,139 @@ function renderPrivateTable(dataArr, totalRecords) {
     div.innerHTML = paginationHtml;
     tblWrap.appendChild(div);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ROW EDITING MODE — inline table editing without opening the full form
+// ══════════════════════════════════════════════════════════════════════
+
+// Re-renders only the currently visible page, preserving filters and
+// pagination state (used by row-edit toggle/cancel so we don't disturb
+// the user's current filter/search context).
+function rerenderCurrentPrivPage() {
+  const totalRecords = privFilteredCache.length;
+  const totalPages = Math.ceil(totalRecords / privPageSize) || 1;
+  if (privCurrentPage > totalPages) privCurrentPage = totalPages;
+  const start = (privCurrentPage - 1) * privPageSize;
+  const pageData = privFilteredCache.slice(start, start + privPageSize);
+  renderPrivateTable(pageData, totalRecords);
+}
+
+function togglePrivRowEditMode() {
+  privRowEditModeEnabled = document.getElementById('privRowEditToggle').checked;
+  privEditingRowKey = null; // leaving/entering the mode always clears any in-progress edit
+  if (privFilteredCache.length || privDataLoaded) rerenderCurrentPrivPage();
+}
+
+function startPrivRowEdit(keyVal) {
+  privEditingRowKey = keyVal;
+  rerenderCurrentPrivPage();
+}
+
+function cancelPrivRowEdit() {
+  privEditingRowKey = null;
+  rerenderCurrentPrivPage();
+}
+
+// Build a single <td> for a row in inline-edit mode. Locked columns
+// (School column + primary identifier) always render as plain
+// read-only text — never an editable input — no matter what.
+function _renderPrivRowEditCell(header, row, keyVal) {
+  const val = row[header] != null ? row[header] : '';
+  if (PRIV_ROW_EDIT_LOCKED_HEADERS.includes(header)) {
+    return `<td class="priv-row-locked" title="Locked — cannot be changed here">${_privEsc(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
+  }
+
+  const f = PRIVATE_FIELD_CONFIG.find(fc => fc.header === header);
+  if (!f) {
+    // Unmapped/computed column (shouldn't normally happen) — show read-only.
+    return `<td>${_privEsc(String(val))}</td>`;
+  }
+
+  const cellId = `re_${f.id}_${_privSafeIdPart(keyVal)}`;
+
+  // Computed / always-readonly fields (e.g. Security Category, Unique ID)
+  if (f.readonly) {
+    return `<td><input type="text" id="${cellId}" data-header="${_privEsc(header)}" value="${_privEsc(String(val))}" readonly style="width:100%;background:transparent;border:none"></td>`;
+  }
+
+  if (f.type === 'select') {
+    // Registration status field drives whether registration-related
+    // fields (reg no / reg exp / building cert / health cert) are
+    // editable in this row — mirrors handleRegStatus() in the full form.
+    const isRegStatusField = header === 'Registeration Status';
+    const opts = f.options.map(o =>
+      `<option ${o === val ? 'selected' : ''}>${_privEsc(o)}</option>`).join('');
+    return `<td><select id="${cellId}" data-header="${_privEsc(header)}" style="width:100%"
+              ${isRegStatusField ? `onchange="_onPrivRowRegStatusChange('${_privJsEsc(keyVal)}')"` : ''}>
+              <option value="">Select</option>${opts}
+            </select></td>`;
+  }
+
+  // Registration-dependent fields start disabled/enabled based on the
+  // row's current (unsaved) registration status, same rule as the form.
+  const regDependent = ['Registeration No', 'Date of Expiry of Registeration', 'Building Certificate Expirey', 'Health and hygiene Certificate Expirey'];
+  let disabledAttr = '';
+  if (regDependent.includes(header)) {
+    const st = row['Registeration Status'];
+    if (!REG_FIELDS_UNLOCKED_STATUSES.includes(st)) disabledAttr = 'disabled';
+  }
+
+  return `<td><input type="${f.type || 'text'}" id="${cellId}" data-header="${_privEsc(header)}" value="${_privEsc(String(val))}" ${disabledAttr} style="width:100%"></td>`;
+}
+
+// When the registration-status <select> changes inside an editing row,
+// toggle the registration-related inputs in that same row — mirrors
+// handleRegStatus() in the full Add/Edit form.
+function _onPrivRowRegStatusChange(keyVal) {
+  const safe = _privSafeIdPart(keyVal);
+  const stEl = document.getElementById(`re_priv_reg_status_${safe}`);
+  if (!stEl) return;
+  const unlock = REG_FIELDS_UNLOCKED_STATUSES.includes(stEl.value);
+  ['priv_reg_no', 'priv_reg_exp', 'priv_bldg_exp', 'priv_health_exp'].forEach(fid => {
+    const el = document.getElementById(`re_${fid}_${safe}`);
+    if (el) el.disabled = !unlock;
+  });
+}
+
+// Sanitize a Unique ID for safe use inside an HTML element id attribute.
+function _privSafeIdPart(v) {
+  return String(v).replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function savePrivRowEdit(keyVal) {
+  const safe = _privSafeIdPart(keyVal);
+  const dataObj = { 'Unique ID': keyVal };
+
+  PRIVATE_FIELD_CONFIG.forEach(f => {
+    if (PRIV_ROW_EDIT_LOCKED_HEADERS.includes(f.header)) return; // never touch locked columns
+    const el = document.getElementById(`re_${f.id}_${safe}`);
+    if (el) dataObj[f.header] = el.value;
+  });
+
+  const btn = event?.currentTarget;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+
+  const activeUser = (typeof currentUser !== 'undefined') ? currentUser : null;
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res && res.success) {
+        if (typeof showToast === 'function') showToast('Row saved successfully', true);
+        privEditingRowKey = null;
+        // Reload from the database so every card/filter/table reflects
+        // the authoritative saved state (same pattern the full form uses).
+        openPrivateModule(currentPrivSheet);
+      } else {
+        alert('Save Failed: ' + (res ? res.message : 'Unknown error'));
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i>'; }
+      }
+    })
+    .withFailureHandler(err => {
+      alert('Row save crash: ' + err.message);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i>'; }
+    })
+    .savePrivateSchool(dataObj, activeUser, currentPrivSheet);
 }
 
 function privGoPage(page) {
@@ -745,9 +1034,16 @@ function exportPrivateDirect(sheetName) {
 // ══════════════════════════════════════════════════════════════════════
 //  FIELD HELPERS & CALCULATIONS
 // ══════════════════════════════════════════════════════════════════════
+// Statuses for which registration-related questions/fields must be
+// unlocked for entry/update. 'Registered' and 'Expired' already had
+// registration numbers/dates on file; 'In Process' and 'Provisional
+// E-License Issued' are schools actively going through registration,
+// so they also need these fields open for data entry.
+const REG_FIELDS_UNLOCKED_STATUSES = ['Registered', 'Expired', 'In Process', 'Provisional E-License Issued'];
+
 function handleRegStatus(preserveValue) {
   const st = document.getElementById('priv_reg_status').value;
-  const isRegistered = (st === 'Registered' || st === 'Expired');
+  const unlockRegFields = REG_FIELDS_UNLOCKED_STATUSES.includes(st);
 
   const fieldsToToggle = [
     { input: 'priv_reg_no',      wrap: 'wrap_priv_reg_no' },
@@ -760,7 +1056,7 @@ function handleRegStatus(preserveValue) {
     const el     = document.getElementById(input);
     const wrapEl = document.getElementById(wrap);
     if (!el) return;
-    if (isRegistered) {
+    if (unlockRegFields) {
       el.readOnly = false;
       if (wrapEl) wrapEl.classList.remove('ff-locked');
     } else {

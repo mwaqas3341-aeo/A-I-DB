@@ -85,6 +85,11 @@ const DN_DICTIONARY = {
     nonregistered: 'Non Registered', unregistered: 'Non Registered',
     notregistered: 'Non Registered',
     expired: 'Expired',
+    inprocess: 'In Process', processing: 'In Process', pending: 'In Process',
+    provisionalelicenseissued: 'Provisional E-License Issued',
+    provisionalelicense: 'Provisional E-License Issued',
+    provisionallicenseissued: 'Provisional E-License Issued',
+    elicenseissued: 'Provisional E-License Issued',
   },
 };
 
