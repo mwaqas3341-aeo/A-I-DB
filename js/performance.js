@@ -652,11 +652,28 @@ function perfUpdateAchieved(month, idx, value) {
   perfRenderConfigPanels();
 }
 
+// Flat per-indicator deduction (rupees) applied for each "Not Achieved"
+// indicator when School Status = Closed. The rate itself (25,000 by
+// default) stays the ceiling; achieved indicators simply keep whatever
+// isn't deducted — they are not apportioned a fixed per-row share.
+const PERFCLOSED_DEDUCTION = 1000;
+
 function perfComputeMonthTotal(month) {
   const cfg = perfState.config[month];
   if (!cfg || !cfg.status) return 0;
-  const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
   const rate = Number(iaState?.rate) || 25000;
+
+  if (cfg.status === "closed") {
+    const notAchievedCount = PERFCLOSEDROWS.reduce((cnt, row, idx) => {
+      const credited = perfIsCredited(row, cfg.achieved[idx]);
+      return cnt + (credited ? 0 : 1);
+    }, 0);
+    const total = rate - notAchievedCount * PERFCLOSED_DEDUCTION;
+    // Never below 0, never above the configured rate.
+    return Math.max(0, Math.min(Math.round(total), Math.round(rate)));
+  }
+
+  const rows = PERFOPENROWS;
   const amounts = perfDistributeAmounts(rows, rate);
   const total = rows.reduce((sum, row, idx) => {
     const credited = perfIsCredited(row, cfg.achieved[idx]);
