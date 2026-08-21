@@ -1989,13 +1989,30 @@ async function apiCall(action, payload) {
       const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
       const scoped = filterFn ? (raw || []).filter(filterFn) : (raw || []);
 
-      function buildCategory(catRows) {
+      function buildCategory(catRows, isTeaching) {
+        // Grade 14 (PST/ESE) doesn't carry real subject specialization —
+        // the subject_code/subject_label values there (e.g. "ESE (Arts)",
+        // "ESE (Science)", plain "PST") are inconsistent data-entry
+        // artifacts, not a genuine subject-specific staffing distinction
+        // the way grade 15 (EST/SESE) and grade 16 (SST/SSE) genuinely
+        // are. So grade-14 rows are merged into a single "PST/ESE" column
+        // (summed), while every other grade keeps its normal per-subject
+        // column breakdown, exactly as before.
+        const G14_MERGED_KEY = '__G14_PST_ESE__';
+
+        function columnKeyFor(r) {
+          return (isTeaching && r.grade === 14) ? G14_MERGED_KEY : r.subject_code;
+        }
+
         // Discover the subject columns actually present, ordered by
         // grade (senior/higher BPS first) then subject label.
-        const subjectMap = {}; // code -> {code, label, grade}
+        const subjectMap = {}; // key -> {code, label, grade}
         catRows.forEach(r => {
-          if (!subjectMap[r.subject_code]) {
-            subjectMap[r.subject_code] = { code: r.subject_code, label: r.subject_label || r.subject_code, grade: r.grade || 0 };
+          const key = columnKeyFor(r);
+          if (!subjectMap[key]) {
+            subjectMap[key] = key === G14_MERGED_KEY
+              ? { code: G14_MERGED_KEY, label: 'PST/ESE', grade: 14 }
+              : { code: r.subject_code, label: r.subject_label || r.subject_code, grade: r.grade || 0 };
           }
         });
         const subjectColumns = Object.values(subjectMap).sort((a, b) =>
@@ -2008,7 +2025,7 @@ async function apiCall(action, payload) {
             bySchool[key] = {
               emis: r.emis, school_name: r.school_name, markaz_name: r.markaz_name,
               district: r.district, wing: r.wing, tehsil: r.tehsil,
-              subjects: {}, // code -> {sanctioned, abolished, effective, filled, vacant}
+              subjects: {}, // key -> {sanctioned, abolished, effective, filled, vacant}
               grade16: { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 },
               grade15: { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 },
               grade14: { sanctioned: 0, abolished: 0, effective: 0, filled: 0, vacant: 0 },
@@ -2019,7 +2036,13 @@ async function apiCall(action, payload) {
           const ef = Number(r.effective_sanctioned_count ?? (s - ab)) || 0;
           const f  = Number(r.filled_count) || 0;
           const v  = Number(r.vacant_count ?? (ef - f)) || 0;
-          bySchool[key].subjects[r.subject_code] = { sanctioned: s, abolished: ab, effective: ef, filled: f, vacant: v };
+          const colKey = columnKeyFor(r);
+          const existing = bySchool[key].subjects[colKey];
+          if (existing) {
+            existing.sanctioned += s; existing.abolished += ab; existing.effective += ef; existing.filled += f; existing.vacant += v;
+          } else {
+            bySchool[key].subjects[colKey] = { sanctioned: s, abolished: ab, effective: ef, filled: f, vacant: v };
+          }
           const gKey = r.grade === 16 ? 'grade16' : r.grade === 15 ? 'grade15' : r.grade === 14 ? 'grade14' : null;
           if (gKey) {
             bySchool[key][gKey].sanctioned += s;
@@ -2042,8 +2065,8 @@ async function apiCall(action, payload) {
         return { subjectColumns, rows };
       }
 
-      const teaching    = buildCategory(scoped.filter(r => r.category === 'teaching'));
-      const nonTeaching = buildCategory(scoped.filter(r => r.category === 'non_teaching'));
+      const teaching    = buildCategory(scoped.filter(r => r.category === 'teaching'), true);
+      const nonTeaching = buildCategory(scoped.filter(r => r.category === 'non_teaching'), false);
 
       // School Level (Primary/Middle/High/...), not stored on
       // sne_subject_sanctioned itself.
