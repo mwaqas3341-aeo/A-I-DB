@@ -225,6 +225,49 @@
     .kpi-govt{border-left-color:var(--ok)}.kpi-govt .kpi-icon{color:var(--ok)}
     .kpi-private{border-left-color:var(--brand)}.kpi-private .kpi-icon{color:var(--brand)}
 
+    /* ═══════════════════════════════════════════════
+       PRIVATE SCHOOLS — compact summary cards
+       Scoped to #privCategoryCards/#privRegStatusCards only,
+       so the generic .kpi-card used elsewhere (main dashboard,
+       other modules) is left untouched.
+    ═══════════════════════════════════════════════ */
+    #privCategoryCards.kpi-grid,
+    #privRegStatusCards.kpi-grid{
+      grid-template-columns:repeat(auto-fill,minmax(130px,1fr));
+      gap:10px;
+      margin-bottom:14px;
+    }
+    #privCategoryCards .kpi-card,
+    #privRegStatusCards .kpi-card{
+      padding:10px 12px;
+      border-left-width:3px;
+      border-radius:var(--r2, 10px);
+    }
+    #privCategoryCards .kpi-card .kpi-title,
+    #privRegStatusCards .kpi-card .kpi-title{
+      font-size:.66rem;
+      letter-spacing:.03em;
+      line-height:1.2;
+    }
+    #privCategoryCards .kpi-card .kpi-value,
+    #privRegStatusCards .kpi-card .kpi-value{
+      font-size:1.35rem;
+      margin-top:4px;
+    }
+    #privCategoryCards .kpi-card .kpi-icon,
+    #privRegStatusCards .kpi-card .kpi-icon{
+      font-size:1.3rem;
+      top:8px;
+      right:10px;
+      opacity:.15;
+    }
+    @media(max-width:600px){
+      #privCategoryCards.kpi-grid,
+      #privRegStatusCards.kpi-grid{
+        grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+      }
+    }
+
     .module-card{background:var(--s0);border-radius:var(--r3);padding:22px;box-shadow:var(--sh1);border:1px solid var(--b0);transition:all .2s;cursor:pointer;display:flex;flex-direction:column;gap:8px;border-top:4px solid var(--accent);text-decoration:none;color:inherit;}
     a.module-card:visited, a.module-card:hover, a.module-card:active { color:inherit; text-decoration:none; }
     .module-card:hover{transform:translateY(-2px);box-shadow:var(--sh2);border-top-color:var(--brand)}
