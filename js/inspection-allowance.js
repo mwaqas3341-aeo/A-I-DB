@@ -178,12 +178,20 @@ function iaOnCollectiveCountChange() {
   const count = Math.min(Number(document.getElementById('ia_collectiveCount').value) || 1, maxAvailable);
 
   const prev = iaState.collectiveSelected;
-  const usedIds = new Set();
+  // Dedupe by year-month, not backend id: separate Budget Preparation
+  // batches can produce prepared-month rows with colliding ids for the
+  // same tehsil/wing, which previously made this loop stop early and
+  // silently render fewer rows than requested (e.g. picking 3 or 4
+  // months would only fill 2). Year+month is the actual uniqueness key —
+  // it's what iaDownloadCollectiveBill() already uses to guard against
+  // duplicate picks (see the `keys` check below).
+  const keyOf = m => `${m.year}-${m.month}`;
+  const usedKeys = new Set();
   const next = [];
   for (let i = 0; i < count; i++) {
-    let entry = prev[i] && iaState.pendingCollective.find(m => m.id === prev[i].id);
-    if (!entry || usedIds.has(entry.id)) entry = iaState.pendingCollective.find(m => !usedIds.has(m.id));
-    if (entry) { usedIds.add(entry.id); next.push({ ...entry }); }
+    let entry = prev[i] && iaState.pendingCollective.find(m => keyOf(m) === keyOf(prev[i]));
+    if (!entry || usedKeys.has(keyOf(entry))) entry = iaState.pendingCollective.find(m => !usedKeys.has(keyOf(m)));
+    if (entry) { usedKeys.add(keyOf(entry)); next.push({ ...entry }); }
   }
   iaState.collectiveSelected = next;
   iaRenderCollectiveRows();
