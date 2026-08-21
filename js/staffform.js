@@ -31,6 +31,8 @@ var SF_ID_TO_COL = {
   sf_dob:                  'date_of_birth',
   sf_gender:               'gender',
   sf_designation:          'designation',
+  sf_designationGroup:     'designation_group',
+  sf_adjustedAgainst:      'posted_against_seat_id',
   sf_workingAsHead:        'working_as_head',
   sf_bps:                  'bps',
   sf_pps:                  'pps',
@@ -199,6 +201,85 @@ function sfmOnEmisInput() {
 
   infoEl.classList.remove('hidden');
   infoEl.textContent = '✓ ' + (found.d || '') + ' › ' + (found.w || '') + ' › ' + (found.t || '') + ' › ' + (found.s || found.m || '');
+
+  sfmRefreshAdjustedAgainstOptions();
+}
+
+// ---------- Designation Group → Adjusted Against (seat) live-lookup ----------
+// "Adjusted Against" replaces the old auto-pooling-by-designation-string
+// logic: the user explicitly picks which sanctioned seat (from the same
+// live sne_subject_sanctioned data Seat Management shows) this posting
+// counts against, instead of the system guessing via fuzzy designation
+// matching. filled_count/vacant_count on that seat update immediately
+// from this single explicit link — no ambiguity possible.
+var sfmSeatsCache = []; // last fetched list, kept so sfv_adjustedAgainst (view mode) can show a label, not just the id
+
+function sfmOnDesignationGroupChange() {
+  sfmRefreshAdjustedAgainstOptions();
+}
+
+function sfmRefreshAdjustedAgainstOptions() {
+  var emis = (document.getElementById('sf_emis').value || '').trim();
+  var group = (document.getElementById('sf_designationGroup').value || '').trim();
+  var sel = document.getElementById('sf_adjustedAgainst');
+  if (!sel) return;
+
+  var previousValue = sel.value;
+  sfmSeatsCache = [];
+
+  if (!/^\d{8}$/.test(emis) || !group) {
+    sel.innerHTML = '<option value="">Select a school and Designation Group first…</option>';
+    sel.disabled = true;
+    return;
+  }
+
+  sel.disabled = true;
+  sel.innerHTML = '<option value="">⏳ Loading seats…</option>';
+
+  google.script.run
+    .withSuccessHandler(function(resp) {
+      sel.disabled = false;
+      if (!resp || !resp.success) {
+        sel.innerHTML = '<option value="">⚠ Could not load seats' + (resp && resp.message ? ': ' + resp.message : '') + '</option>';
+        return;
+      }
+      sfmSeatsCache = resp.seats || [];
+      if (sfmSeatsCache.length === 0) {
+        sel.innerHTML = '<option value="">No sanctioned seats found for this school + group</option>';
+        return;
+      }
+      var html = '<option value="">Select a seat…</option>';
+      sfmSeatsCache.forEach(function(s) {
+        var label = (s.subject_label || s.designation) + ' — Grade ' + s.grade +
+          (s.is_head_post ? ' (Head)' : '') +
+          ' — Sanctioned: ' + s.sanctioned_count + ', Filled: ' + s.filled_count + ', Vacant: ' + s.vacant_count;
+        if (s.vacant_count <= 0) label += '  ⚠ FULL';
+        html += '<option value="' + s.id + '"' + (String(s.id) === previousValue ? ' selected' : '') + '>' + escHtml(label) + '</option>';
+      });
+      sel.innerHTML = html;
+    })
+    .withFailureHandler(function() {
+      sel.disabled = false;
+      sel.innerHTML = '<option value="">⚠ Could not load seats — try again</option>';
+    })
+    .getSeatsForPosting({ emis: emis, designationGroup: group });
+}
+
+// Called just before submit, if the user picked an already-full seat —
+// warns but does not block, per design (overfill is allowed with a
+// warning, matching how it already works elsewhere in this app).
+function sfmCheckAdjustedAgainstOverfill() {
+  var sel = document.getElementById('sf_adjustedAgainst');
+  if (!sel || !sel.value) return true;
+  var seat = sfmSeatsCache.find(function(s) { return String(s.id) === sel.value; });
+  if (seat && seat.vacant_count <= 0) {
+    return confirm(
+      'This seat is already fully filled (Sanctioned: ' + seat.sanctioned_count + ', Filled: ' + seat.filled_count + ').\n\n' +
+      'You can still adjust this employee against it, but it will show as overfilled in Seat Management and SNE.\n\n' +
+      'Continue anyway?'
+    );
+  }
+  return true;
 }
 
 // ---------- Personal No. live-check ----------
@@ -914,6 +995,8 @@ function sfmSubmit() {
     if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
+
+  if (!sfmCheckAdjustedAgainstOverfill()) return;
 
   var data = sfmCollectData();
   sfmDoSave(data);

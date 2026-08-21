@@ -64,6 +64,7 @@ const hrGateway = {
   checkGradeVacancy: (p_emis, p_grade) => _hrGatewayCall({ rpc: 'check_grade_vacancy', payload: { p_emis, p_grade } }),
   staffPrivilegedUpdate: (p_personal_no, p_updates) => _hrGatewayCall({ rpc: 'staff_privileged_update', payload: { p_personal_no, p_updates } }),
   applySchoolStatusChange: (p_emis, p_school_name, p_reason) => _hrGatewayCall({ rpc: 'apply_school_status_change', payload: { p_emis, p_school_name, p_reason } }),
+  seatsForPosting: (p_emis, p_designation_group) => _hrGatewayCall({ rpc: 'seats_for_posting', payload: { p_emis, p_designation_group } }),
   staffByEmisBpsPrivileged: (p_emis, p_bps, p_exclude_personal_no) => _hrGatewayCall({ rpc: 'staff_by_emis_bps_privileged', payload: { p_emis, p_bps, p_exclude_personal_no } }),
   staffByPersonalNoPrivileged: (p_personal_nos) => _hrGatewayCall({ rpc: 'staff_by_personal_no_privileged', payload: { p_personal_nos } }),
   staffMutualTransferPrivileged: (p_personal_no_a, p_personal_no_b, p_updates_a, p_updates_b) =>
@@ -3945,6 +3946,16 @@ function _hierarchyScopeDbFields(p) {
     // (Private School form) are both just an admin-managed name list —
     // same shape, same CRUD, just two different tables — so one small
     // set of generic helpers backs both instead of duplicating logic.
+    case 'getSeatsForPosting': {
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const emis = (p.emis || '').trim();
+      const group = (p.designationGroup || '').trim();
+      if (!emis || !group) return { success: false, message: 'EMIS and Designation Group are both required.' };
+      const { data, error } = await hrGateway.seatsForPosting(emis, group);
+      if (error) return { success: false, message: error.message };
+      return { success: true, seats: data || [] };
+    }
+
     case 'getStaffDesignations':
     case 'getPrivateCategories': {
       const table = action === 'getStaffDesignations' ? 'staff_designations' : 'private_school_categories';
