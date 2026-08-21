@@ -368,6 +368,13 @@
     tbody tr:hover td:first-child{background:var(--brand-light)}
     .tbl-btn{width:30px;height:30px;border-radius:6px;border:1px solid;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;transition:all .15s}
     .btn-edit{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}.btn-edit:hover{background:var(--brand);color:white}
+    /* Row Editing Mode — small icon-sized action buttons (override the large .btn-save used elsewhere for full buttons) */
+    .tbl-btn.btn-row-edit{border-color:#6b7280;color:#6b7280;background:#f3f4f6;margin-left:4px}.tbl-btn.btn-row-edit:hover{background:#6b7280;color:white}
+    .tbl-btn.btn-save{width:30px;height:30px;padding:0;background:#16a34a;color:white;border-color:#16a34a;border-radius:6px;font-size:.78rem}.tbl-btn.btn-save:hover{background:#15803d}
+    .tbl-btn.btn-cancel{width:30px;height:30px;padding:0;background:transparent;color:#dc2626;border-color:#dc2626;margin-left:4px}.tbl-btn.btn-cancel:hover{background:#dc2626;color:white}
+    .priv-row-editing td,.pub-row-editing td{background:var(--brand-light,#eef2ff)}
+    .priv-row-locked,.pub-row-locked{opacity:.75;font-style:italic}
+    .priv-row-edit-actions,.pub-row-edit-actions{white-space:nowrap}
     .skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--b0) 25%,var(--s2) 50%,var(--b0) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}
     @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
