@@ -23,6 +23,20 @@ let privEditingRowKey      = null;    // Unique ID of the row currently being ed
 // from this list without a very deliberate reason.
 const PRIV_ROW_EDIT_LOCKED_HEADERS = ['Unique ID', 'School Name'];
 
+// System-managed Drive reference columns — set only by the cert-upload
+// widget (school-cert-upload Edge Function), never by hand. Editing one
+// of these directly would desync it from the actual Drive file: the
+// next photo upload deletes whatever file the CURRENT drive-id points
+// to before creating the replacement, so a hand-edited id/url here can
+// point uploads at deleting/orphaning the wrong file. Always locked in
+// Row Editing Mode, regardless of the generic `hidden` flag (which is
+// also used for ordinary conditionally-shown fields that ARE editable).
+const PRIV_SYSTEM_REF_HEADERS = [
+  'E-License Picture Drive ID', 'E-License Picture URL',
+  'Building Fitness Certificate Picture Drive ID', 'Building Fitness Certificate Picture URL',
+  'Health & Hygiene Certificate Picture Drive ID', 'Health & Hygiene Certificate Picture URL',
+];
+
 // ★ NEW: Store filtered school hierarchy for dropdowns
 let privSchoolHierarchy = [];
 
@@ -586,6 +600,10 @@ function _renderPrivRowEditCell(header, row, keyVal) {
     return `<td class="priv-row-locked" title="Locked — cannot be changed here">${_privEsc(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
   }
 
+  if (PRIV_SYSTEM_REF_HEADERS.includes(header)) {
+    return `<td class="priv-row-locked" title="Set automatically when a certificate photo is uploaded — cannot be edited here">${_privEsc(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
+  }
+
   const f = PRIVATE_FIELD_CONFIG.find(fc => fc.header === header);
   if (!f) {
     // Unmapped/computed column (shouldn't normally happen) — show read-only.
@@ -728,6 +746,7 @@ function savePrivRowEdit(keyVal) {
 
   PRIVATE_FIELD_CONFIG.forEach(f => {
     if (PRIV_ROW_EDIT_LOCKED_HEADERS.includes(f.header)) return; // never touch locked columns
+    if (PRIV_SYSTEM_REF_HEADERS.includes(f.header)) return; // never touch Drive reference columns — cert-upload widget owns these
     const el = document.getElementById(`re_${f.id}_${safe}`);
     if (el) dataObj[f.header] = el.value;
   });

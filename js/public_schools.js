@@ -20,6 +20,17 @@ let pubEditingRowKey      = null;   // Emis of the row currently being edited in
 // Master (read-only) column count A-I
 const PUB_MASTER_COUNT = 9;
 
+// System-managed Drive reference columns — set only by the cert-upload
+// widget (school-cert-upload Edge Function), never by hand. Editing one
+// directly would desync it from the actual Drive file: the next photo
+// upload deletes whatever file the CURRENT drive-id points to before
+// creating the replacement, so a hand-edited id/url here can point
+// uploads at deleting/orphaning the wrong file. Always locked in Row
+// Editing Mode, regardless of the generic `hidden` flag (also used for
+// ordinary conditionally-shown fields that ARE editable, e.g. FTF bank
+// details, Caregiver details).
+const PUB_SYSTEM_REF_HEADERS = ['Fard Malikiat Picture Drive ID', 'Fard Malikiat Picture URL'];
+
 // Editable field definitions J → AO
 const PUB_EDITABLE_FIELDS = [
   { header: 'Physical Address of School', col: 'physical_address',            id: 'pub_PA' },
@@ -431,6 +442,10 @@ function _renderPubRowEditCell(header, i, row, keyVal) {
     return `<td class="pub-row-locked" title="Locked — cannot be changed here">${escHtml(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
   }
 
+  if (PUB_SYSTEM_REF_HEADERS.includes(header)) {
+    return `<td class="pub-row-locked" title="Set automatically when a certificate photo is uploaded — cannot be edited here">${escHtml(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
+  }
+
   const f = PUB_EDITABLE_FIELDS.find(fc => fc.header === header);
   if (!f) {
     return `<td>${escHtml(String(val))}</td>`;
@@ -468,6 +483,7 @@ function savePubRowEdit(keyVal) {
 
   PUB_EDITABLE_FIELDS.forEach(f => {
     if (f.readonly) return; // computed fields aren't user-editable here either
+    if (PUB_SYSTEM_REF_HEADERS.includes(f.header)) return; // never touch Drive reference columns — cert-upload widget owns these
     const el = document.getElementById(`pre_${f.id}_${safe}`);
     if (el) dataObj[f.header] = el.value;
   });
