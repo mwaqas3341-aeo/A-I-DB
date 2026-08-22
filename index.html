@@ -3305,6 +3305,37 @@
             </div>
           </div>
 
+          <div class="sfm-field" data-field="DESIGNATION GROUP">
+            <label class="sfm-label">Designation Group</label>
+            <div class="sfm-input-wrap">
+              <select id="sf_designationGroup" class="sfm-select" onchange="sfmOnDesignationGroupChange()">
+                <option value="">Select…</option>
+                <option value="PST/ESE">PST/ESE</option>
+                <option value="EST/SESE">EST/SESE</option>
+                <option value="SST/SSE">SST/SSE</option>
+                <option value="Clerk">Clerk</option>
+                <option value="Non-Teaching">Non-Teaching</option>
+              </select>
+              <span class="sfm-val-view" id="sfv_designationGroup"></span>
+            </div>
+            <div class="sfm-err" id="sfe_designationGroup"></div>
+          </div>
+
+          <div class="sfm-field" data-field="ADJUSTED AGAINST">
+            <label class="sfm-label">Adjusted Against</label>
+            <div class="sfm-input-wrap">
+              <select id="sf_adjustedAgainst" class="sfm-select">
+                <option value="">Select a school and Designation Group first…</option>
+                <!-- Populated live from the school's sanctioned seats
+                     (sne_subject_sanctioned) for the chosen Designation
+                     Group — same seats shown in Seat Management, so
+                     filled/vacant counts stay exactly in sync. -->
+              </select>
+              <span class="sfm-val-view" id="sfv_adjustedAgainst"></span>
+            </div>
+            <div class="sfm-err" id="sfe_adjustedAgainst"></div>
+          </div>
+
           <div class="sfm-field" data-field="BPS">
             <label class="sfm-label">BPS</label>
             <div class="sfm-input-wrap">
