@@ -59,6 +59,9 @@ const PUB_EDITABLE_FIELDS = [
   { header: 'FTF Bank Name', col: 'ftf_bank_name',                  hint: 'FTF Bank Name — only applies if FTF Account is Yes',                              id: 'pub_FTFBank',     hidden: true },
   { header: 'FTF Bank Branch', col: 'ftf_bank_branch',                hint: 'FTF Bank Branch — only applies if FTF Account is Yes',                            id: 'pub_FTFBranch',   hidden: true },
   { header: 'FTF IBAN No. / Account No.', col: 'ftf_iban_account_no',    hint: 'FTF IBAN No. / Account No. — only applies if FTF Account is Yes',                  id: 'pub_FTFIban',     hidden: true },
+  { header: 'Please upload Fard Malikiat Picture of School if you have', id: 'pub_fard_malikiat_pic', photo: true, wide: true },
+  { header: 'Fard Malikiat Picture Drive ID', col: 'fard_malikiat_pic_drive_id', id: 'pub_fard_malikiat_drive_id', hidden: true },
+  { header: 'Fard Malikiat Picture URL', col: 'fard_malikiat_pic_url', id: 'pub_fard_malikiat_url', hidden: true },
   { header: 'Status', col: 'status',              hint: 'Status (Active/Out Sourced)',                                                                    id: 'pub_Status',      type: 'select',  options: ['Active', 'Out Sourced'] }
 ];
 
@@ -515,6 +518,10 @@ function buildPublicForm() {
   const eGrid = document.getElementById('pubEditableGrid');
   eGrid.innerHTML = '';
   PUB_EDITABLE_FIELDS.forEach(f => {
+    if (f.photo) {
+      eGrid.innerHTML += renderCertField(f);
+      return;
+    }
     const input = f.type === 'select'
       ? `<select id="${f.id}" data-header="${f.header}" ${f.onchange ? `onchange="${f.onchange}"` : ''}>
            <option value="">Select</option>
@@ -535,6 +542,7 @@ function buildPublicForm() {
          <div class="field-error">Invalid value</div>
        </div>`;
   });
+  certWidgetSyncAll();
 }
 
 function editPublic(keyVal) {
@@ -554,6 +562,7 @@ function editPublic(keyVal) {
   handlePubECCE();
   handlePubFTF();
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
+  certWidgetSyncAll();
   pubModal.show();
 }
 
@@ -568,6 +577,7 @@ function openPublicModal() {
     if (el) el.value = '';
   });
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
+  certWidgetSyncAll();
   pubModal.show();
 }
 

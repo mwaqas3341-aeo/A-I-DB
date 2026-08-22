@@ -3087,6 +3087,11 @@ async function apiCall(action, payload) {
           ({ error } = await _sb.from('private_schools').insert([dbRow]));
         }
         if (error) return { success: false, message: error.message };
+        // Returned so the Add form can immediately enable certificate
+        // picture uploads (school-cert-upload needs a real unique_id to
+        // attach against) without requiring the user to close and
+        // re-open the record in Edit mode first.
+        return { success: true, message: 'School saved.', unique_id: dbRow.unique_id };
       }
       return { success: true, message: 'School saved.' };
     }

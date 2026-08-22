@@ -108,6 +108,10 @@ function _siJurLabel(j) {
 function _siTemplateHeaders(kind) {
   const cfg = SCHOOL_IMPORT_CONFIG[kind];
   let headers = Object.values(cfg.colMap());
+  // Certificate-picture Drive id/url columns are written only by the
+  // upload widget (js/cert-upload.js) — never meant to be hand-typed or
+  // bulk-imported, so they never appear in the template/mapping UI.
+  headers = headers.filter(h => !SCHOOL_CERT_HIDDEN_HEADERS.includes(h));
   if (kind === 'private') {
     headers = headers.filter(h => h !== 'Unique ID');
     if (_siJurMode.mode === 'single') {

@@ -41,6 +41,9 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'School Name', col: 'school_name',                                                                                  id: 'priv_name',        wide: true },
   { header: 'Registeration Status', col: 'registration_status', hint: 'Registeration Status (Registered/Non Registered/Expired/In Process/Provisional E-License Issued)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired', 'In Process', 'Provisional E-License Issued'], onchange: 'handleRegStatus()' },
   { header: 'Registeration No', col: 'registration_no',  hint: 'Registeration No in Case of registered (EMIS Code)',                id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
+  { header: 'Upload E-License Picture', id: 'priv_e_license_pic', photo: true },
+  { header: 'E-License Picture Drive ID', col: 'e_license_pic_drive_id', id: 'priv_e_license_drive_id', hidden: true },
+  { header: 'E-License Picture URL', col: 'e_license_pic_url', id: 'priv_e_license_url', hidden: true },
   { header: 'Date of Expiry of Registeration', col: 'registration_expiry_date', hint: 'Date of Expiry of Registeration',                     id: 'priv_reg_exp',     type: 'date'   },
   { header: 'Level', col: 'level',             hint: 'Level (Primary,Middle,High,Higher Secondary)',                      id: 'priv_level',       type: 'select', options: ['Primary', 'Middle', 'High', 'Higher Secondary'] },
   { header: 'School Gender', col: 'school_gender',                                                                               id: 'priv_gender',      type: 'select', options: ['Male', 'Female', 'Both'] },
@@ -55,7 +58,17 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'Principal CNIC', col: 'principal_cnic',                                                                             id: 'priv_prin_cnic',   type: 'number', placeholder: '13 digits', onblur: 'validateCNIC(this)' },
   { header: 'Principal Cell No', col: 'principal_cell_no',                                                                          id: 'priv_prin_cell',   type: 'number' },
   { header: 'Building Certificate Expirey', col: 'building_certificate_expiry',                                                               id: 'priv_bldg_exp',    type: 'date'   },
+  { header: 'Upload Building Fitness Certificate Picture', id: 'priv_bldg_fitness_pic', photo: true },
+  { header: 'Building Fitness Certificate Picture Drive ID', col: 'building_fitness_pic_drive_id', id: 'priv_bldg_fitness_drive_id', hidden: true },
+  { header: 'Building Fitness Certificate Picture URL', col: 'building_fitness_pic_url', id: 'priv_bldg_fitness_url', hidden: true },
+  { header: 'Building Fitness Issues', col: 'building_fitness_issues', id: 'priv_bldg_issues' },
+  { header: 'Building Fitness Issues by Engineer Name', col: 'building_fitness_issues_engineer_name', id: 'priv_bldg_eng_name' },
+  { header: 'Discipline on PEC Website', col: 'pec_discipline', hint: 'Discipline on PEC Website (of the engineer above, if applicable)', id: 'priv_pec_discipline' },
+  { header: 'PEC Registration Number', col: 'pec_registration_number', id: 'priv_pec_reg_no' },
   { header: 'Health and hygiene Certificate Expirey', col: 'health_hygiene_cert_expiry', hint: 'Health and hygiene Certificate Expirey',      id: 'priv_health_exp',  type: 'date'   },
+  { header: 'Upload Health & Hygiene Certificate Picture', id: 'priv_health_pic', photo: true },
+  { header: 'Health & Hygiene Certificate Picture Drive ID', col: 'health_hygiene_pic_drive_id', id: 'priv_health_drive_id', hidden: true },
+  { header: 'Health & Hygiene Certificate Picture URL', col: 'health_hygiene_pic_url', id: 'priv_health_url', hidden: true },
   { header: 'Total Rooms', col: 'total_rooms',                                                                                id: 'priv_rooms',       type: 'number' },
   { header: 'Total Teaching Staff', col: 'total_teaching_staff',                                                                       id: 'priv_teach_staff', type: 'number' },
   { header: 'Total Non Teaching Staff', col: 'total_non_teaching_staff',                                                                   id: 'priv_non_teach',   type: 'number' },
@@ -799,6 +812,10 @@ function buildPrivateForm() {
       pGrid.innerHTML += `<input type="hidden" id="${f.id}" data-header="${f.header}" value="">`;
       return;
     }
+    if (f.photo) {
+      pGrid.innerHTML += renderCertField(f);
+      return;
+    }
 
     let defaultVal = '';
     if (typeof currentUser !== 'undefined' && currentUser) {
@@ -837,6 +854,7 @@ function buildPrivateForm() {
   });
 
   _pfPopulateJurisdictionSelects();
+  certWidgetSyncAll();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -984,6 +1002,7 @@ function openPrivateModal() {
   document.getElementById('ki_cascade_container').innerHTML = '';
   document.getElementById('kiTitle').style.display = 'none';
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
+  certWidgetSyncAll();
   privModal.show();
 }
 
@@ -1028,6 +1047,7 @@ function editPrivate(keyVal) {
   }
 
   document.querySelectorAll('.ff-invalid').forEach(el => el.classList.remove('ff-invalid'));
+  certWidgetSyncAll();
   privModal.show();
 }
 
@@ -1053,6 +1073,7 @@ function submitPrivateForm() {
     }
     document.getElementById('priv_ki_names').value = kiNames.join(', ');
 
+    const wasNew = !document.getElementById('privEditId').value;
     let dataObj = {};
     if (document.getElementById('privEditId').value) {
       dataObj['Unique ID'] = document.getElementById('privEditId').value;
@@ -1073,10 +1094,26 @@ function submitPrivateForm() {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-save2"></i> Save Record';
         if (res && res.success) {
-          if (typeof showToast === 'function') showToast('Record saved successfully', true);
-          privModal.hide();
-          openPrivateModule(currentPrivSheet);
-          if (typeof loadKPIs === 'function') loadKPIs();
+          if (wasNew && res.unique_id) {
+            // Keep the modal open on first save of a NEW school: the
+            // certificate picture widgets need a real unique_id to
+            // upload against (school-cert-upload looks the school row
+            // up by it), which didn't exist until this save. Refresh
+            // the background list now so it's current, but let the
+            // user attach pictures before closing.
+            document.getElementById('privEditId').value = res.unique_id;
+            const uidEl = document.getElementById('priv_uid');
+            if (uidEl) uidEl.value = res.unique_id;
+            certWidgetSyncAll();
+            if (typeof showToast === 'function') showToast('Record saved. You can now upload certificate pictures below, then close this form.', true);
+            openPrivateModule(currentPrivSheet);
+            if (typeof loadKPIs === 'function') loadKPIs();
+          } else {
+            if (typeof showToast === 'function') showToast('Record saved successfully', true);
+            privModal.hide();
+            openPrivateModule(currentPrivSheet);
+            if (typeof loadKPIs === 'function') loadKPIs();
+          }
         } else {
           alert('Save Failed: ' + (res ? res.message : 'Unknown error'));
         }
