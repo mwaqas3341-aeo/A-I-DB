@@ -468,6 +468,24 @@
     .ff input:focus,.ff select:focus{border-color:var(--brand);background:var(--s0)}
     .field-error{font-size:.65rem;color:var(--bad);margin-top:3px;display:none}
     .ff.ff-invalid .field-error{display:block}
+
+    /* ═══════════════════════════════════════════════
+       CERTIFICATE / DOCUMENT PICTURE UPLOAD WIDGET
+       (Private Schools E-License / Building Fitness /
+        Health & Hygiene, Public Schools Fard Malikiat)
+    ═══════════════════════════════════════════════ */
+    .ff.cert-ff{overflow:visible}
+    .cert-hint-fmt{font-weight:400;text-transform:none;letter-spacing:0;color:var(--t3)}
+    .cert-widget{display:flex;flex-direction:column;gap:6px}
+    .cert-widget-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+    .cert-existing{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--ok);font-weight:600}
+    .cert-existing i{color:var(--ok)}
+    .cert-existing a{font-weight:700;color:var(--brand);text-decoration:none;margin-left:2px}
+    .cert-existing a:hover{text-decoration:underline}
+    .cert-progress-track{width:100%;height:6px;border-radius:4px;background:var(--s2);overflow:hidden}
+    .cert-progress-bar{height:100%;width:0;background:var(--brand);border-radius:4px;transition:width .25s ease}
+    .cert-sizes{font-size:.72rem;color:var(--t2)}
+    .cert-error{margin-top:0}
     .btn-save{height:42px;padding:0 22px;background:var(--brand);color:white;border:none;border-radius:var(--r1);font-family:var(--font);font-size:.86rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s}
     .btn-save:hover{background:var(--brand-dark)}
     .btn-cancel{height:42px;padding:0 16px;background:transparent;color:var(--t2);border:1.5px solid var(--b0);border-radius:var(--r1);font-family:var(--font);font-size:.86rem;font-weight:600;cursor:pointer;transition:all .15s}
