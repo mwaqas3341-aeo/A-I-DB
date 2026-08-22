@@ -201,7 +201,8 @@ function enterApp(user) {
   loadKPIs();
   loadDashboardLinksApps();
   loadDashboardKpiCards();
-  if (typeof checkSeatEntryGate === 'function') checkSeatEntryGate();
+  // Seat-entry gate popup removed on request — was checking on every
+  // login/refresh and was no longer wanted.
 
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
   history.pushState({ route: 'home' }, '', '#home');

@@ -55,8 +55,8 @@ const HR_GATEWAY_TABLES = new Set([
 
 const hrGateway = {
   isGatewayTable: (table) => HR_GATEWAY_TABLES.has(table),
-  select: (table, { columns, filters, orders, single } = {}) =>
-    _hrGatewayCall({ table, operation: 'select', columns, filters, orders, single }),
+  select: (table, { columns, filters, orders, single, limit } = {}) =>
+    _hrGatewayCall({ table, operation: 'select', columns, filters, orders, single, limit }),
   insert: (table, payload) => _hrGatewayCall({ table, operation: 'insert', payload }),
   insertMany: (table, payload) => _hrGatewayCall({ table, operation: 'insertMany', payload }),
   update: (table, id_column, id_value, payload) => _hrGatewayCall({ table, operation: 'update', id_column, id_value, payload }),
@@ -181,8 +181,14 @@ function _db(table) {
       }
 
       // select
+      // Only push the limit down to the server when nothing client-side
+      // (ilike/not/neq/gte/contains/or) still needs to filter the full
+      // result first — otherwise a server-side cutoff could silently
+      // drop rows that a post-filter would have kept.
+      const canPushLimit = state.limitN != null && !state.ilike && !state.post;
       const { data, error } = await hrGateway.select(table, {
         columns: state.columns, filters: state.filters, orders: state.orders,
+        limit: canPushLimit ? state.limitN : undefined,
       });
       if (error) return { data: null, error };
       let rows = data || [];
@@ -192,7 +198,7 @@ function _db(table) {
       }
       if (state.post) for (const fn of state.post) rows = rows.filter(fn);
       if (state.rangeFrom != null) rows = rows.slice(state.rangeFrom, state.rangeTo + 1);
-      if (state.limitN != null) rows = rows.slice(0, state.limitN);
+      if (!canPushLimit && state.limitN != null) rows = rows.slice(0, state.limitN);
       if (state.countHead) return { data: null, error: null, count: rows.length };
       return _shape(rows);
     },
