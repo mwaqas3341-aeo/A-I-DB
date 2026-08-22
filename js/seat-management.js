@@ -201,7 +201,7 @@ function seatRenderTable() {
               <td>${escHtmlAp(r.emis || '')}</td>
               <td>${escHtmlAp(r.school_name || '')}</td>
               <td>${r.grade ?? ''}</td>
-              ${isTeaching ? `<td>${escHtmlAp(r.subjects || '')}</td>` : ''}
+              ${isTeaching ? `<td>${escHtmlAp(r.subject_label || '')}</td>` : ''}
               <td>${escHtmlAp(r.designation || '')}</td>
               <td>${r.sanctioned_count ?? 0}</td>
               <td style="color:${r.abolished_count ? '#DC2626' : 'inherit'}">${r.abolished_count ?? 0}</td>
@@ -272,6 +272,18 @@ function seatRecalc() {
   document.getElementById('seat_abolished').max = sanctioned;
 }
 
+// The `subjects` column was never populated for the migrated/historical
+// seat data (only subject_label was, e.g. "EST (Computer Science)") —
+// newly saved records do set it correctly, so prefer it when present,
+// falling back to parsing the parenthetical part out of subject_label
+// for older rows.
+function _seatSubjectFromRow(row) {
+  if (row && row.subjects) return row.subjects;
+  const label = (row && row.subject_label) || '';
+  const m = label.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  return m ? m[2] : '';
+}
+
 function openSeatModal(id) {
   seatState.editingId = id;
   const row = id ? seatState.rows.find(r => String(r.id) === String(id)) : null;
@@ -280,7 +292,7 @@ function openSeatModal(id) {
   document.getElementById('seat_schoolInfo').textContent = row ? `${row.school_name || ''} — ${row.tehsil || ''}, ${row.district || ''}` : '';
   seatRefreshDesignationOptions(row?.designation || '');
   if (typeof hrEnsureSubjectCache === 'function') hrEnsureSubjectCache();
-  document.getElementById('seat_subject').value = row?.subjects || '';
+  document.getElementById('seat_subject').value = _seatSubjectFromRow(row);
   document.getElementById('seat_grade').value = row?.grade || '';
   document.getElementById('seat_sanctioned').value = row?.sanctioned_count ?? 0;
   // Total Sanctioned is locked once a record exists — only Abolished
@@ -385,7 +397,7 @@ function exportSeatData() {
     ...(isTeaching ? ['Subject'] : []), 'Designation', 'Total Sanctioned', 'Abolished', 'Effective Sanctioned', 'Filled', 'Vacant', 'Remarks'];
   const aoa = [headers, ...seatState.rows.map(r => [
     r.emis, r.school_name, r.district, r.wing, r.tehsil, r.markaz_name, r.grade,
-    ...(isTeaching ? [r.subjects || ''] : []), r.designation, r.sanctioned_count, r.abolished_count,
+    ...(isTeaching ? [_seatSubjectFromRow(r)] : []), r.designation, r.sanctioned_count, r.abolished_count,
     r.effective_sanctioned_count, r.filled_count, r.vacant_count, r.remarks || '',
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
