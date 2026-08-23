@@ -68,6 +68,46 @@ function fundTriggerBackgroundSync(fundType) {
   })();
 }
 
+// Keeps the consolidated Annual Archive workbook (Google Drive) in sync
+// with Supabase automatically after every successful Fund write — no
+// "Generate"/"Regenerate" button anywhere. Every call is a full,
+// idempotent rebuild of that ONE (fund_type, financial_year) workbook
+// straight from Supabase (see fund-generate-annual-archive), so it is
+// safe to call after every save and safe if two users save near-
+// simultaneously: whichever rebuild lands last still reflects BOTH
+// changes correctly, because Supabase — not the Excel file — remains
+// the single source of truth for every quarter/month figure. This is
+// fire-and-forget and non-blocking by design: if Drive is briefly
+// unavailable the user's actual data is already safely saved in
+// Supabase (never lost), a warning toast is shown instead of a silent
+// "success", and the daily cron sweep (for ended years) plus the next
+// successful edit both naturally retry the sync.
+let _fundArchiveSyncDebounce = {};
+function fundTriggerAnnualArchiveSync(fundType, financialYearId, opts) {
+  if (!financialYearId) return;
+  const key = fundType + ':' + financialYearId;
+  clearTimeout(_fundArchiveSyncDebounce[key]);
+  _fundArchiveSyncDebounce[key] = setTimeout(async () => {
+    try {
+      const { data: { session } } = await _sb.auth.getSession();
+      if (!session) return;
+      const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/fund-generate-annual-archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+        body: JSON.stringify({ financial_year_id: financialYearId, fund_type: fundType }),
+      });
+      const result = await res.json().catch(() => null);
+      const outcome = result?.results?.[0];
+      if (!result?.success || (outcome && outcome.status === 'failed')) {
+        showToast(`Saved, but the ${fundType} Google Drive archive did not update (${outcome?.message || result?.message || 'unknown error'}). It will retry automatically.`, false);
+      }
+    } catch (e) {
+      // Network/Drive hiccup — never surfaced as a hard error, since the
+      // underlying Supabase save already succeeded and is not at risk.
+    }
+  }, opts?.immediate ? 0 : 2500); // debounced so rapid successive edits to the same year don't rebuild+upload on every keystroke-save
+}
+
 // ═══════════════════════════════════ HUB ═══════════════════════════
 function openFundModule() {
   switchGlobalTab('fundView', null);
@@ -432,6 +472,7 @@ async function fundCreateAccount(prefix) {
   if (error) { showToast(error.message, false); return; }
   showToast(`Ledger started with opening balance ${fundMoney(opening)}.`, true);
   fundTriggerBackgroundSync(fundType);
+  fundTriggerAnnualArchiveSync(fundType, fundState.financialYearId);
   fundLoadAccount(prefix);
 }
 
@@ -448,6 +489,7 @@ async function fundEditOpeningBalance(prefix, current) {
   if (error) { showToast(error.message, false); return; }
   showToast('Opening balance updated.', true);
   fundTriggerBackgroundSync(prefix === 'nsb' ? 'NSB' : 'FTF');
+  fundTriggerAnnualArchiveSync(prefix === 'nsb' ? 'NSB' : 'FTF', fundState.financialYearId);
   fundLoadAccount(prefix);
 }
 
@@ -517,6 +559,7 @@ async function fundDeleteTransaction(prefix, txnId, accountId) {
   if (error) { showToast(error.message, false); return; }
   showToast('Transaction deleted.', true);
   fundTriggerBackgroundSync(prefix === 'nsb' ? 'NSB' : 'FTF');
+  fundTriggerAnnualArchiveSync(prefix === 'nsb' ? 'NSB' : 'FTF', fundState.financialYearId);
   fundLoadAccount(prefix);
 }
 
@@ -565,6 +608,7 @@ async function fundSubmitTxn(ev) {
   showToast('Saved.', true);
   fundCloseTxnModal();
   fundTriggerBackgroundSync(fundType);
+  fundTriggerAnnualArchiveSync(fundType, fundState.financialYearId);
   fundLoadAccount(fundType === 'NSB' ? 'nsb' : 'ftf');
 }
 
@@ -607,6 +651,7 @@ async function fundEditMonthlyExpense(prefix, month, current) {
   if (error) { showToast(error.message, false); return; }
   showToast('Saved.', true);
   fundTriggerBackgroundSync(fundType);
+  fundTriggerAnnualArchiveSync(fundType, fundState.financialYearId);
   fundLoadAccount(prefix);
 }
 
@@ -651,6 +696,7 @@ async function fundEditMonthlyIncome(prefix, month, current) {
   if (error) { showToast(error.message, false); return; }
   showToast('Saved.', true);
   fundTriggerBackgroundSync('FTF');
+  fundTriggerAnnualArchiveSync('FTF', fundState.financialYearId);
   fundLoadAccount(prefix);
 }
 
@@ -746,6 +792,7 @@ async function fundEditNsbReceipt(quarter, incomeType, current) {
   if (error) { showToast(error.message, false); return; }
   showToast('Saved.', true);
   fundTriggerBackgroundSync('NSB');
+  fundTriggerAnnualArchiveSync('NSB', fundState.financialYearId);
   fundLoadAccount('nsb');
 }
 
@@ -940,6 +987,18 @@ async function fundRunImport() {
   btn.style.display = 'none';
   showToast(`Import finished — ${totalImported} imported/updated, ${totalSkipped} skipped, ${totalFailed} failed.`, totalFailed === 0);
 
+  // A bulk upload can span several financial years in one file — sync
+  // the annual archive for every DISTINCT year that actually had at
+  // least one imported row (not the whole sheet's worth of years,
+  // and not years that only produced skips/failures).
+  if (totalImported > 0) {
+    const importedYearLabels = [...new Set(allDetails.filter(d => d.status === 'imported').map((d, i) => rows[d.row - 1]?.financial_year).filter(Boolean))];
+    if (importedYearLabels.length) {
+      const { data: fyRows } = await _sb.from('fund_financial_years').select('id, financial_year').in('financial_year', importedYearLabels);
+      (fyRows || []).forEach(fy => fundTriggerAnnualArchiveSync(fundType, fy.id, { immediate: true }));
+    }
+  }
+
   // Refresh whatever's currently on screen so a just-imported figure for
   // the selected school/year shows immediately instead of looking stale.
   if (fundState.emisCode && fundState.financialYearId) {
@@ -949,17 +1008,20 @@ async function fundRunImport() {
 }
 
 // ═══════════════════════════ ANNUAL ARCHIVES ═════════════════════════
-// Consolidated NSB/FTF workbooks are generated automatically once a
-// financial year ends (daily server-side check, see fund-generate-
-// annual-archive edge function + pg_cron). This view is on-demand
-// access + an Admin "Generate Now" override — it doesn't trigger
-// generation on its own.
+// Consolidated NSB/FTF workbooks are kept in sync with Supabase fully
+// automatically — every successful Fund write (manual edit or bulk
+// upload) triggers fundTriggerAnnualArchiveSync for its own year, and a
+// daily cron sweep (fund-generate-annual-archive + pg_cron) covers any
+// closed year that was missed. There is intentionally NO "Generate" or
+// "Regenerate" button anywhere in this view, for anyone, admin included
+// — the only action here is Download. (An admin who genuinely needs to
+// force a resync can still POST to the edge function directly; that's a
+// deliberate break-glass capability, not a UI control.)
 let fundArchivesFundType = 'NSB';
 
 function openFundArchivesView() {
   switchGlobalTab('fundArchivesView', null);
   fundState.isAdmin = fundIsAdmin();
-  document.getElementById('fundArchivesGenerateBtn').style.display = fundState.isAdmin ? 'inline-flex' : 'none';
   fundSetArchivesFundType(fundArchivesFundType);
 }
 
@@ -979,52 +1041,36 @@ async function fundLoadArchives() {
   const byFy = {}; (archives || []).forEach(a => byFy[a.financial_year_id] = a);
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const rows = (years || []).filter(y => y.end_date < todayStr); // only years that have actually ended
+  // All years now shown, not just ended ones — the active year's archive
+  // is kept live too (auto-synced after every save), it just won't have
+  // a status yet until the first write happens.
+  const rows = years || [];
 
-  if (!rows.length) { listEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)">No completed financial years yet.</div>`; return; }
+  if (!rows.length) { listEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--t3)">No financial years set up yet.</div>`; return; }
 
   listEl.innerHTML = `
     <table class="data-table">
-      <thead><tr><th>Financial Year</th><th>Status</th><th>Schools</th><th>Generated</th><th></th></tr></thead>
+      <thead><tr><th>Financial Year</th><th>Status</th><th>Schools</th><th>Last Synced</th><th></th></tr></thead>
       <tbody>
         ${rows.map(y => {
           const a = byFy[y.id];
-          const status = a?.status || 'pending';
+          const isActive = y.end_date >= todayStr;
+          const status = a?.status || (isActive ? 'not synced yet' : 'pending');
           const badgeColor = status === 'completed' ? 'var(--ok)' : (status === 'failed' ? '#dc2626' : 'var(--t3)');
           return `<tr>
-            <td><b>${y.financial_year}</b></td>
+            <td><b>${y.financial_year}</b>${isActive ? ' <span style="font-size:.7rem;color:var(--t3)">(active)</span>' : ''}</td>
             <td style="color:${badgeColor};text-transform:capitalize">${status}${a?.status === 'failed' && a?.error_message ? ` <span style="font-size:.72rem;color:var(--t3)">(${escHtml(a.error_message)})</span>` : ''}</td>
             <td>${a?.school_count ?? '—'}</td>
-            <td>${a?.generated_at ? new Date(a.generated_at).toLocaleDateString() : '—'}</td>
+            <td>${a?.generated_at ? new Date(a.generated_at).toLocaleString() : '—'}</td>
             <td style="white-space:nowrap">
               ${a?.status === 'completed' ? `
                 <button class="btn btn-add" style="padding:4px 10px;font-size:.78rem" onclick="fundDownloadArchive('${a.id}')"><i class="bi bi-download"></i> Download as Excel</button>
-                <a class="btn-edit" style="padding:4px 10px;font-size:.78rem;margin-left:4px" href="${escHtml(a.google_drive_url)}" target="_blank" title="View in Google Drive"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
-              ${fundState.isAdmin ? `<button class="btn-edit" style="padding:4px 10px;font-size:.78rem;margin-left:6px" onclick="fundGenerateArchiveNow('${y.id}', '${y.financial_year}', ${a?.status === 'completed'})"><i class="bi bi-arrow-repeat"></i> ${a?.status === 'completed' ? 'Regenerate' : 'Generate Now'}</button>` : ''}
+                <a class="btn-edit" style="padding:4px 10px;font-size:.78rem;margin-left:4px" href="${escHtml(a.google_drive_url)}" target="_blank" title="View in Google Drive"><i class="bi bi-box-arrow-up-right"></i></a>` : '<span style="color:var(--t3);font-size:.78rem">No data yet</span>'}
             </td>
           </tr>`;
         }).join('')}
       </tbody>
     </table>`;
-}
-
-async function fundGenerateArchiveNow(financialYearId, financialYearLabel, isRegenerate) {
-  if (isRegenerate && !confirm(`Regenerate the consolidated ${fundArchivesFundType} workbook for FY ${financialYearLabel}? This replaces the existing Drive file reference with a fresh export.`)) return;
-  showToast(`Generating ${fundArchivesFundType} archive for FY ${financialYearLabel}…`, true);
-
-  const { data: { session } } = await _sb.auth.getSession();
-  const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/fund-generate-annual-archive', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
-    body: JSON.stringify({ financial_year_id: financialYearId, fund_type: fundArchivesFundType, force: true }),
-  });
-  const result = await res.json();
-  if (!result.success) { showToast(result.message || 'Failed to generate archive.', false); return; }
-
-  const outcome = result.results?.[0];
-  if (outcome?.status === 'completed') showToast('Archive generated and saved to Google Drive.', true);
-  else showToast(outcome?.message || 'Archive generation did not complete — check Drive connection.', false);
-  fundLoadArchives();
 }
 
 // Streams the archive workbook down through fund-download-archive (the
