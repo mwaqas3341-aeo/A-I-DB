@@ -32,9 +32,9 @@ const PRIV_ROW_EDIT_LOCKED_HEADERS = ['Unique ID', 'School Name'];
 // Row Editing Mode, regardless of the generic `hidden` flag (which is
 // also used for ordinary conditionally-shown fields that ARE editable).
 const PRIV_SYSTEM_REF_HEADERS = [
-  'E-License Picture Drive ID', 'E-License Picture URL',
-  'Building Fitness Certificate Picture Drive ID', 'Building Fitness Certificate Picture URL',
-  'Health & Hygiene Certificate Picture Drive ID', 'Health & Hygiene Certificate Picture URL',
+  'E-License Pictures',
+  'Building Fitness Certificate Pictures',
+  'Health & Hygiene Certificate Pictures',
 ];
 
 // ★ NEW: Store filtered school hierarchy for dropdowns
@@ -55,9 +55,7 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'School Name', col: 'school_name',                                                                                  id: 'priv_name',        wide: true },
   { header: 'Registeration Status', col: 'registration_status', hint: 'Registeration Status (Registered/Non Registered/Expired/In Process/Provisional E-License Issued)',       id: 'priv_reg_status',  type: 'select', options: ['Registered', 'Non Registered', 'Expired', 'In Process', 'Provisional E-License Issued'], onchange: 'handleRegStatus()' },
   { header: 'Registeration No', col: 'registration_no',  hint: 'Registeration No in Case of registered (EMIS Code)',                id: 'priv_reg_no',      type: 'text', readonly: true, placeholder: 'e.g. 123456 or 123456, 789012' },
-  { header: 'Upload E-License Picture', id: 'priv_e_license_pic', photo: true },
-  { header: 'E-License Picture Drive ID', col: 'e_license_pic_drive_id', id: 'priv_e_license_drive_id', hidden: true },
-  { header: 'E-License Picture URL', col: 'e_license_pic_url', id: 'priv_e_license_url', hidden: true },
+  { header: 'E-License Pictures', col: 'e_license_pics', id: 'priv_e_license_pic', photo: true, maxPhotos: 6 },
   { header: 'Date of Expiry of Registeration', col: 'registration_expiry_date', hint: 'Date of Expiry of Registeration',                     id: 'priv_reg_exp',     type: 'date'   },
   { header: 'Level', col: 'level',             hint: 'Level (Primary,Middle,High,Higher Secondary)',                      id: 'priv_level',       type: 'select', options: ['Primary', 'Middle', 'High', 'Higher Secondary'] },
   { header: 'School Gender', col: 'school_gender',                                                                               id: 'priv_gender',      type: 'select', options: ['Male', 'Female', 'Both'] },
@@ -72,17 +70,13 @@ const PRIVATE_FIELD_CONFIG = [
   { header: 'Principal CNIC', col: 'principal_cnic',                                                                             id: 'priv_prin_cnic',   type: 'number', placeholder: '13 digits', onblur: 'validateCNIC(this)' },
   { header: 'Principal Cell No', col: 'principal_cell_no',                                                                          id: 'priv_prin_cell',   type: 'number' },
   { header: 'Building Certificate Expirey', col: 'building_certificate_expiry',                                                               id: 'priv_bldg_exp',    type: 'date'   },
-  { header: 'Upload Building Fitness Certificate Picture', id: 'priv_bldg_fitness_pic', photo: true },
-  { header: 'Building Fitness Certificate Picture Drive ID', col: 'building_fitness_pic_drive_id', id: 'priv_bldg_fitness_drive_id', hidden: true },
-  { header: 'Building Fitness Certificate Picture URL', col: 'building_fitness_pic_url', id: 'priv_bldg_fitness_url', hidden: true },
+  { header: 'Building Fitness Certificate Pictures', col: 'building_fitness_pics', id: 'priv_bldg_fitness_pic', photo: true, maxPhotos: 6 },
   { header: 'Building Fitness Issues', col: 'building_fitness_issues', id: 'priv_bldg_issues' },
   { header: 'Building Fitness Issues by Engineer Name', col: 'building_fitness_issues_engineer_name', id: 'priv_bldg_eng_name' },
   { header: 'Discipline on PEC Website', col: 'pec_discipline', hint: 'Discipline on PEC Website (of the engineer above, if applicable)', id: 'priv_pec_discipline' },
   { header: 'PEC Registration Number', col: 'pec_registration_number', id: 'priv_pec_reg_no' },
   { header: 'Health and hygiene Certificate Expirey', col: 'health_hygiene_cert_expiry', hint: 'Health and hygiene Certificate Expirey',      id: 'priv_health_exp',  type: 'date'   },
-  { header: 'Upload Health & Hygiene Certificate Picture', id: 'priv_health_pic', photo: true },
-  { header: 'Health & Hygiene Certificate Picture Drive ID', col: 'health_hygiene_pic_drive_id', id: 'priv_health_drive_id', hidden: true },
-  { header: 'Health & Hygiene Certificate Picture URL', col: 'health_hygiene_pic_url', id: 'priv_health_url', hidden: true },
+  { header: 'Health & Hygiene Certificate Pictures', col: 'health_hygiene_pics', id: 'priv_health_pic', photo: true, maxPhotos: 6 },
   { header: 'Total Rooms', col: 'total_rooms',                                                                                id: 'priv_rooms',       type: 'number' },
   { header: 'Total Teaching Staff', col: 'total_teaching_staff',                                                                       id: 'priv_teach_staff', type: 'number' },
   { header: 'Total Non Teaching Staff', col: 'total_non_teaching_staff',                                                                   id: 'priv_non_teach',   type: 'number' },
@@ -535,7 +529,9 @@ function renderPrivateTable(dataArr, totalRecords) {
           <i class="bi bi-pencil-square"></i>
         </button>` : ''}
       </td>
-      ${privHeaders.map(h => `<td>${_privEsc(String(row[h] || ''))}</td>`).join('')}
+      ${privHeaders.map(h => PRIV_SYSTEM_REF_HEADERS.includes(h)
+        ? `<td>${certPhotoCellHtml(row[h])}</td>`
+        : `<td>${_privEsc(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
   }).join('');
 
@@ -601,7 +597,9 @@ function _renderPrivRowEditCell(header, row, keyVal) {
   }
 
   if (PRIV_SYSTEM_REF_HEADERS.includes(header)) {
-    return `<td class="priv-row-locked" title="Set automatically when a certificate photo is uploaded — cannot be edited here">${_privEsc(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
+    // "View" buttons only — never the raw Drive file id/url/JSON as
+    // visible text, here or anywhere else. See certPhotoCellHtml.
+    return `<td class="priv-row-locked" title="Uploaded via the certificate picture widget — cannot be edited here">${certPhotoCellHtml(val)}</td>`;
   }
 
   const f = PRIVATE_FIELD_CONFIG.find(fc => fc.header === header);

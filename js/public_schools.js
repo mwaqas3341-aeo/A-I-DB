@@ -29,7 +29,7 @@ const PUB_MASTER_COUNT = 9;
 // Editing Mode, regardless of the generic `hidden` flag (also used for
 // ordinary conditionally-shown fields that ARE editable, e.g. FTF bank
 // details, Caregiver details).
-const PUB_SYSTEM_REF_HEADERS = ['Fard Malikiat Picture Drive ID', 'Fard Malikiat Picture URL'];
+const PUB_SYSTEM_REF_HEADERS = ['Fard Malikiat Pictures'];
 
 // Editable field definitions J → AO
 const PUB_EDITABLE_FIELDS = [
@@ -70,9 +70,7 @@ const PUB_EDITABLE_FIELDS = [
   { header: 'FTF Bank Name', col: 'ftf_bank_name',                  hint: 'FTF Bank Name — only applies if FTF Account is Yes',                              id: 'pub_FTFBank',     hidden: true },
   { header: 'FTF Bank Branch', col: 'ftf_bank_branch',                hint: 'FTF Bank Branch — only applies if FTF Account is Yes',                            id: 'pub_FTFBranch',   hidden: true },
   { header: 'FTF IBAN No. / Account No.', col: 'ftf_iban_account_no',    hint: 'FTF IBAN No. / Account No. — only applies if FTF Account is Yes',                  id: 'pub_FTFIban',     hidden: true },
-  { header: 'Please upload Fard Malikiat Picture of School if you have', id: 'pub_fard_malikiat_pic', photo: true, wide: true },
-  { header: 'Fard Malikiat Picture Drive ID', col: 'fard_malikiat_pic_drive_id', id: 'pub_fard_malikiat_drive_id', hidden: true },
-  { header: 'Fard Malikiat Picture URL', col: 'fard_malikiat_pic_url', id: 'pub_fard_malikiat_url', hidden: true },
+  { header: 'Fard Malikiat Pictures', col: 'fard_malikiat_pics', id: 'pub_fard_malikiat_pic', photo: true, wide: true, maxPhotos: 6 },
   { header: 'Status', col: 'status',              hint: 'Status (Active/Out Sourced)',                                                                    id: 'pub_Status',      type: 'select',  options: ['Active', 'Out Sourced'] }
 ];
 
@@ -379,7 +377,9 @@ function applyPubFilters() {
           <i class="bi bi-pencil-square"></i>
         </button>` : ''}
       </td>
-      ${pubHeaders.map(h => `<td>${escHtml(String(row[h] || ''))}</td>`).join('')}
+      ${pubHeaders.map(h => PUB_SYSTEM_REF_HEADERS.includes(h)
+        ? `<td>${certPhotoCellHtml(row[h])}</td>`
+        : `<td>${escHtml(String(row[h] || ''))}</td>`).join('')}
     </tr>`;
   }).join('');
 
@@ -443,7 +443,9 @@ function _renderPubRowEditCell(header, i, row, keyVal) {
   }
 
   if (PUB_SYSTEM_REF_HEADERS.includes(header)) {
-    return `<td class="pub-row-locked" title="Set automatically when a certificate photo is uploaded — cannot be edited here">${escHtml(String(val))} <i class="bi bi-lock-fill" style="opacity:.5;font-size:.7em"></i></td>`;
+    // "View" buttons only — never the raw Drive file id/url/JSON as
+    // visible text, here or anywhere else. See certPhotoCellHtml.
+    return `<td class="pub-row-locked" title="Uploaded via the certificate picture widget — cannot be edited here">${certPhotoCellHtml(val)}</td>`;
   }
 
   const f = PUB_EDITABLE_FIELDS.find(fc => fc.header === header);
