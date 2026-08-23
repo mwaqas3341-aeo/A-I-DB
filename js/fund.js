@@ -88,6 +88,7 @@ function openFundFtfModule() {
   switchGlobalTab('fundFtfView', null);
   fundState.fundType = 'FTF';
   fundState.isAdmin = fundIsAdmin();
+  document.getElementById('fundFtfAdminPanel').style.display = fundState.isAdmin ? 'block' : 'none';
   fundInitSelectors('ftf');
   fundInitMyFtfWorkbookSelector();
 }
@@ -309,9 +310,51 @@ function fundSelectSchool(prefix, emis, name, cardEl) {
 }
 
 // ═══════════════════════════════ ACCOUNT LOAD ═══════════════════════
+// Account-number / bank-detail box, shown in both the Add/Edit body and
+// (implicitly, since it renders before the opening-balance prompt check
+// below) whenever a school is selected. Reuses the EXISTING fields
+// already on public_schools — see requirements #5/#6 — no new columns.
+// NSB reuses the general bank_name/branch_code/iban_no fields; FTF has
+// its own dedicated ftf_* fields (has_ftf_account/ftf_bank_name/
+// ftf_bank_branch/ftf_iban_account_no).
+async function fundRenderAccountInfo(prefix) {
+  const boxEl = document.getElementById(`fund_${prefix}_accountInfo`);
+  if (!boxEl || !fundState.emisCode) return;
+  const cols = prefix === 'nsb'
+    ? 'bank_name, bank_address, branch_code, iban_no'
+    : 'has_ftf_account, ftf_bank_name, ftf_bank_branch, ftf_iban_account_no';
+  const { data: school } = await _sb.from('public_schools').select(cols).eq('emis', fundState.emisCode).maybeSingle();
+  if (!school) { boxEl.innerHTML = ''; return; }
+
+  const rows = prefix === 'nsb'
+    ? [
+        ['Bank Name', school.bank_name],
+        ['Branch Code', school.branch_code],
+        ['Bank Address', school.bank_address],
+        ['NSB Account / IBAN Number', school.iban_no],
+      ]
+    : [
+        ['Has FTF Account', school.has_ftf_account],
+        ['Bank Name', school.ftf_bank_name],
+        ['Bank Branch', school.ftf_bank_branch],
+        ['FTF Account / IBAN Number', school.ftf_iban_account_no],
+      ];
+
+  boxEl.innerHTML = `
+    <div class="section-title" style="margin-top:0"><i class="bi bi-bank"></i> ${prefix === 'nsb' ? 'NSB' : 'FTF'} Account Details<div class="title-line"></div></div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+      ${rows.map(([label, val]) => `
+        <div class="kpi-card" style="border-left-color:#64748b">
+          <div style="font-size:.72rem;color:var(--t3);font-weight:700;text-transform:uppercase">${escHtml(label)}</div>
+          <div style="font-size:.95rem;font-weight:700;margin-top:4px">${val ? escHtml(val) : '<span style="color:var(--t3);font-weight:500">Not on file</span>'}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
 async function fundLoadAccount(prefix) {
   if (!fundState.financialYearId || !fundState.emisCode) return;
   const fundType = prefix === 'nsb' ? 'NSB' : 'FTF';
+  fundRenderAccountInfo(prefix);
 
   let { data: account } = await _sb.from('fund_accounts').select('*')
     .eq('emis_code', fundState.emisCode).eq('fund_type', fundType).eq('financial_year_id', fundState.financialYearId)
@@ -720,6 +763,189 @@ async function fundRefreshDriveStatus() {
     }
     btn.onclick = fundConnectGoogleAccount;
   });
+}
+
+// ═══════════════════════ BULK EXCEL IMPORT (Admin only) ═══════════════
+// Two fixed, small templates — one per fund type, matching each type's
+// ACTUAL data model (see js/fund.js render functions above): NSB is
+// quarterly income + Other/Profit annual lines; FTF is one Income and
+// one Expense total per calendar month. Real enforcement (Admin role,
+// outsourced-school skip, amount validation) lives server-side in
+// fund_bulk_import_nsb()/fund_bulk_import_ftf() — this code only parses
+// the sheet, previews it, and reports the server's per-row results.
+// Depends on the SheetJS `XLSX` global already loaded for the other
+// importers (see js/hr-staff-import.js, js/schools-import.js).
+const FUND_NSB_TEMPLATE_HEADERS = ['EMIS Code', 'Financial Year (e.g. 2025-26)', 'Q1', 'Q2', 'Q3', 'Q4', 'Any Other Income', 'Profit / Other Earnings', 'Opening Balance (optional)'];
+const FUND_FTF_TEMPLATE_HEADERS = ['EMIS Code', 'Financial Year (e.g. 2025-26)', 'Month (1-12, calendar month)', 'Income', 'Expense', 'Opening Balance (optional)'];
+
+function fundDownloadNsbTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([FUND_NSB_TEMPLATE_HEADERS]);
+  ws['!cols'] = FUND_NSB_TEMPLATE_HEADERS.map(h => ({ wch: Math.max(14, Math.min(30, h.length + 4)) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'NSB Import');
+  XLSX.writeFile(wb, 'NSB_Fund_Import_Template.xlsx');
+}
+
+function fundDownloadFtfTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([FUND_FTF_TEMPLATE_HEADERS]);
+  ws['!cols'] = FUND_FTF_TEMPLATE_HEADERS.map(h => ({ wch: Math.max(14, Math.min(30, h.length + 4)) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'FTF Import');
+  XLSX.writeFile(wb, 'FTF_Fund_Import_Template.xlsx');
+}
+
+let fundImportState = { fundType: null, rows: [], issues: [] };
+
+function fundOpenImportModal(fundType) {
+  fundImportState = { fundType, rows: [], issues: [] };
+  document.getElementById('fundImportModalTitle').textContent = `Bulk ${fundType} Excel Import`;
+  document.getElementById('fundImportInstructions').textContent = fundType === 'NSB'
+    ? 'Download the template, fill in EMIS Code + Financial Year for each school, and any of Q1–Q4 / Other Income / Profit / Opening Balance you want to set. Leave a cell blank to leave that figure untouched — it will never be overwritten with 0.'
+    : 'Download the template, fill in EMIS Code + Financial Year + Month (1–12) for each school-month, and Income / Expense / Opening Balance you want to set. Leave a cell blank to leave that figure untouched — it will never be overwritten with 0.';
+  document.getElementById('fundImportDownloadBtn').onclick = fundType === 'NSB' ? fundDownloadNsbTemplate : fundDownloadFtfTemplate;
+  document.getElementById('fundImportFileInput').value = '';
+  document.getElementById('fundImportFileInput').onchange = (ev) => fundImportFileSelected(ev.target);
+  document.getElementById('fundImportPreviewWrap').style.display = 'none';
+  document.getElementById('fundImportProgressWrap').style.display = 'none';
+  document.getElementById('fundImportSummaryWrap').style.display = 'none';
+  document.getElementById('fundImportRunBtn').style.display = 'none';
+  document.getElementById('fundImportModal').classList.remove('hidden');
+}
+
+function fundCloseImportModal() {
+  document.getElementById('fundImportModal').classList.add('hidden');
+}
+
+// Normalizes a raw sheet header into a lookup key: lowercased, stripped
+// of anything in parentheses and non-alphanumerics — so "Q1", "q1 ",
+// "Financial Year (e.g. 2025-26)" and "financial year" all still match
+// even if a user tweaks the template's wording slightly.
+function fundNormHeader(h) {
+  return String(h || '').replace(/\([^)]*\)/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const FUND_NSB_FIELD_MAP = { emiscode: 'emis_code', financialyear: 'financial_year', q1: 'q1', q2: 'q2', q3: 'q3', q4: 'q4', anyotherincome: 'other_income', profitotherearnings: 'profit', openingbalance: 'opening_balance' };
+const FUND_FTF_FIELD_MAP = { emiscode: 'emis_code', financialyear: 'financial_year', month: 'month', income: 'income', expense: 'expense', openingbalance: 'opening_balance' };
+
+function fundImportFileSelected(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true, codepage: 65001 });
+      const firstSheet = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
+      if (!rawRows.length) { showToast('That file has no data rows.', false); return; }
+
+      const fieldMap = fundImportState.fundType === 'NSB' ? FUND_NSB_FIELD_MAP : FUND_FTF_FIELD_MAP;
+      const sheetHeaders = Object.keys(rawRows[0]);
+      const headerLookup = {};
+      sheetHeaders.forEach(h => { headerLookup[fundNormHeader(h)] = h; });
+
+      const issues = [];
+      if (!headerLookup['emiscode']) issues.push('Missing "EMIS Code" column.');
+      if (!headerLookup['financialyear']) issues.push('Missing "Financial Year" column.');
+      if (fundImportState.fundType === 'FTF' && !headerLookup['month']) issues.push('Missing "Month" column.');
+
+      const rows = rawRows.map(raw => {
+        const row = {};
+        for (const [normKey, field] of Object.entries(fieldMap)) {
+          const sheetHeader = headerLookup[normKey];
+          row[field] = sheetHeader !== undefined ? String(raw[sheetHeader] ?? '').trim() : '';
+        }
+        return row;
+      });
+
+      fundImportState.rows = rows;
+      fundImportState.issues = issues;
+
+      const previewCols = fundImportState.fundType === 'NSB'
+        ? ['emis_code', 'financial_year', 'q1', 'q2', 'q3', 'q4', 'other_income', 'profit', 'opening_balance']
+        : ['emis_code', 'financial_year', 'month', 'income', 'expense', 'opening_balance'];
+
+      document.getElementById('fundImportPreviewMeta').textContent = `${rows.length} row${rows.length === 1 ? '' : 's'} loaded from "${file.name}".`;
+      document.getElementById('fundImportPreviewIssues').innerHTML = issues.length
+        ? `<i class="bi bi-exclamation-triangle-fill"></i> ${issues.map(escHtml).join(' ')} — fix the file and re-upload before importing.`
+        : '';
+      document.getElementById('fundImportPreviewHead').innerHTML = `<tr>${previewCols.map(c => `<th>${escHtml(c)}</th>`).join('')}</tr>`;
+      document.getElementById('fundImportPreviewBody').innerHTML = rows.slice(0, 10).map(r => `
+        <tr>${previewCols.map(c => `<td>${escHtml(r[c] || '')}</td>`).join('')}</tr>`).join('')
+        + (rows.length > 10 ? `<tr><td colspan="${previewCols.length}" style="text-align:center;color:var(--t3)">…and ${rows.length - 10} more row(s)</td></tr>` : '');
+      document.getElementById('fundImportPreviewWrap').style.display = 'block';
+      document.getElementById('fundImportSummaryWrap').style.display = 'none';
+      document.getElementById('fundImportRunBtn').style.display = issues.length ? 'none' : 'inline-block';
+    } catch (err) {
+      showToast('Could not read that file: ' + err.message, false);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Sends rows to the server in chunks so (a) any single request stays a
+// reasonable size and (b) the progress readout actually moves. All
+// admin/outsourced/validation enforcement happens INSIDE the RPC (see
+// migration fund_bulk_import_nsb_rpc / fund_bulk_import_ftf_rpc) — this
+// is not a security boundary, just a chunking convenience.
+const FUND_IMPORT_CHUNK = 250;
+
+async function fundRunImport() {
+  const { fundType, rows } = fundImportState;
+  if (!rows.length) return;
+
+  const btn = document.getElementById('fundImportRunBtn');
+  btn.disabled = true;
+  const progressEl = document.getElementById('fundImportProgressWrap');
+  progressEl.style.display = 'block';
+
+  const rpcName = fundType === 'NSB' ? 'fund_bulk_import_nsb' : 'fund_bulk_import_ftf';
+  let totalImported = 0, totalSkipped = 0, totalFailed = 0, totalRows = 0;
+  const allDetails = [];
+  let done = 0;
+
+  for (let i = 0; i < rows.length; i += FUND_IMPORT_CHUNK) {
+    const chunk = rows.slice(i, i + FUND_IMPORT_CHUNK);
+    progressEl.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Importing… ${done} / ${rows.length}`;
+    const { data, error } = await _sb.rpc(rpcName, { p_rows: chunk });
+    if (error) {
+      // The whole chunk failed (e.g. connection issue, or a genuinely
+      // non-admin session slipping through) — record it plainly rather
+      // than silently losing the rows from the summary.
+      totalFailed += chunk.length;
+      chunk.forEach((r, idx) => allDetails.push({ row: i + idx + 1, emis: r.emis_code || null, status: 'failed', reason: error.message }));
+    } else {
+      totalRows += data.total; totalImported += data.imported; totalSkipped += data.skipped; totalFailed += data.failed;
+      (data.details || []).forEach(d => allDetails.push({ ...d, row: i + d.row }));
+    }
+    done += chunk.length;
+  }
+
+  progressEl.style.display = 'none';
+  btn.disabled = false;
+
+  const badge = { imported: 'var(--ok)', skipped: 'var(--warn, #d97706)', failed: 'var(--bad, #dc2626)' };
+  document.getElementById('fundImportSummaryCards').innerHTML = `
+    <div class="kpi-card" style="border-left-color:#64748b;flex:1;min-width:120px"><div style="font-size:.72rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Rows</div><div style="font-size:1.2rem;font-weight:800">${rows.length}</div></div>
+    <div class="kpi-card" style="border-left-color:var(--ok);flex:1;min-width:120px"><div style="font-size:.72rem;color:var(--t3);font-weight:700;text-transform:uppercase">Imported / Updated</div><div style="font-size:1.2rem;font-weight:800;color:var(--ok)">${totalImported}</div></div>
+    <div class="kpi-card" style="border-left-color:#d97706;flex:1;min-width:120px"><div style="font-size:.72rem;color:var(--t3);font-weight:700;text-transform:uppercase">Skipped</div><div style="font-size:1.2rem;font-weight:800;color:#d97706">${totalSkipped}</div></div>
+    <div class="kpi-card" style="border-left-color:#dc2626;flex:1;min-width:120px"><div style="font-size:.72rem;color:var(--t3);font-weight:700;text-transform:uppercase">Failed</div><div style="font-size:1.2rem;font-weight:800;color:#dc2626">${totalFailed}</div></div>`;
+
+  const notable = allDetails.filter(d => d.status !== 'imported');
+  document.getElementById('fundImportSummaryDetailBody').innerHTML = notable.length
+    ? notable.map(d => `<tr><td>${d.row}</td><td>${escHtml(d.emis || '—')}</td><td style="color:${badge[d.status] || 'inherit'};font-weight:700;text-transform:capitalize">${d.status}</td><td>${escHtml(d.reason || '')}</td></tr>`).join('')
+    : `<tr><td colspan="4" style="text-align:center;color:var(--t3)">Every row imported cleanly — nothing skipped or failed.</td></tr>`;
+
+  document.getElementById('fundImportSummaryWrap').style.display = 'block';
+  document.getElementById('fundImportPreviewWrap').style.display = 'none';
+  btn.style.display = 'none';
+  showToast(`Import finished — ${totalImported} imported/updated, ${totalSkipped} skipped, ${totalFailed} failed.`, totalFailed === 0);
+
+  // Refresh whatever's currently on screen so a just-imported figure for
+  // the selected school/year shows immediately instead of looking stale.
+  if (fundState.emisCode && fundState.financialYearId) {
+    fundTriggerBackgroundSync(fundType);
+    fundLoadAccount(fundType === 'NSB' ? 'nsb' : 'ftf');
+  }
 }
 
 // ═══════════════════════════ ANNUAL ARCHIVES ═════════════════════════
