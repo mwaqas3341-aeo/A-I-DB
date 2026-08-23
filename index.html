@@ -1262,9 +1262,21 @@
             <span id="fundDriveStatusLabel" style="flex:1;font-weight:600;font-size:.85rem"></span>
             <button id="fundDriveConnectBtn" class="btn btn-add" style="padding:6px 14px;font-size:.82rem"></button>
           </div>
+
+          <div class="section-title" style="margin-top:18px"><i class="bi bi-file-earmark-excel"></i> Bulk NSB Excel Import (Admin only)<div class="title-line"></div></div>
+          <p style="font-size:.78rem;color:var(--t3);margin:-4px 0 10px">Download the template, fill in Q1–Q4 / Other Income / Profit for as many schools and years as needed, then upload. Outsourced schools are automatically skipped — enforced on the server, not just hidden here.</p>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-outline-primary" style="padding:6px 14px;font-size:.82rem" onclick="fundDownloadNsbTemplate()">
+              <i class="bi bi-download"></i> Download NSB Template
+            </button>
+            <button class="btn btn-add" style="padding:6px 14px;font-size:.82rem" onclick="fundOpenImportModal('NSB')">
+              <i class="bi bi-cloud-arrow-up-fill"></i> Upload NSB Excel
+            </button>
+          </div>
         </div>
 
         <div id="fund_nsb_body" style="display:none">
+          <div id="fund_nsb_accountInfo" style="margin-bottom:16px"></div>
           <div id="fund_nsb_summaryCards" style="margin-bottom:20px"></div>
 
           <div class="section-title"><i class="bi bi-pie-chart-fill"></i> Quarterly Income Summary<div class="title-line"></div></div>
@@ -1326,7 +1338,23 @@
 
         <div id="fund_ftf_openingPrompt"></div>
 
+        <!-- Admin-only: Excel template/upload for FTF, same model as the
+             NSB panel above. -->
+        <div id="fundFtfAdminPanel" style="display:none;margin-bottom:24px">
+          <div class="section-title"><i class="bi bi-file-earmark-excel"></i> Bulk FTF Excel Import (Admin only)<div class="title-line"></div></div>
+          <p style="font-size:.78rem;color:var(--t3);margin:-4px 0 10px">Download the template, fill in monthly Income / Expense totals for as many schools and years as needed, then upload. Outsourced schools are automatically skipped — enforced on the server, not just hidden here.</p>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-outline-primary" style="padding:6px 14px;font-size:.82rem" onclick="fundDownloadFtfTemplate()">
+              <i class="bi bi-download"></i> Download FTF Template
+            </button>
+            <button class="btn btn-add" style="padding:6px 14px;font-size:.82rem" onclick="fundOpenImportModal('FTF')">
+              <i class="bi bi-cloud-arrow-up-fill"></i> Upload FTF Excel
+            </button>
+          </div>
+        </div>
+
         <div id="fund_ftf_body" style="display:none">
+          <div id="fund_ftf_accountInfo" style="margin-bottom:16px"></div>
           <div id="fund_ftf_summaryCards" style="margin-bottom:20px"></div>
 
           <div class="section-title"><i class="bi bi-calendar3"></i> Monthly Ledger (July → June)<div class="title-line"></div></div>
@@ -1394,6 +1422,58 @@
           <button type="submit" class="primary-btn" style="flex:1">Save</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ══ FUND: NSB/FTF Excel Template Download + Admin Bulk Upload ══
+       Deliberately its own small modal (not the generic School/HR Import
+       wizard) — the Fund template's columns are fixed and few, so there's
+       no column-mapping step needed. All server-side validation/
+       enforcement (Admin-only, outsourced-school skip, amount checks)
+       happens inside fund_bulk_import_nsb()/fund_bulk_import_ftf() —
+       this UI only parses the file and shows progress/results. -->
+  <div id="fundImportModal" class="modal hr-modal-generic hidden">
+    <div class="modal-content" style="max-width:820px">
+      <button class="close-btn" onclick="fundCloseImportModal()" title="Close">&times;</button>
+      <h3 id="fundImportModalTitle" style="margin-bottom:4px">Bulk Import</h3>
+      <p id="fundImportInstructions" style="font-size:.8rem;color:var(--t3);margin-bottom:14px"></p>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <button class="btn btn-outline-primary" id="fundImportDownloadBtn" type="button">
+          <i class="bi bi-download"></i> Download Excel Template
+        </button>
+        <input type="file" id="fundImportFileInput" accept=".xlsx,.xls,.csv" style="flex:1;min-width:220px">
+      </div>
+
+      <div id="fundImportPreviewWrap" style="display:none;margin-bottom:14px">
+        <div id="fundImportPreviewMeta" style="font-size:.82rem;font-weight:600;margin-bottom:6px"></div>
+        <div id="fundImportPreviewIssues" style="font-size:.78rem;color:#dc2626;margin-bottom:8px"></div>
+        <div style="max-height:220px;overflow:auto;border:1px solid var(--b0);border-radius:8px">
+          <table class="data-table" style="font-size:.76rem">
+            <thead id="fundImportPreviewHead"></thead>
+            <tbody id="fundImportPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="fundImportProgressWrap" style="display:none;margin-bottom:10px;font-size:.85rem;font-weight:600"></div>
+
+      <div id="fundImportSummaryWrap" style="display:none">
+        <div id="fundImportSummaryCards" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
+        <div id="fundImportSummaryDetailWrap" style="max-height:260px;overflow:auto;border:1px solid var(--b0);border-radius:8px">
+          <table class="data-table" style="font-size:.76rem">
+            <thead><tr><th>Row</th><th>EMIS</th><th>Status</th><th>Reason</th></tr></thead>
+            <tbody id="fundImportSummaryDetailBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button type="button" class="btn btn-outline-secondary" style="flex:1" onclick="fundCloseImportModal()">Close</button>
+        <button type="button" class="btn btn-add" id="fundImportRunBtn" style="flex:1;display:none" onclick="fundRunImport()">
+          <i class="bi bi-cloud-arrow-up-fill"></i> Import Now
+        </button>
+      </div>
     </div>
   </div>
 
