@@ -1196,7 +1196,7 @@
           <a class="module-card" href="#fund-archives" data-route="fund-archives" onclick="return topNavLinkClick(event, 'fund-archives')" style="grid-column:1/-1">
             <i class="bi bi-archive-fill mc-icon" style="color:#7c3aed"></i>
             <div class="mc-title">Annual Archives</div>
-            <div class="mc-desc">Consolidated NSB &amp; FTF workbooks — generated automatically once a financial year ends</div>
+            <div class="mc-desc">Consolidated NSB &amp; FTF workbooks — kept automatically in sync with Google Drive after every save</div>
             <div class="mc-arrow" style="color:#7c3aed"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
           </a>
         </div>
@@ -1375,14 +1375,13 @@
         <div class="dash-heading"><i class="bi bi-archive-fill" style="color:#7c3aed"></i> Annual Archives</div>
         <button class="btn-back-kpi" onclick="switchGlobalTab('fundView', null)"><i class="bi bi-arrow-left"></i> Back to FUND Menu</button>
         <p style="color:var(--t3);font-size:.85rem;margin:8px 0 18px">
-          Once a financial year ends, its consolidated workbook is generated automatically overnight and saved to Google Drive — nothing to do here unless you want to check status or regenerate one.
+          Every school-fund update — a bulk Excel import or a single edit — automatically keeps this year's consolidated workbook current in Google Drive. There's nothing to generate or regenerate here; just download the latest version whenever you need it.
         </p>
 
         <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
           <button id="fundArchivesNsbTab" class="ia-tab-btn active" onclick="fundSetArchivesFundType('NSB')">NSB</button>
           <button id="fundArchivesFtfTab" class="ia-tab-btn" onclick="fundSetArchivesFundType('FTF')">FTF</button>
         </div>
-        <span id="fundArchivesGenerateBtn" style="display:none"></span>
 
         <div id="fundArchivesList" style="overflow-x:auto"></div>
       </div>
