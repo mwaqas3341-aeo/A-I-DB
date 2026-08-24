@@ -232,30 +232,35 @@
        other modules) is left untouched.
     ═══════════════════════════════════════════════ */
     #privCategoryCards.kpi-grid,
-    #privRegStatusCards.kpi-grid{
+    #privRegStatusCards.kpi-grid,
+    #privMissingCards.kpi-grid{
       grid-template-columns:repeat(auto-fill,minmax(130px,1fr));
       gap:10px;
       margin-bottom:14px;
     }
     #privCategoryCards .kpi-card,
-    #privRegStatusCards .kpi-card{
+    #privRegStatusCards .kpi-card,
+    #privMissingCards .kpi-card{
       padding:10px 12px;
       border-left-width:3px;
       border-radius:var(--r2, 10px);
     }
     #privCategoryCards .kpi-card .kpi-title,
-    #privRegStatusCards .kpi-card .kpi-title{
+    #privRegStatusCards .kpi-card .kpi-title,
+    #privMissingCards .kpi-card .kpi-title{
       font-size:.66rem;
       letter-spacing:.03em;
       line-height:1.2;
     }
     #privCategoryCards .kpi-card .kpi-value,
-    #privRegStatusCards .kpi-card .kpi-value{
+    #privRegStatusCards .kpi-card .kpi-value,
+    #privMissingCards .kpi-card .kpi-value{
       font-size:1.35rem;
       margin-top:4px;
     }
     #privCategoryCards .kpi-card .kpi-icon,
-    #privRegStatusCards .kpi-card .kpi-icon{
+    #privRegStatusCards .kpi-card .kpi-icon,
+    #privMissingCards .kpi-card .kpi-icon{
       font-size:1.3rem;
       top:8px;
       right:10px;
@@ -263,9 +268,53 @@
     }
     @media(max-width:600px){
       #privCategoryCards.kpi-grid,
-      #privRegStatusCards.kpi-grid{
+      #privRegStatusCards.kpi-grid,
+      #privMissingCards.kpi-grid{
         grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
       }
+    }
+
+    /* ═══════════════════════════════════════════════
+       MISSING / INCOMPLETE DOCUMENTATION CARDS
+       Orange-accented variant of the compact kpi-card,
+       used for "Missing E-License / Building Fitness /
+       Health & Hygiene" in the Private Schools module.
+    ═══════════════════════════════════════════════ */
+    .kpi-card.kpi-card-missing{
+      border-left-color:#ff8c00;
+    }
+    .kpi-card.kpi-card-missing .kpi-value{
+      color:#ff8c00;
+    }
+    .kpi-card.kpi-card-missing .kpi-icon{
+      color:#ff8c00;
+    }
+    .kpi-card.kpi-card-missing.kpi-card-active-filter{
+      outline:2px solid #ff8c00;
+      outline-offset:-2px;
+      background:rgba(255,140,0,.08);
+    }
+
+    /* ═══════════════════════════════════════════════
+       INCOMPLETE-DATA HIGHLIGHTING (data tables)
+       Applied by private_schools.js / public_schools.js when
+       rendering table rows: any blank/not-yet-updated field is
+       highlighted orange, and the whole row is tinted so
+       incomplete records are easy to spot at a glance.
+    ═══════════════════════════════════════════════ */
+    td.cell-missing{
+      background:rgba(255,140,0,.22) !important;
+      box-shadow:inset 0 0 0 1px rgba(255,140,0,.35);
+    }
+    tr.row-incomplete{
+      background:rgba(255,140,0,.07);
+      box-shadow:inset 3px 0 0 0 #ff8c00;
+    }
+    tr.row-incomplete:hover{
+      background:rgba(255,140,0,.13);
+    }
+    tr.row-incomplete td.cell-missing{
+      background:rgba(255,140,0,.32) !important;
     }
 
     .module-card{background:var(--s0);border-radius:var(--r3);padding:22px;box-shadow:var(--sh1);border:1px solid var(--b0);transition:all .2s;cursor:pointer;display:flex;flex-direction:column;gap:8px;border-top:4px solid var(--accent);text-decoration:none;color:inherit;}
