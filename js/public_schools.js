@@ -367,7 +367,20 @@ function applyPubFilters() {
       </tr>`;
     }
 
-    return `<tr>
+    // ── Incomplete-data highlighting: any blank field (other than the
+    // photo/system-ref columns, which already show their own "no
+    // photos" state) marks its cell orange and flags the whole row.
+    let rowIncomplete = false;
+    const cellsHtml = pubHeaders.map(h => {
+      if (PUB_SYSTEM_REF_HEADERS.includes(h)) {
+        return `<td>${certPhotoCellHtml(row[h])}</td>`;
+      }
+      const isEmpty = _pubIsBlank(row[h]);
+      if (isEmpty) rowIncomplete = true;
+      return `<td${isEmpty ? ' class="cell-missing" title="Missing / not yet updated"' : ''}>${escHtml(String(row[h] || ''))}</td>`;
+    }).join('');
+
+    return `<tr${rowIncomplete ? ' class="row-incomplete" title="This school has one or more missing/incomplete fields"' : ''}>
       <td>
         <button class="tbl-btn btn-edit" title="Edit in form" onclick="editPublic('${keyValJs}')">
           <i class="bi bi-pencil-square"></i>
@@ -377,9 +390,7 @@ function applyPubFilters() {
           <i class="bi bi-pencil-square"></i>
         </button>` : ''}
       </td>
-      ${pubHeaders.map(h => PUB_SYSTEM_REF_HEADERS.includes(h)
-        ? `<td>${certPhotoCellHtml(row[h])}</td>`
-        : `<td>${escHtml(String(row[h] || ''))}</td>`).join('')}
+      ${cellsHtml}
     </tr>`;
   }).join('');
 
@@ -477,6 +488,12 @@ function _pubSafeIdPart(v) {
 
 function _pubJsEsc(v) {
   return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// Treats null/undefined/whitespace-only as "blank" — used to flag
+// missing/not-yet-updated values in the table (orange highlighting).
+function _pubIsBlank(v) {
+  return v === null || v === undefined || String(v).trim() === '';
 }
 
 function savePubRowEdit(keyVal) {

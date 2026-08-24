@@ -122,6 +122,7 @@ function openPrivateModule(sheetName) {
     privHeaders      = [];
     privFilteredCache = [];
     privSchoolHierarchy = [];
+    privActiveMissingFilter = ''; // clear any "Missing ..." card filter from a previous view
 
     document.getElementById('privCurrentSheet').textContent = sheetName;
     document.getElementById('privRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
@@ -191,6 +192,7 @@ function openPrivateModule(sheetName) {
               populatePrivSchoolCategoryFilter();
               renderPrivCategoryCards();
               renderPrivRegStatusCards();
+              renderPrivMissingCards();
             });
 
             // Show "apply filter" prompt — do NOT render rows yet
@@ -381,6 +383,59 @@ function selectPrivRegStatusCard(status) {
   applyPrivFilters();
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  MISSING / INCOMPLETE DOCUMENTATION CARDS
+//  One card each for: Missing E-License, Missing Building Fitness,
+//  Missing Health & Hygiene. A school counts as "missing" for a card
+//  if EITHER its certificate picture OR its certificate expiry date is
+//  blank — i.e. it also catches schools missing just the date.
+//  Clicking a card filters the table to those schools; clicking the
+//  same card again clears the filter. Works exactly like the Category
+//  / Registration Status cards above.
+// ══════════════════════════════════════════════════════════════════════
+let privActiveMissingFilter = ''; // '' | 'elicense' | 'fitness' | 'health'
+
+const PRIV_MISSING_DEFS = {
+  elicense: { label: 'Missing E-License',         icon: 'bi-file-earmark-lock2-fill',    pic: 'E-License Pictures',                       date: 'Date of Expiry of Registeration' },
+  fitness:  { label: 'Missing Building Fitness',  icon: 'bi-building-fill-exclamation',  pic: 'Building Fitness Certificate Pictures',    date: 'Building Certificate Expirey' },
+  health:   { label: 'Missing Health & Hygiene',  icon: 'bi-heart-pulse-fill',           pic: 'Health & Hygiene Certificate Pictures',    date: 'Health and hygiene Certificate Expirey' },
+};
+
+function _privIsBlank(v) {
+  return v === null || v === undefined || String(v).trim() === '';
+}
+
+function _privRowMissing(row, defKey) {
+  const def = PRIV_MISSING_DEFS[defKey];
+  return _privIsBlank(row[def.pic]) || _privIsBlank(row[def.date]);
+}
+
+// See renderPrivCategoryCards() above for the `dataset` contract.
+function renderPrivMissingCards(dataset) {
+  const grid = document.getElementById('privMissingCards');
+  if (!grid) return;
+  const rows = dataset || privData;
+
+  grid.innerHTML = Object.keys(PRIV_MISSING_DEFS).map(key => {
+    const def = PRIV_MISSING_DEFS[key];
+    const count = rows.filter(r => _privRowMissing(r, key)).length;
+    const active = privActiveMissingFilter === key;
+    return `
+      <div class="kpi-card kpi-card-missing${active ? ' kpi-card-active-filter' : ''}"
+           style="cursor:pointer" onclick="selectPrivMissingCard('${key}')"
+           title="Missing certificate picture and/or expiry date — click to ${active ? 'clear this filter' : 'filter the table'}">
+        <div class="kpi-title">${_privEsc(def.label)}${active ? ' <i class="bi bi-funnel-fill" style="font-size:.7em;margin-left:4px"></i>' : ''}</div>
+        <div class="kpi-value">${count}</div>
+        <i class="bi ${def.icon} kpi-icon"></i>
+      </div>`;
+  }).join('');
+}
+
+function selectPrivMissingCard(key) {
+  privActiveMissingFilter = (privActiveMissingFilter === key) ? '' : key;
+  applyPrivFilters();
+}
+
 // Escape a value for safe embedding inside a single-quoted JS string
 // literal in generated onclick="" HTML attributes.
 function _privJsEsc(v) {
@@ -452,6 +507,18 @@ function applyPrivFilters() {
   if (cat && privFHeaders.category)  fData = fData.filter(r => r[privFHeaders.category]  === cat);
   if (q) fData = fData.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q)));
 
+  // Missing-documentation card counts are based on the filters above
+  // (district/status/search/etc.) but BEFORE the "Missing ..." card's
+  // own filter narrows the table — so the cards keep showing how many
+  // schools are missing each certificate within the current view,
+  // rather than collapsing to their own count once clicked.
+  const fDataForMissingCounts = fData;
+
+  // Apply the active "Missing ..." card filter (if any) to the table itself
+  if (privActiveMissingFilter) {
+    fData = fData.filter(r => _privRowMissing(r, privActiveMissingFilter));
+  }
+
   // ★ NEW: Sort filtered results by School Name (A → Z) alphabetically
   if (privFHeaders.name) {
     fData.sort((a, b) => {
@@ -469,6 +536,7 @@ function applyPrivFilters() {
   // query — so table rows and card counts can never disagree.
   renderPrivCategoryCards(fData);
   renderPrivRegStatusCards(fData);
+  renderPrivMissingCards(fDataForMissingCounts);
 
   // Pagination
   const totalRecords = fData.length;
@@ -519,7 +587,20 @@ function renderPrivateTable(dataArr, totalRecords) {
       </tr>`;
     }
 
-    return `<tr>
+    // ── Incomplete-data highlighting: any blank field (other than the
+    // photo/system-ref columns, which already show their own "no
+    // photos" state) marks its cell orange and flags the whole row.
+    let rowIncomplete = false;
+    const cellsHtml = privHeaders.map(h => {
+      if (PRIV_SYSTEM_REF_HEADERS.includes(h)) {
+        return `<td>${certPhotoCellHtml(row[h])}</td>`;
+      }
+      const isEmpty = _privIsBlank(row[h]);
+      if (isEmpty) rowIncomplete = true;
+      return `<td${isEmpty ? ' class="cell-missing" title="Missing / not yet updated"' : ''}>${_privEsc(String(row[h] || ''))}</td>`;
+    }).join('');
+
+    return `<tr${rowIncomplete ? ' class="row-incomplete" title="This school has one or more missing/incomplete fields"' : ''}>
       <td>
         <button class="tbl-btn btn-edit" title="Edit in form" onclick="editPrivate('${keyValJs}')">
           <i class="bi bi-pencil"></i>
@@ -529,9 +610,7 @@ function renderPrivateTable(dataArr, totalRecords) {
           <i class="bi bi-pencil-square"></i>
         </button>` : ''}
       </td>
-      ${privHeaders.map(h => PRIV_SYSTEM_REF_HEADERS.includes(h)
-        ? `<td>${certPhotoCellHtml(row[h])}</td>`
-        : `<td>${_privEsc(String(row[h] || ''))}</td>`).join('')}
+      ${cellsHtml}
     </tr>`;
   }).join('');
 
