@@ -168,7 +168,12 @@ function openPrivateModule(sheetName) {
               return;
             }
             privHeaders   = res.headers;
-            privData      = res.data;
+            // Defensive de-dupe: guards against the same school ever
+            // appearing twice in the loaded rows (e.g. a stale/duplicate
+            // sheet row), which would otherwise silently inflate every
+            // count on this page (Total, category/status cards, and the
+            // Missing-documentation cards) past the real number of schools.
+            privData      = _privDedupeRows(res.data || []);
             privDataLoaded = true;
 
             setupPrivFilterHeaders();
@@ -405,8 +410,34 @@ function _privIsBlank(v) {
   return v === null || v === undefined || String(v).trim() === '';
 }
 
+// Keeps the first row seen for each 'Unique ID' (or, if that's blank,
+// each exact JSON snapshot of the row) and drops the rest. See the call
+// site in openPrivateModule() for why this exists.
+function _privDedupeRows(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const r of rows) {
+    const key = !_privIsBlank(r['Unique ID']) ? String(r['Unique ID']) : JSON.stringify(r);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
 function _privRowMissing(row, defKey) {
   const def = PRIV_MISSING_DEFS[defKey];
+
+  // "Missing E-License" only makes sense for schools that are actually
+  // on the licensing track — a Non Registered school is SUPPOSED to
+  // have a blank picture and blank expiry date, so that's not a data
+  // gap and shouldn't be flagged (this was the main source of the
+  // inflated counts).
+  if (defKey === 'elicense') {
+    const status = String(row['Registeration Status'] || '').trim();
+    if (!status || status === 'Non Registered') return false;
+  }
+
   return _privIsBlank(row[def.pic]) || _privIsBlank(row[def.date]);
 }
 
