@@ -1126,8 +1126,19 @@ if (typeof ROUTES === 'object') {
 // (EMIS/name/FY) plus opening/income/expenses/closing totals, computed
 // from the actual records already loaded for this account (no change to
 // the underlying calculations, just how they're presented).
+//
+// Opening Balance always gets an edit pencil here (for every financial
+// year, not just the year the ledger was first created) when the user
+// can edit — NSB already had a second edit entry point further down in
+// its own quarterly table, but FTF had NONE anywhere: once a wrong
+// opening balance was entered for an FTF year there was no way to fix
+// it in the UI, which throws off every later year's running balance
+// (each year's opening = prior year's closing). fundEditOpeningBalance()
+// already supports both fund types and already re-syncs the Drive
+// archive afterward — it just needed a button wired to it here.
 function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
   const finalLabel = prefix === 'ftf' ? 'Total Remaining' : 'Closing Balance';
+  const canEditOpening = fundCanEdit();
   return `
     <div class="fund-ys-head">
       <div class="fys-item"><span class="fys-label">EMIS Code</span><span class="fys-value">${escHtml(fundState.emisCode || '')}</span></div>
@@ -1137,7 +1148,10 @@ function fundSummaryCardsHtml(opening, income, expenses, closing, prefix) {
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
       <div class="kpi-card" style="border-left-color:#64748b">
         <div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Opening Balance</div>
-        <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${fundMoney(opening)}</div>
+        <div style="font-size:1.3rem;font-weight:800;margin-top:4px;display:flex;align-items:center;gap:8px">
+          <span>${fundMoney(opening)}</span>
+          ${canEditOpening ? `<button class="btn-edit" style="padding:1px 8px;font-size:.7rem" onclick="fundEditOpeningBalance('${prefix}', ${Number(opening) || 0})" title="Correct opening balance for this year"><i class="bi bi-pencil"></i></button>` : ''}
+        </div>
       </div>
       <div class="kpi-card" style="border-left-color:var(--ok)"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Income</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:var(--ok)">${fundMoney(income)}</div></div>
       <div class="kpi-card" style="border-left-color:#dc2626"><div style="font-size:.75rem;color:var(--t3);font-weight:700;text-transform:uppercase">Total Expenses</div><div style="font-size:1.3rem;font-weight:800;margin-top:4px;color:#dc2626">${fundMoney(expenses)}</div></div>
