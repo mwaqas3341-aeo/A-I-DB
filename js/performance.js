@@ -640,6 +640,7 @@ function perfSetStatus(month, status) {
   if (!cfg) return;
   cfg.status = status;
   cfg.achieved = {};
+  perfEnforceDeductionMinimum(month, cfg);
   perfRenderConfigPanels();
 }
 
@@ -649,6 +650,14 @@ function perfUpdateAchieved(month, idx, value) {
   const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
   const row = rows[idx];
   cfg.achieved[idx] = row.kind === "percent" ? (value === "" ? "" : Number(value)) : Boolean(value);
+  // The AEO is free to choose which indicator(s) reflect a bill deduction —
+  // nothing is permanently locked. But if their choice leaves fewer
+  // Not-Achieved indicators than the bill's recorded deduction requires
+  // (e.g. they just tried to mark everything Achieved), the system
+  // auto-defaults a *different* eligible indicator back to Not Achieved
+  // so the deduction can never silently disappear. idx is excluded from
+  // that auto-pick so the row they just touched keeps their choice.
+  perfEnforceDeductionMinimum(month, cfg, idx);
   perfRenderConfigPanels();
 }
 
@@ -657,6 +666,105 @@ function perfUpdateAchieved(month, idx, value) {
 // default) stays the ceiling; achieved indicators simply keep whatever
 // isn't deducted — they are not apportioned a fixed per-row share.
 const PERFCLOSED_DEDUCTION = 1000;
+
+// ─── Bill-deduction minimum enforcement ────────────────────────────────
+// A month's real Inspection Allowance bill deduction (from
+// inspection_allowance_deductions — the single source of truth, joined
+// in live via getMy/getAeoInspectionAllowanceMonths into perfState.months)
+// must always be reflected in this month's certificate as Not-Achieved
+// indicator(s). The AEO/TR/Admin preparing it is free to choose WHICH
+// indicator(s) — nothing is permanently locked — but the count of
+// Not-Achieved indicators (excluding index 0, "AEO/Aeo Visits", and any
+// "fixed" row that can never be marked Not Achieved) can never drop below
+// what the bill deduction requires. Recomputed fresh from perfState.months
+// every time — never persisted — so a later bill edit/removal is always
+// picked up next time Prepare Performance is opened.
+
+function perfHashSeed(str) {
+  let h = 0x811c9dc5; // FNV-1a
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function perfMulberry32(seed) {
+  let a = seed;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Rows eligible to represent a bill deduction: everything except index 0
+// (Schools Visits / "AEO Visits" — never touched, per spec) and any
+// "fixed" row (perfIsCredited() always returns true for these regardless
+// of stored value, so forcing one Not Achieved would silently do nothing).
+function perfEligibleDeductionIndices(rows) {
+  return rows.map((_, i) => i).filter((i) => i !== 0 && rows[i].kind !== "fixed");
+}
+
+// Stable per (user, year, month) priority order used only to pick WHICH
+// eligible row gets auto-defaulted to Not Achieved when the AEO's own
+// choices fall short — not a permanent lock, just a deterministic
+// "next one to flip" order so repeated opens don't jump around randomly.
+function perfDeductionPriorityOrder(month, eligible) {
+  const seedKey = `${iaState?.profile?.personal_no || iaState?.profile?.id || perfState.aeoTargetId || ""}|${document.getElementById("perf_year")?.value || ""}|${month}`;
+  const rand = perfMulberry32(perfHashSeed(seedKey));
+  const shuffled = eligible.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+// Returns the bill-deduction requirement info for a month without
+// mutating anything: { billDeduction, required, current, eligible,
+// mismatch, insufficient }.
+//   mismatch    = billDeduction isn't a clean multiple of Rs.1,000, so it
+//                 can't be fully represented by whole indicator rows.
+//   insufficient = required count exceeds how many eligible rows exist.
+function perfDeductionStatus(month, cfg) {
+  const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
+  const eligible = perfEligibleDeductionIndices(rows);
+  const monthMeta = (perfState.months || []).find((m) => m.month === month);
+  const billDeduction = Math.max(0, Number(monthMeta?.deduction) || 0);
+  const required = Math.min(eligible.length, Math.floor(billDeduction / PERFCLOSED_DEDUCTION));
+  const current = eligible.reduce((cnt, i) => cnt + (perfIsCredited(rows[i], cfg.achieved[i]) ? 0 : 1), 0);
+  return {
+    billDeduction,
+    required,
+    current,
+    eligible,
+    mismatch: billDeduction % PERFCLOSED_DEDUCTION !== 0,
+    insufficient: Math.floor(billDeduction / PERFCLOSED_DEDUCTION) > eligible.length,
+  };
+}
+
+// Mutates cfg.achieved so at least `required` eligible rows are
+// Not Achieved. `keepIdx`, if given, is the row the AEO just interacted
+// with — it's never chosen as the auto-fill target, so their explicit
+// choice is always respected.
+function perfEnforceDeductionMinimum(month, cfg, keepIdx) {
+  if (!cfg || !cfg.status) return;
+  const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
+  const status = perfDeductionStatus(month, cfg);
+  if (status.current >= status.required) return;
+
+  let need = status.required - status.current;
+  const order = perfDeductionPriorityOrder(month, status.eligible);
+  for (const idx of order) {
+    if (need <= 0) break;
+    if (idx === keepIdx) continue;
+    if (!perfIsCredited(rows[idx], cfg.achieved[idx])) continue; // already Not Achieved
+    cfg.achieved[idx] = rows[idx].kind === "percent" ? 0 : false;
+    need--;
+  }
+}
 
 function perfComputeMonthTotal(month) {
   const cfg = perfState.config[month];
@@ -726,8 +834,19 @@ function perfRenderConfigPanels() {
            </div>
          </div>`;
 
+    const dstatus = answered ? perfDeductionStatus(month, cfg) : null;
+    const deductionBlock = (dstatus && dstatus.billDeduction > 0)
+      ? (dstatus.mismatch || dstatus.insufficient
+          ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:8px 12px;font-size:.76rem;font-weight:600;margin-bottom:10px">
+               ⚠ This month has a Rs.${dstatus.billDeduction.toLocaleString()} bill deduction on file that can't be fully represented by whole indicators (each indicator = Rs.${PERFCLOSED_DEDUCTION.toLocaleString()}). Resolve manually before downloading — currently only Rs.${(dstatus.required * PERFCLOSED_DEDUCTION).toLocaleString()} is reflected.
+             </div>`
+          : `<div style="background:#f0fdfa;border:1px solid #99f6e4;color:#0f766e;border-radius:8px;padding:8px 12px;font-size:.76rem;font-weight:600;margin-bottom:10px">
+               ℹ Bill deduction on file: Rs.${dstatus.billDeduction.toLocaleString()} — ${dstatus.current} of ${dstatus.required} required Not-Achieved indicator(s) currently marked (any indicator except "AEO Visits" — your choice).
+             </div>`)
+      : "";
+
     const bodyBlock = answered
-      ? `${perfConfigTableHtml(month, cfg)}
+      ? `${deductionBlock}${perfConfigTableHtml(month, cfg)}
          <div style="text-align:right;margin-top:8px;padding-top:8px;border-top:1px dashed var(--b0);font-weight:700;font-size:.88rem">
            Month Total: <span style="color:#0d9488" id="perfMonthTotal_${month}">PKR ${total.toLocaleString()}</span>
          </div>`
@@ -747,7 +866,13 @@ function perfRenderConfigPanels() {
   }).join("");
 
   const allAnswered = months.every((m) => !!perfState.config[m]?.status);
-  document.getElementById("perf_downloadBtn").disabled = months.length < PERFMINMONTHS || !allAnswered;
+  const hasUnresolvedDeduction = months.some((m) => {
+    const c = perfState.config[m];
+    if (!c || !c.status) return false;
+    const d = perfDeductionStatus(m, c);
+    return d.mismatch || d.insufficient;
+  });
+  document.getElementById("perf_downloadBtn").disabled = months.length < PERFMINMONTHS || !allAnswered || hasUnresolvedDeduction;
   perfUpdateGrandTotal();
 }
 
