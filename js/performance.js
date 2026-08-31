@@ -173,7 +173,11 @@ function perfRowDisplayCells(row, storedVal, credited) {
   if (row.kind === "percent") {
     const val = (storedVal === undefined || storedVal === "") ? row.targetPct : storedVal;
     return {
-      achCell: credited ? val : "Not Achieved",
+      // The "Target Achieved by AEO" column must always show the actual
+      // percentage the AEO entered (even when it's below target) — it is
+      // NOT a status field. "Achieved"/"Not Achieved" status belongs only
+      // in the separate Remarks column below, which is unaffected.
+      achCell: val,
       rmkCell: credited ? "Achieved" : "Not Achieved",
     };
   }
@@ -801,6 +805,21 @@ function perfRenderConfigPanels() {
   const wrap = document.getElementById("perfConfigPanels");
   const months = [...perfState.selected].sort((a, b) => a - b);
 
+  // Preserve focus/caret/scroll across the innerHTML rebuild below. This
+  // function runs on every keystroke in a percent indicator input (via
+  // perfUpdateAchieved -> oninput). Rebuilding the DOM tears down the
+  // input the AEO is actively typing in, which drops focus, dismisses
+  // the mobile keyboard, and lets the viewport snap to wherever the page
+  // re-settles (often the bill-deduction warning banner above) — this is
+  // the "screen jumps to indicator column check" bug. Restoring focus,
+  // caret position, and scroll position after the rebuild fixes it
+  // without needing to change how/when the panel re-renders.
+  const active = document.activeElement;
+  const activeCell = (active && wrap.contains(active)) ? active.getAttribute("data-perf-cell") : null;
+  const activeSelStart = activeCell ? active.selectionStart : null;
+  const activeSelEnd = activeCell ? active.selectionEnd : null;
+  const scrollY = window.scrollY;
+
   if (!months.length) {
     wrap.innerHTML = `<div style="padding:16px;text-align:center;color:var(--t3);font-size:.85rem">Select at least ${PERFMINMONTHS} prepared month above to begin.</div>`;
     document.getElementById("perf_downloadBtn").disabled = true;
@@ -874,6 +893,17 @@ function perfRenderConfigPanels() {
   });
   document.getElementById("perf_downloadBtn").disabled = months.length < PERFMINMONTHS || !allAnswered || hasUnresolvedDeduction;
   perfUpdateGrandTotal();
+
+  if (activeCell) {
+    const el = wrap.querySelector(`[data-perf-cell="${activeCell}"]`);
+    if (el) {
+      el.focus({ preventScroll: true });
+      if (typeof el.setSelectionRange === "function" && activeSelStart != null) {
+        try { el.setSelectionRange(activeSelStart, activeSelEnd); } catch (e) { /* ignore */ }
+      }
+    }
+  }
+  window.scrollTo(0, scrollY);
 }
 
 function perfConfigTableHtml(month, cfg) {
@@ -914,7 +944,7 @@ function perfIndicatorRowHtml(month, row, idx, cfg, isOpen, rowsList) {
     achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
   } else if (row.kind === "percent") {
     const val = (stored === undefined || stored === "") ? "" : stored;
-    achievedCell = `<input type="number" min="0" max="100" value="${val}" placeholder="${row.targetPct}" style="width:56px;height:26px;border:1px solid var(--b0);border-radius:5px;padding:0 5px;font-size:.72rem"
+    achievedCell = `<input type="number" min="0" max="100" value="${val}" placeholder="${row.targetPct}" data-perf-cell="${month}-${idx}" style="width:56px;height:26px;border:1px solid var(--b0);border-radius:5px;padding:0 5px;font-size:.72rem"
       oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
   } else {
     const val = stored ?? true;
@@ -948,6 +978,15 @@ async function perfDownloadCertificate() {
   const months = [...perfState.selected].sort((a, b) => a - b);
   if (months.length < PERFMINMONTHS) { showToast(`Select at least ${PERFMINMONTHS} prepared month.`, false); return; }
 
+  // If a bulk performance run (aeoBillDownloadAllPerformances, in
+  // inspection-allowance.js) is in progress, this same button doubles as
+  // "Download & Next AEO": the certificate goes into the shared ZIP
+  // instead of downloading on its own, and the queue auto-advances.
+  // Every check above (months selected, deduction minimum via the
+  // disabled state already set by perfRenderConfigPanels) still applies
+  // exactly as it does for a normal single-AEO download.
+  const queueActive = typeof aeoBillPerfQueue !== "undefined" && aeoBillPerfQueue.active;
+
   const btn = document.getElementById("perf_downloadBtn");
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating…';
@@ -961,12 +1000,24 @@ async function perfDownloadCertificate() {
     });
     const pdfBytes = await perfBuildCertificatePdfBytes(pages);
     const label = months.map((m) => IA_MONTH_NAMES[m - 1]).join("-");
-    iaDownloadPdf(pdfBytes, `Performance_Certificate_${iaState.profile.personal_no}_${label}_${year}.pdf`);
-    showToast("Certificate downloaded.", true);
+    const filename = `Performance_Certificate_${iaState.profile.personal_no}_${label}_${year}.pdf`;
+
+    if (queueActive) {
+      aeoBillPerfQueue.zip.file(filename, pdfBytes);
+      showToast(`Added ${iaState.profile.name || iaState.profile.personal_no}'s certificate to the ZIP.`, true);
+      aeoBillPerfQueue.index++;
+      await aeoBillPerfQueueLoadCurrent();
+    } else {
+      iaDownloadPdf(pdfBytes, filename);
+      showToast("Certificate downloaded.", true);
+    }
   } catch (err) {
     showToast("Error generating certificate: " + err.message, false);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
+    const stillQueued = typeof aeoBillPerfQueue !== "undefined" && aeoBillPerfQueue.active;
+    btn.innerHTML = stillQueued
+      ? '<i class="bi bi-file-earmark-pdf-fill"></i> Download &amp; Next AEO'
+      : '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
   }
 }

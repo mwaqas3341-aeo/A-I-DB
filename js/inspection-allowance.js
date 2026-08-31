@@ -379,7 +379,7 @@ async function iaGenerateIndividualBill() {
 }
 
 // ─── Shared PDF build+download (used by both modes) ─────────────────
-async function iaBuildAndDownloadBill(claims) {
+async function iaBuildAndDownloadBill(claims, download = true) {
   claims = claims.slice().sort((a, b) => (a.year - b.year) || (a.month - b.month));
   const bill = { user: iaState.profile, claims };
   bill.fields = iaResolveBillFields(bill); // resolve once, reuse across all 3 pages
@@ -393,8 +393,12 @@ async function iaBuildAndDownloadBill(claims) {
 
   const label = claims.map(c => `${IA_MONTH_NAMES[c.month - 1]}-${c.year}`).join('_');
   const filename = `Inspection_Allowance_Bill_${iaState.profile.personal_no || 'AEO'}_${label}.pdf`;
-  iaDownloadPdf(pdfBytes, filename);
-  return filename;
+  // download=false lets bulk callers (aeoBillDownloadAllBills) collect the
+  // bytes into a shared ZIP instead of triggering a separate browser
+  // download per bill — existing single-bill callers are unaffected since
+  // they don't pass this argument and keep downloading immediately.
+  if (download) iaDownloadPdf(pdfBytes, filename);
+  return { bytes: pdfBytes, filename };
 }
 
 // Bill generation and Performance Preparation must always stay in sync —
@@ -1324,6 +1328,214 @@ async function aeoBillDownloadCumulative() {
     btn.disabled = false;
     btn.innerHTML = original;
   }
+}
+
+// ─── Bulk download: every listed AEO's pending bill(s), zipped ───────
+// Only AEOs currently shown in the list (i.e. matching the search box,
+// same as aeoBillRenderList) are included. An AEO with more pending
+// months than a single Cumulative bill allows (IA_MAX_SELECTED) gets
+// more than one PDF — chunked the same way the existing Cumulative
+// button already caps a manual selection — so nothing is silently
+// dropped. All PDFs are collected into one ZIP and offered as a single
+// download at the end, instead of firing off separate downloads.
+async function aeoBillDownloadAllBills() {
+  const kw = (document.getElementById('aeobill_search').value || '').trim().toLowerCase();
+  const targets = aeoBillState.aeos.filter(a =>
+    !kw || (a.name || '').toLowerCase().includes(kw) || (a.personal_no || '').toLowerCase().includes(kw)
+  );
+  if (!targets.length) { showToast('No AEOs to download bills for.', false); return; }
+  if (typeof JSZip === 'undefined') { showToast('ZIP library failed to load — check your connection and reload.', false); return; }
+
+  const btn = document.getElementById('aeobill_downloadAllBillsBtn');
+  if (!btn) return;
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  const savedProfile = iaState.profile;
+  const zip = new JSZip();
+  let filesDone = 0, aeosSkipped = 0, aeosFailed = 0;
+
+  try {
+    for (let i = 0; i < targets.length; i++) {
+      const aeo = targets[i];
+      btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Bills ${i + 1}/${targets.length}…`;
+      try {
+        const [profileRes, monthsRes] = await Promise.all([
+          apiCall('getAeoProfileForBill', { userId: aeo.id }),
+          apiCall('getAeoPendingCollectiveBill', { userId: aeo.id }),
+        ]);
+        if (!profileRes || !profileRes.success) { aeosFailed++; continue; }
+        const months = (monthsRes && monthsRes.success) ? (monthsRes.months || []) : [];
+        if (!months.length) { aeosSkipped++; continue; }
+
+        iaState.profile = profileRes;
+        for (let c = 0; c < months.length; c += IA_MAX_SELECTED) {
+          const chunk = months.slice(c, c + IA_MAX_SELECTED);
+          const claims = chunk.map(m => ({
+            month: m.month, year: m.year,
+            allowance_rate: Number(m.allowance_rate) || iaState.rate,
+            deduction: Number(m.deduction) || 0, due: Number(m.due) || 0, _rowId: m.id,
+          }));
+          const { bytes, filename } = await iaBuildAndDownloadBill(claims, false);
+          zip.file(filename, bytes);
+          const ids = claims.map(cl => cl._rowId).filter(Boolean);
+          if (ids.length) await apiCall('markInspectionAllowanceDownloadedAs', { ids, userId: aeo.id });
+          filesDone++;
+        }
+      } catch (err) {
+        aeosFailed++;
+      }
+    }
+
+    if (filesDone) {
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `Inspection_Allowance_Bills_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+
+    const parts = [filesDone ? `${filesDone} bill PDF(s) zipped and downloaded.` : 'Nothing to download.'];
+    if (aeosSkipped) parts.push(`${aeosSkipped} AEO(s) had nothing pending.`);
+    if (aeosFailed) parts.push(`${aeosFailed} AEO(s) failed.`);
+    showToast(parts.join(' '), aeosFailed === 0);
+  } finally {
+    iaState.profile = savedProfile;
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+// ─── Bulk performance queue: step-through, zipped at the end ─────────
+// Performance certificates need per-indicator KPI entry (percentages /
+// Achieved checkboxes) that is NEVER persisted anywhere — perfState.config
+// lives in memory only, for whichever single AEO is currently open, and
+// is discarded once its certificate is downloaded. There is no stored
+// data to bulk-export from, so this queues every listed AEO and steps
+// through them one at a time: each AEO's pending months are auto-loaded
+// into the normal Performance tab (same preselection + bill-deduction
+// minimum enforcement used when jumping here from a bill download), the
+// admin/TR fills in KPIs and clicks Download exactly as usual, and that
+// certificate is added to a shared ZIP instead of downloading on its
+// own. The queue then auto-advances to the next AEO. The ZIP downloads
+// once after the last AEO is done (or skipped).
+let aeoBillPerfQueue = {
+  active: false,
+  targets: [],
+  index: 0,
+  zip: null,
+  skipped: [],
+};
+
+async function aeoBillDownloadAllPerformances() {
+  const kw = (document.getElementById('aeobill_search').value || '').trim().toLowerCase();
+  const targets = aeoBillState.aeos.filter(a =>
+    !kw || (a.name || '').toLowerCase().includes(kw) || (a.personal_no || '').toLowerCase().includes(kw)
+  );
+  if (!targets.length) { showToast('No AEOs to prepare performances for.', false); return; }
+  if (typeof JSZip === 'undefined') { showToast('ZIP library failed to load — check your connection and reload.', false); return; }
+
+  aeoBillPerfQueue = { active: true, targets: targets.slice(), index: 0, zip: new JSZip(), skipped: [] };
+  await aeoBillPerfQueueLoadCurrent();
+}
+
+async function aeoBillPerfQueueLoadCurrent() {
+  const q = aeoBillPerfQueue;
+  if (!q.active) return;
+  if (q.index >= q.targets.length) { await aeoBillPerfQueueFinish(); return; }
+
+  const aeo = q.targets[q.index];
+  showLoading?.();
+  const [profileRes, monthsRes] = await Promise.all([
+    apiCall('getAeoProfileForBill', { userId: aeo.id }),
+    apiCall('getAeoPendingCollectiveBill', { userId: aeo.id }),
+  ]);
+  hideLoading?.();
+
+  // Nothing to prepare for this AEO (profile failed, or no prepared
+  // months at all) — same "deduction not applicable" situation as
+  // opening their bill modal and finding it empty. Skip and move on.
+  const months = (monthsRes && monthsRes.success) ? (monthsRes.months || []) : [];
+  if (!profileRes || !profileRes.success || !months.length) {
+    q.skipped.push(aeo.name || aeo.personal_no || aeo.id);
+    q.index++;
+    return aeoBillPerfQueueLoadCurrent();
+  }
+
+  iaState.profile = profileRes;
+  perfState.aeoTargetId = aeo.id;
+  iaSwitchTab('performance', { skipInit: true });
+  // perfInitWithPreselected pre-checks these exact months AND still runs
+  // perfEnforceDeductionMinimum / the mismatch-insufficient warning per
+  // month — the same bill-deduction check that gates the Download button
+  // in the normal single-AEO flow is not bypassed here.
+  const monthYearPairs = months.map(m => ({ year: m.year, month: m.month }));
+  await perfInitWithPreselected(monthYearPairs);
+  aeoBillPerfQueueRenderBanner();
+}
+
+function aeoBillPerfQueueRenderBanner() {
+  const q = aeoBillPerfQueue;
+  const el = document.getElementById('perf_queueBanner');
+  const btn = document.getElementById('perf_downloadBtn');
+  if (!q.active) {
+    if (el) el.classList.add('hidden');
+    return;
+  }
+  const aeo = q.targets[q.index];
+  if (el) {
+    el.classList.remove('hidden');
+    el.innerHTML = `
+      <i class="bi bi-collection-fill"></i> Bulk run: AEO ${q.index + 1} of ${q.targets.length} —
+      <b>${aeo.name || aeo.personal_no || ''}</b>. Fill in the KPIs above, then click Download to add
+      this certificate to the ZIP and move to the next AEO.
+      <button type="button" class="hr-btn-ghost" style="margin-left:10px;padding:3px 10px;font-size:.74rem" onclick="aeoBillPerfQueueSkip()">Skip this AEO</button>
+      <button type="button" class="hr-btn-ghost" style="margin-left:6px;padding:3px 10px;font-size:.74rem" onclick="aeoBillPerfQueueCancel()">Cancel bulk run</button>
+    `;
+  }
+  if (btn) btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download &amp; Next AEO';
+}
+
+function aeoBillPerfQueueSkip() {
+  const q = aeoBillPerfQueue;
+  if (!q.active) return;
+  const aeo = q.targets[q.index];
+  q.skipped.push((aeo && (aeo.name || aeo.personal_no)) || 'AEO');
+  q.index++;
+  aeoBillPerfQueueLoadCurrent();
+}
+
+function aeoBillPerfQueueCancel() {
+  const q = aeoBillPerfQueue;
+  const hadFiles = q.zip && Object.keys(q.zip.files || {}).length > 0;
+  q.active = false;
+  const el = document.getElementById('perf_queueBanner');
+  if (el) el.classList.add('hidden');
+  const btn = document.getElementById('perf_downloadBtn');
+  if (btn) btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
+  showToast(`Bulk run cancelled.${hadFiles ? ' Certificates collected so far were discarded.' : ''}`, false);
+}
+
+async function aeoBillPerfQueueFinish() {
+  const q = aeoBillPerfQueue;
+  q.active = false;
+  const el = document.getElementById('perf_queueBanner');
+  if (el) el.classList.add('hidden');
+  const btn = document.getElementById('perf_downloadBtn');
+  if (btn) btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
+
+  const fileCount = q.zip ? Object.keys(q.zip.files).length : 0;
+  if (fileCount) {
+    const blob = await q.zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Performance_Certificates_${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  const parts = [fileCount ? `${fileCount} certificate(s) zipped and downloaded.` : 'Nothing to download.'];
+  if (q.skipped.length) parts.push(`Skipped: ${q.skipped.join(', ')}.`);
+  showToast(`Bulk run complete — ${parts.join(' ')}`, fileCount > 0);
 }
 
 function aeoBillCloseModal() {
