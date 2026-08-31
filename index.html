@@ -40,6 +40,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <base target="_blank">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/portal-polish.css">
@@ -501,6 +502,7 @@
         <!-- ══ PERFORMANCE CERTIFICATE TAB ══ -->
         <div id="iaPerformanceTab" style="display:none;max-width:960px;width:100%;margin:0 auto">
           <div id="perf_aeoTargetBanner" class="hidden" style="background:#fef3c7;border:1px solid #fcd34d;border-radius:var(--r2);padding:10px 16px;margin-bottom:12px;font-size:.85rem;color:#92400e;font-weight:700"></div>
+          <div id="perf_queueBanner" class="hidden" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:var(--r2);padding:10px 16px;margin-bottom:12px;font-size:.82rem;color:#3730a3;line-height:1.6"></div>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:var(--r2);padding:12px 16px;margin-bottom:16px;font-size:.8rem;color:#475569;line-height:1.7">
             <strong>AEO Monthly Performance Certificate</strong> — pick 1 to 4 prepared months. For each month choose the school status (Open/Closed) and fill in your indicator achievement — the rupee entitlement for each row, and the total, is calculated automatically from what you enter; you never type an amount directly.
           </div>
@@ -602,6 +604,12 @@
               <span class="flabel">Search AEO (name or personal no.)</span>
               <input type="text" id="aeobill_search" placeholder="Start typing…" oninput="aeoBillRenderList()">
             </div>
+            <button class="hr-btn-primary" id="aeobill_downloadAllBillsBtn" style="padding:9px 14px;font-size:.8rem" onclick="aeoBillDownloadAllBills()" title="Zips one bill PDF per listed AEO with pending months (multiple PDFs inside if an AEO has more than 4 pending months) and downloads the ZIP">
+              <i class="bi bi-download"></i> Download All Bills
+            </button>
+            <button class="hr-btn-ghost" id="aeobill_downloadAllPerfBtn" style="padding:9px 14px;font-size:.8rem" onclick="aeoBillDownloadAllPerformances()" title="Steps through each listed AEO on the Performance tab — fill in KPIs and click Download to add that certificate to a ZIP and move to the next AEO">
+              <i class="bi bi-clipboard-data-fill"></i> Download All Performances
+            </button>
           </div>
 
           <div id="aeobill_listWrap" style="background:#fff;border:1px solid var(--b0);border-radius:10px;overflow-x:auto">
