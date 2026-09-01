@@ -1332,11 +1332,12 @@ async function aeoBillDownloadCumulative() {
 
 // ─── Bulk picker modal: shared by Bulk Bills and Bulk Performance ────
 // Neither bulk action processes anything automatically anymore — both
-// open this modal first so the admin/TR explicitly picks which month(s)
-// (and, for performance, Cumulative vs Separate) to run, per the
-// "never forced to download all months" requirement. Only AEOs currently
-// shown in the list (matching the search box, same as aeoBillRenderList)
-// are considered.
+// open this modal first so the admin/TR explicitly picks WHO (person
+// checklist, name + personal no.) and WHICH month(s) (and, for
+// performance, Cumulative vs Separate) to run — nobody is forced to
+// process every AEO in the current list. Only AEOs currently shown in
+// the list (matching the search box, same as aeoBillRenderList) appear
+// as candidates in the first place.
 let aeoBillBulkPicker = { mode: null, targets: [] };
 
 function aeoBillBulkOpenPicker(mode, targets) {
@@ -1344,8 +1345,15 @@ function aeoBillBulkOpenPicker(mode, targets) {
   document.getElementById('aeobillBulk_title').textContent =
     mode === 'bills' ? 'Bulk Download — Bills' : 'Bulk Download — Performance Certificates';
   document.getElementById('aeobillBulk_subtitle').textContent =
-    `${targets.length} AEO(s) in the current list. Pick the month(s) to include — only these will be processed.`;
+    `${targets.length} AEO(s) in the current list. Pick who and which month(s) to include — only these will be processed.`;
   document.getElementById('aeobillBulk_typeWrap').classList.toggle('hidden', mode !== 'performance');
+
+  document.getElementById('aeobillBulk_personsWrap').innerHTML = targets.map(a => `
+    <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;cursor:pointer;padding:3px 0">
+      <input type="checkbox" class="aeobillBulk_person" value="${a.id}" checked>
+      ${a.name || 'Unnamed'} <span style="color:var(--t3)">(P.No ${a.personal_no || '—'})</span>
+    </label>
+  `).join('');
 
   const yearSel = document.getElementById('aeobillBulk_year');
   const yNow = new Date().getFullYear();
@@ -1365,40 +1373,48 @@ function aeoBillBulkSelectAllMonths(checked) {
   document.querySelectorAll('.aeobillBulk_month').forEach(cb => { cb.checked = checked; });
 }
 
+function aeoBillBulkSelectAllPersons(checked) {
+  document.querySelectorAll('.aeobillBulk_person').forEach(cb => { cb.checked = checked; });
+}
+
 function aeoBillBulkCloseModal() {
   document.getElementById('aeobillBulkModal').classList.add('hidden');
 }
 
 function aeoBillBulkConfirm() {
+  const personIds = new Set([...document.querySelectorAll('.aeobillBulk_person:checked')].map(cb => cb.value));
+  if (!personIds.size) { showToast('Pick at least one person.', false); return; }
+
   const year = Number(document.getElementById('aeobillBulk_year').value);
   const months = [...document.querySelectorAll('.aeobillBulk_month:checked')].map(cb => Number(cb.value));
   if (!months.length) { showToast('Pick at least one month.', false); return; }
 
   const { mode, targets } = aeoBillBulkPicker;
+  const selectedTargets = targets.filter(a => personIds.has(String(a.id)));
   aeoBillBulkCloseModal();
 
   if (mode === 'bills') {
-    aeoBillRunBulkBills(targets, year, months);
+    aeoBillRunBulkBills(selectedTargets, year, months);
   } else {
     const cumulative = (document.querySelector('input[name="aeobillBulk_type"]:checked')?.value || 'cumulative') === 'cumulative';
-    aeoBillRunBulkPerformanceQueue(targets, year, months, cumulative);
+    aeoBillRunBulkPerformanceQueue(selectedTargets, year, months, cumulative);
   }
 }
 
-// ─── Bulk Bills: only the selected month(s), zipped ───────────────────
+// ─── Bulk Bills: only the selected person(s)/month(s), one PDF each ──
 // Reuses the exact same per-AEO source data (getAeoPendingCollectiveBill),
 // bill-building function (iaBuildAndDownloadBill), deduction fields, and
 // IA_MAX_SELECTED cumulative-bill cap as the individual flow — this is
-// only a filter (year + chosen months) and a loop on top of it, not a
-// new bill calculation.
+// only a filter (which people, year, chosen months) and a loop on top
+// of it, not a new bill calculation. Each bill PDF downloads on its own
+// (not zipped) so it opens the same way any normal download does on a
+// phone; a short pause between files gives the browser a moment to
+// settle so it doesn't block the burst as spam.
 async function aeoBillRunBulkBills(targets, year, selectedMonths) {
-  if (typeof JSZip === 'undefined') { showToast('ZIP library failed to load — check your connection and reload.', false); return; }
-
   const btn = document.getElementById('aeobill_downloadAllBillsBtn');
   const original = btn ? btn.innerHTML : null;
   if (btn) btn.disabled = true;
   const savedProfile = iaState.profile;
-  const zip = new JSZip();
   let filesDone = 0, aeosSkipped = 0, aeosFailed = 0;
 
   try {
@@ -1425,27 +1441,18 @@ async function aeoBillRunBulkBills(targets, year, selectedMonths) {
             allowance_rate: Number(m.allowance_rate) || iaState.rate,
             deduction: Number(m.deduction) || 0, due: Number(m.due) || 0, _rowId: m.id,
           }));
-          const { bytes, filename } = await iaBuildAndDownloadBill(claims, false);
-          zip.file(filename, bytes);
+          await iaBuildAndDownloadBill(claims); // downloads this bill PDF immediately
           const ids = claims.map(cl => cl._rowId).filter(Boolean);
           if (ids.length) await apiCall('markInspectionAllowanceDownloadedAs', { ids, userId: aeo.id });
           filesDone++;
+          await new Promise(r => setTimeout(r, 700)); // let the browser settle between downloads
         }
       } catch (err) {
         aeosFailed++;
       }
     }
 
-    if (filesDone) {
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `Inspection_Allowance_Bills_${new Date().toISOString().slice(0, 10)}.zip`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-    }
-
-    const parts = [filesDone ? `${filesDone} bill PDF(s) zipped and downloaded.` : 'Nothing to download for the selected month(s).'];
+    const parts = [filesDone ? `${filesDone} bill PDF(s) downloaded.` : 'Nothing to download for the selected person(s)/month(s).'];
     if (aeosSkipped) parts.push(`${aeosSkipped} AEO(s) had nothing pending for those months.`);
     if (aeosFailed) parts.push(`${aeosFailed} AEO(s) failed.`);
     showToast(parts.join(' '), aeosFailed === 0);
@@ -1455,7 +1462,8 @@ async function aeoBillRunBulkBills(targets, year, selectedMonths) {
   }
 }
 
-// ─── Bulk performance queue: step-through, zipped at the end ─────────
+// ─── Bulk performance queue: step-through, each certificate downloads
+// on its own (not zipped) ──────────────────────────────────────────
 // Performance certificates need per-indicator KPI entry (percentages /
 // Achieved checkboxes) that is NEVER persisted anywhere — perfState.config
 // lives in memory only, for whichever single AEO is currently open, and
@@ -1472,7 +1480,7 @@ let aeoBillPerfQueue = {
   active: false,
   steps: [],   // [{ aeoId, profile, pairs:[{year,month},...], label }]
   index: 0,
-  zip: null,
+  downloaded: 0,
   skipped: [],
 };
 
@@ -1482,7 +1490,6 @@ async function aeoBillDownloadAllPerformances() {
     !kw || (a.name || '').toLowerCase().includes(kw) || (a.personal_no || '').toLowerCase().includes(kw)
   );
   if (!targets.length) { showToast('No AEOs to prepare performances for.', false); return; }
-  if (typeof JSZip === 'undefined') { showToast('ZIP library failed to load — check your connection and reload.', false); return; }
   aeoBillBulkOpenPicker('performance', targets);
 }
 
@@ -1492,7 +1499,6 @@ async function aeoBillDownloadAllBills() {
     !kw || (a.name || '').toLowerCase().includes(kw) || (a.personal_no || '').toLowerCase().includes(kw)
   );
   if (!targets.length) { showToast('No AEOs to download bills for.', false); return; }
-  if (typeof JSZip === 'undefined') { showToast('ZIP library failed to load — check your connection and reload.', false); return; }
   aeoBillBulkOpenPicker('bills', targets);
 }
 
@@ -1536,7 +1542,7 @@ async function aeoBillRunBulkPerformanceQueue(targets, year, selectedMonths, cum
     return;
   }
 
-  aeoBillPerfQueue = { active: true, steps, index: 0, zip: new JSZip(), skipped: skippedUpfront };
+  aeoBillPerfQueue = { active: true, steps, index: 0, downloaded: 0, skipped: skippedUpfront };
   await aeoBillPerfQueueLoadCurrent();
 }
 
@@ -1575,8 +1581,8 @@ function aeoBillPerfQueueRenderBanner() {
     el.classList.remove('hidden');
     el.innerHTML = `
       <i class="bi bi-collection-fill"></i> Bulk run: step ${q.index + 1} of ${q.steps.length} —
-      <b>${step.label}</b>. Fill in the KPIs above, then click Download to add
-      this certificate to the ZIP and move to the next one.
+      <b>${step.label}</b>. Fill in the KPIs above, then click Download to save
+      this certificate and move to the next one.
       <button type="button" class="hr-btn-ghost" style="margin-left:10px;padding:3px 10px;font-size:.74rem" onclick="aeoBillPerfQueueSkip()">Skip</button>
       <button type="button" class="hr-btn-ghost" style="margin-left:6px;padding:3px 10px;font-size:.74rem" onclick="aeoBillPerfQueueCancel()">Cancel bulk run</button>
     `;
@@ -1594,13 +1600,12 @@ function aeoBillPerfQueueSkip() {
 
 function aeoBillPerfQueueCancel() {
   const q = aeoBillPerfQueue;
-  const hadFiles = q.zip && Object.keys(q.zip.files || {}).length > 0;
   q.active = false;
   const el = document.getElementById('perf_queueBanner');
   if (el) el.classList.add('hidden');
   const btn = document.getElementById('perf_downloadBtn');
   if (btn) btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
-  showToast(`Bulk run cancelled.${hadFiles ? ' Certificates collected so far were discarded.' : ''}`, false);
+  showToast(`Bulk run cancelled. ${q.downloaded} certificate(s) already downloaded were kept.`, false);
 }
 
 async function aeoBillPerfQueueFinish() {
@@ -1611,18 +1616,9 @@ async function aeoBillPerfQueueFinish() {
   const btn = document.getElementById('perf_downloadBtn');
   if (btn) btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
 
-  const fileCount = q.zip ? Object.keys(q.zip.files).length : 0;
-  if (fileCount) {
-    const blob = await q.zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `Performance_Certificates_${new Date().toISOString().slice(0, 10)}.zip`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-  }
-  const parts = [fileCount ? `${fileCount} certificate(s) zipped and downloaded.` : 'Nothing to download.'];
+  const parts = [q.downloaded ? `${q.downloaded} certificate(s) downloaded.` : 'Nothing downloaded.'];
   if (q.skipped.length) parts.push(`Skipped: ${q.skipped.join(', ')}.`);
-  showToast(`Bulk run complete — ${parts.join(' ')}`, fileCount > 0);
+  showToast(`Bulk run complete — ${parts.join(' ')}`, q.downloaded > 0);
 }
 
 function aeoBillCloseModal() {

@@ -998,11 +998,11 @@ async function perfDownloadCertificate() {
 
   // If a bulk performance run (aeoBillDownloadAllPerformances, in
   // inspection-allowance.js) is in progress, this same button doubles as
-  // "Download & Next AEO": the certificate goes into the shared ZIP
-  // instead of downloading on its own, and the queue auto-advances.
-  // Every check above (months selected, deduction minimum via the
-  // disabled state already set by perfRenderConfigPanels) still applies
-  // exactly as it does for a normal single-AEO download.
+  // "Download & Next": the certificate downloads immediately (as its own
+  // file, not zipped — easier to open on mobile), then the queue
+  // auto-advances. Every check above (months selected, deduction minimum
+  // via the disabled state already set by perfRenderConfigPanels) still
+  // applies exactly as it does for a normal single-AEO download.
   const queueActive = typeof aeoBillPerfQueue !== "undefined" && aeoBillPerfQueue.active;
 
   const btn = document.getElementById("perf_downloadBtn");
@@ -1019,14 +1019,14 @@ async function perfDownloadCertificate() {
     const pdfBytes = await perfBuildCertificatePdfBytes(pages);
     const label = months.map((m) => IA_MONTH_NAMES[m - 1]).join("-");
     const filename = `Performance_Certificate_${iaState.profile.personal_no}_${label}_${year}.pdf`;
+    iaDownloadPdf(pdfBytes, filename);
 
     if (queueActive) {
-      aeoBillPerfQueue.zip.file(filename, pdfBytes);
-      showToast(`Added ${iaState.profile.name || iaState.profile.personal_no}'s certificate to the ZIP.`, true);
+      aeoBillPerfQueue.downloaded++;
+      showToast(`Downloaded ${iaState.profile.name || iaState.profile.personal_no}'s certificate (${aeoBillPerfQueue.downloaded}/${aeoBillPerfQueue.steps.length}).`, true);
       aeoBillPerfQueue.index++;
       await aeoBillPerfQueueLoadCurrent();
     } else {
-      iaDownloadPdf(pdfBytes, filename);
       showToast("Certificate downloaded.", true);
     }
   } catch (err) {
@@ -1035,7 +1035,7 @@ async function perfDownloadCertificate() {
     btn.disabled = false;
     const stillQueued = typeof aeoBillPerfQueue !== "undefined" && aeoBillPerfQueue.active;
     btn.innerHTML = stillQueued
-      ? '<i class="bi bi-file-earmark-pdf-fill"></i> Download &amp; Next AEO'
+      ? '<i class="bi bi-file-earmark-pdf-fill"></i> Download &amp; Next'
       : '<i class="bi bi-file-earmark-pdf-fill"></i> Download Certificate (PDF)';
   }
 }
