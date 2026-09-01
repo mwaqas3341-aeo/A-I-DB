@@ -944,6 +944,46 @@
     </div>
   </div>
 
+  <!-- ── BULK BILLS / BULK PERFORMANCE: month (+ cumulative/separate) picker ── -->
+  <div id="aeobillBulkModal" class="modal hr-modal-generic hidden">
+    <div class="modal-content" style="max-width:520px">
+      <button class="close-btn" onclick="aeoBillBulkCloseModal()" title="Close">&times;</button>
+      <h3 id="aeobillBulk_title" style="margin-bottom:4px">Bulk Download</h3>
+      <div id="aeobillBulk_subtitle" style="color:var(--t3);font-size:.85rem;margin-bottom:14px"></div>
+
+      <div id="aeobillBulk_typeWrap" class="hidden" style="margin-bottom:16px">
+        <div style="font-weight:700;font-size:.82rem;margin-bottom:6px">Select Performance/Bill Type</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;margin-bottom:4px;cursor:pointer">
+          <input type="radio" name="aeobillBulk_type" value="cumulative" checked> Cumulative — one certificate per AEO covering all selected months
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer">
+          <input type="radio" name="aeobillBulk_type" value="separate"> Separate — one certificate per AEO per month
+        </label>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <label style="font-weight:700;font-size:.82rem">Year</label>
+        <select id="aeobillBulk_year" style="height:34px;border:1px solid var(--b0);border-radius:6px;padding:0 10px"></select>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-weight:700;font-size:.82rem">Month(s)</div>
+        <div style="font-size:.76rem">
+          <a href="javascript:void(0)" onclick="aeoBillBulkSelectAllMonths(true)">Select all</a> ·
+          <a href="javascript:void(0)" onclick="aeoBillBulkSelectAllMonths(false)">Clear</a>
+        </div>
+      </div>
+      <div id="aeobillBulk_monthsWrap" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border:1px solid var(--b0);border-radius:8px;padding:10px;margin-bottom:14px"></div>
+
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-outline-secondary" style="flex:1" onclick="aeoBillBulkCloseModal()">Cancel</button>
+        <button class="primary-btn" style="flex:1" onclick="aeoBillBulkConfirm()">
+          <i class="bi bi-arrow-right-circle"></i> Continue
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── SEAT MANAGEMENT (Teaching / Non-Teaching Sanctioned & Abolished Seats) ── -->
   <div id="seatManagementView" class="app-view">
     <div class="hr-page-header" style="margin-bottom:18px">
