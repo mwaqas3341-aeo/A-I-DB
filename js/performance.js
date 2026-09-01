@@ -653,7 +653,16 @@ function perfUpdateAchieved(month, idx, value) {
   if (!cfg) return;
   const rows = cfg.status === "open" ? PERFOPENROWS : PERFCLOSEDROWS;
   const row = rows[idx];
-  cfg.achieved[idx] = row.kind === "percent" ? (value === "" ? "" : Number(value)) : Boolean(value);
+  if (row.kind === "percent") {
+    // The input is now type="text" (see perfIndicatorRowHtml) so nothing
+    // stops a pasted letter or a value over 100 — strip non-digits and
+    // clamp here instead of relying on a number input's own min/max.
+    let digits = String(value).replace(/[^0-9]/g, "");
+    if (digits !== "") digits = String(Math.min(100, Number(digits)));
+    cfg.achieved[idx] = digits === "" ? "" : Number(digits);
+  } else {
+    cfg.achieved[idx] = Boolean(value);
+  }
   // The AEO is free to choose which indicator(s) reflect a bill deduction —
   // nothing is permanently locked. But if their choice leaves fewer
   // Not-Achieved indicators than the bill's recorded deduction requires
@@ -944,7 +953,16 @@ function perfIndicatorRowHtml(month, row, idx, cfg, isOpen, rowsList) {
     achievedCell = `<span style="color:var(--t3)">${row.fixedAch}</span>`;
   } else if (row.kind === "percent") {
     const val = (stored === undefined || stored === "") ? "" : stored;
-    achievedCell = `<input type="number" min="0" max="100" value="${val}" placeholder="${row.targetPct}" data-perf-cell="${month}-${idx}" style="width:56px;height:26px;border:1px solid var(--b0);border-radius:5px;padding:0 5px;font-size:.72rem"
+    // type="text" + inputmode="numeric", not type="number": Chrome (and
+    // most browsers) refuse setSelectionRange() on a number input, which
+    // silently broke the caret-restore in perfRenderConfigPanels above —
+    // after every keystroke the cursor snapped back to position 0, so
+    // typing "45" actually produced "54". A numeric-mode text input still
+    // shows the numeric keyboard on mobile but supports caret restoration
+    // normally. Clamping/digit-only filtering now happens in JS below
+    // instead of relying on the (no-longer-present) number input's own
+    // min/max/step enforcement.
+    achievedCell = `<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${val}" placeholder="${row.targetPct}" data-perf-cell="${month}-${idx}" style="width:56px;height:26px;border:1px solid var(--b0);border-radius:5px;padding:0 5px;font-size:.72rem"
       oninput="perfUpdateAchieved(${month}, ${idx}, this.value)"> %`;
   } else {
     const val = stored ?? true;
