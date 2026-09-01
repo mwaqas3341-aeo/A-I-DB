@@ -944,6 +944,15 @@
   </div>
 
   <!-- ── BULK BILLS / BULK PERFORMANCE: month (+ cumulative/separate) picker ── -->
+  <style>
+    /* Plain <button> styled to look/behave like the old inline text links,
+       but a <button type="button"> can never navigate, submit a form, or
+       open a new tab/window — unlike the previous <a href="javascript:void(0)">
+       which some mobile browsers/webviews mishandled as a real navigation. */
+    .aeobillBulk-linkbtn{background:none;border:none;padding:0;margin:0;font:inherit;
+      color:#0d6efd;text-decoration:underline;cursor:pointer;}
+    .aeobillBulk-linkbtn:hover,.aeobillBulk-linkbtn:focus{color:#0a58ca;}
+  </style>
   <div id="aeobillBulkModal" class="modal hr-modal-generic hidden">
     <div class="modal-content" style="max-width:520px">
       <button class="close-btn" onclick="aeoBillBulkCloseModal()" title="Close">&times;</button>
@@ -963,22 +972,22 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-weight:700;font-size:.82rem">Person(s)</div>
         <div style="font-size:.76rem">
-          <a href="javascript:void(0)" onclick="aeoBillBulkSelectAllPersons(true)">Select all</a> ·
-          <a href="javascript:void(0)" onclick="aeoBillBulkSelectAllPersons(false)">Clear</a>
+          <button type="button" class="aeobillBulk-linkbtn" onclick="aeoBillBulkSelectAllPersons(true)">Select all</button> ·
+          <button type="button" class="aeobillBulk-linkbtn" onclick="aeoBillBulkSelectAllPersons(false)">Clear</button>
         </div>
       </div>
       <div id="aeobillBulk_personsWrap" style="max-height:200px;overflow-y:auto;border:1px solid var(--b0);border-radius:8px;padding:10px;margin-bottom:14px"></div>
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <label style="font-weight:700;font-size:.82rem">Year</label>
-        <select id="aeobillBulk_year" style="height:34px;border:1px solid var(--b0);border-radius:6px;padding:0 10px"></select>
+        <select id="aeobillBulk_year" onchange="aeoBillBulkOnYearChange()" style="height:34px;border:1px solid var(--b0);border-radius:6px;padding:0 10px"></select>
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-weight:700;font-size:.82rem">Month(s)</div>
         <div style="font-size:.76rem">
-          <a href="javascript:void(0)" onclick="aeoBillBulkSelectAllMonths(true)">Select all</a> ·
-          <a href="javascript:void(0)" onclick="aeoBillBulkSelectAllMonths(false)">Clear</a>
+          <button type="button" class="aeobillBulk-linkbtn" onclick="aeoBillBulkSelectAllMonths(true)">Select all</button> ·
+          <button type="button" class="aeobillBulk-linkbtn" onclick="aeoBillBulkSelectAllMonths(false)">Clear</button>
         </div>
       </div>
       <div id="aeobillBulk_monthsWrap" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border:1px solid var(--b0);border-radius:8px;padding:10px;margin-bottom:6px"></div>

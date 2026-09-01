@@ -3320,6 +3320,36 @@ async function apiCall(action, payload) {
       return { success: true, aeos: aeos || [] };
     }
 
+    // Distinct (year, month) pairs actually on file in budget_preparations
+    // for a tehsil+wing — i.e. the months that are genuinely eligible for
+    // Bulk Bill / Bulk Performance download. Same source of truth and same
+    // authorization check as getEligibleAeosForBill / getAeoPendingCollectiveBill
+    // (is_tehsil_rep), just without the per-AEO deduction join those need —
+    // the bulk picker only needs to know WHICH months exist, not the figures.
+    case 'getPreparedMonthsForScope': {
+      if (!user || !user.id) return { success: false, message: 'Not logged in.' };
+      const p = Array.isArray(payload) ? payload[0] : (payload || {});
+      const tehsil = (p.tehsil || '').trim();
+      const wing = (p.wing || '').trim();
+      if (!tehsil || !wing) return { success: false, message: 'Select a tehsil and wing.' };
+
+      const { data: authOk } = await _sb.rpc('is_tehsil_rep', { p_user_id: user.id, p_tehsil: tehsil, p_wing: wing });
+      if (!authOk) return { success: false, message: 'Not authorized for this tehsil/wing.' };
+
+      const { data: preps, error } = await _sb.from('budget_preparations')
+        .select('year, month').eq('tehsil', tehsil).eq('wing', wing)
+        .order('year', { ascending: true }).order('month', { ascending: true });
+      if (error) return { success: false, message: error.message };
+
+      const seen = new Set();
+      const months = [];
+      (preps || []).forEach(m => {
+        const key = `${m.year}-${m.month}`;
+        if (!seen.has(key)) { seen.add(key); months.push({ year: m.year, month: m.month }); }
+      });
+      return { success: true, months };
+    }
+
     // Any AEO's profile, for building their bill — same fields
     // getMyProfile returns, just for an arbitrary target instead of
     // the caller.

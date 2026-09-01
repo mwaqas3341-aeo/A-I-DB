@@ -1132,6 +1132,8 @@ let aeoBillState = {
   selectedAeo: null,
   months: [],
   checked: new Set(),
+  tehsil: '', wing: '',
+  preparedMonths: [],   // distinct {year, month} on file in budget_preparations for the current scope — the only months Bulk Bill/Performance may offer
 };
 
 async function aeoBillInit() {
@@ -1162,14 +1164,21 @@ async function aeoBillOnScopeChange() {
   const listWrap = document.getElementById('aeobill_listWrap');
   if (!val) { listWrap.innerHTML = `<div style="padding:30px;text-align:center;color:var(--t3)">Select a tehsil/wing to see eligible AEOs.</div>`; return; }
   const [tehsil, wing] = val.split('|||');
+  aeoBillState.tehsil = tehsil;
+  aeoBillState.wing = wing;
+  aeoBillState.preparedMonths = []; // reset until (re)fetched below — Bulk picker must never reuse a stale scope's months
 
   listWrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading AEOs…</div>`;
-  const res = await apiCall('getEligibleAeosForBill', { tehsil, wing });
+  const [res, monthsRes] = await Promise.all([
+    apiCall('getEligibleAeosForBill', { tehsil, wing }),
+    apiCall('getPreparedMonthsForScope', { tehsil, wing }),
+  ]);
   if (!res || !res.success) {
     listWrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--bad)">${res?.message || 'Could not load AEOs.'}</div>`;
     return;
   }
   aeoBillState.aeos = res.aeos || [];
+  aeoBillState.preparedMonths = (monthsRes && monthsRes.success) ? (monthsRes.months || []) : [];
   if (!aeoBillState.aeos.length) {
     listWrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--t3)">${res.message || 'No AEOs found for this tehsil/wing.'}</div>`;
     return;
@@ -1344,8 +1353,6 @@ function aeoBillBulkOpenPicker(mode, targets) {
   aeoBillBulkPicker = { mode, targets };
   document.getElementById('aeobillBulk_title').textContent =
     mode === 'bills' ? 'Bulk Download — Bills' : 'Bulk Download — Performance Certificates';
-  document.getElementById('aeobillBulk_subtitle').textContent =
-    `${targets.length} AEO(s) in the current list. Pick who and which month(s) to include — only these will be processed.`;
   document.getElementById('aeobillBulk_typeWrap').classList.toggle('hidden', mode !== 'performance');
 
   document.getElementById('aeobillBulk_personsWrap').innerHTML = targets.map(a => `
@@ -1355,18 +1362,51 @@ function aeoBillBulkOpenPicker(mode, targets) {
     </label>
   `).join('');
 
+  // Year/Month options come strictly from aeoBillState.preparedMonths — the
+  // actual budget_preparations rows on file for this tehsil/wing (fetched
+  // in aeoBillOnScopeChange). Months with no prepared budget are never
+  // shown here at all, matching the per-AEO "My Bill" / "Download for AEO"
+  // pickers, which already limit to prepared months the same way.
+  const prepared = aeoBillState.preparedMonths || [];
+  const years = [...new Set(prepared.map(m => m.year))].sort((a, b) => b - a);
   const yearSel = document.getElementById('aeobillBulk_year');
-  const yNow = new Date().getFullYear();
-  yearSel.innerHTML = [yNow - 2, yNow - 1, yNow, yNow + 1]
-    .map(y => `<option value="${y}" ${y === yNow ? 'selected' : ''}>${y}</option>`).join('');
 
-  document.getElementById('aeobillBulk_monthsWrap').innerHTML = IA_MONTH_NAMES.map((name, i) => `
-    <label style="display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer">
-      <input type="checkbox" class="aeobillBulk_month" value="${i + 1}"> ${name}
-    </label>
-  `).join('');
+  if (!years.length) {
+    document.getElementById('aeobillBulk_subtitle').textContent =
+      `${targets.length} AEO(s) in the current list. No Budget Preparation has been completed for this tehsil/wing yet — nothing to pick.`;
+    yearSel.innerHTML = '';
+    document.getElementById('aeobillBulk_monthsWrap').innerHTML =
+      `<div style="grid-column:1/-1;color:var(--t3);font-size:.8rem">No prepared months available.</div>`;
+    document.getElementById('aeobillBulkModal').classList.remove('hidden');
+    return;
+  }
+
+  document.getElementById('aeobillBulk_subtitle').textContent =
+    `${targets.length} AEO(s) in the current list. Pick who and which month(s) to include — only these will be processed. Only months with a prepared budget are listed.`;
+  yearSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  aeoBillBulkRenderMonthsForYear(years[0]);
 
   document.getElementById('aeobillBulkModal').classList.remove('hidden');
+}
+
+// Rebuilds the month checkboxes for whichever year is selected, limited to
+// the months that actually have a budget_preparations row for that year —
+// called on open and whenever the Year dropdown changes.
+function aeoBillBulkRenderMonthsForYear(year) {
+  const prepared = aeoBillState.preparedMonths || [];
+  const monthsForYear = prepared.filter(m => m.year === Number(year)).map(m => m.month).sort((a, b) => a - b);
+  document.getElementById('aeobillBulk_monthsWrap').innerHTML = monthsForYear.length
+    ? monthsForYear.map(mi => `
+        <label style="display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer">
+          <input type="checkbox" class="aeobillBulk_month" value="${mi}"> ${IA_MONTH_NAMES[mi - 1]}
+        </label>
+      `).join('')
+    : `<div style="grid-column:1/-1;color:var(--t3);font-size:.8rem">No prepared months for this year.</div>`;
+}
+
+function aeoBillBulkOnYearChange() {
+  const year = document.getElementById('aeobillBulk_year').value;
+  aeoBillBulkRenderMonthsForYear(year);
 }
 
 function aeoBillBulkSelectAllMonths(checked) {
