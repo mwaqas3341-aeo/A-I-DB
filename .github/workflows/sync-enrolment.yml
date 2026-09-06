@@ -1,0 +1,30 @@
+name: Sync Public School Enrolment
+
+on:
+  schedule:
+    # Once daily at 02:00 UTC (07:00 PKT) — after the SIS scraper repo's
+    # last run of the previous day has already landed there.
+    - cron: '0 2 * * *'
+  workflow_dispatch:   # manual "Run workflow" button, for testing on demand
+
+concurrency:
+  group: sync-public-school-enrolment
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Sync enrolment into public_schools
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/sync_enrolment.py
