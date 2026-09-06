@@ -1,25 +1,92 @@
 name: Sync Public School Enrolment
 
 on:
+  # Poll every 15 minutes for whether SIS-online-Enrolment-Updater has
+  # scraped new data since our last successful sync. The check itself is
+  # one free GitHub API call (using this workflow's own automatic
+  # GITHUB_TOKEN — no new secret) — it never touches Supabase.
+  # The expensive part (talking to Supabase) only runs when that check
+  # finds something new, which only happens after the source's own scrape
+  # job (every 3h) actually lands a change. This reacts within ~15 minutes
+  # of new data landing without ever hitting Supabase on a no-op poll.
   schedule:
-    # Once daily at 02:00 UTC (07:00 PKT) — after the SIS scraper repo's
-    # last run of the previous day has already landed there.
-    - cron: '0 2 * * *'
-  workflow_dispatch:   # manual "Run workflow" button, for testing on demand
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Run the sync even if the source has not changed since the last run'
+        type: boolean
+        default: false
 
 concurrency:
   group: sync-public-school-enrolment
   cancel-in-progress: true
 
-# Minimum permissions: this job only checks out its own repo and talks to
-# Supabase/raw.githubusercontent.com over plain HTTPS. It never needs to
-# write to any GitHub repo, so the default GITHUB_TOKEN is locked to
-# read-only.
+# contents: write is needed only to commit the small state file (the last
+# synced SIS commit SHA) back into this repo after a successful run. The
+# job never needs write access to any other repo, and no cross-repo
+# secret/PAT is used anywhere in this workflow.
 permissions:
-  contents: read
+  contents: write
+
+env:
+  SIS_REPO: mwaqas3341-aeo/SIS-online-Enrolment-Updater
+  STATE_FILE: .sync-state/last-sis-index-sha
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+      latest_sha: ${{ steps.latest.outputs.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get latest upstream commit that touched data/index.json
+        id: latest
+        run: |
+          # Public repo, public API — no token needed. If GitHub's API is
+          # having a bad moment, fail soft (treat as "unknown/no change")
+          # rather than forcing a Supabase hit on every transient hiccup;
+          # the next poll 15 minutes later will simply try again.
+          response=$(curl -sf --max-time 15 \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${SIS_REPO}/commits?path=data/index.json&sha=main&per_page=1") || {
+              echo "WARN: GitHub API check failed; skipping this poll." >&2
+              echo "sha=" >> "$GITHUB_OUTPUT"
+              exit 0
+            }
+          sha=$(echo "$response" | jq -r '.[0].sha // empty')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Compare against last synced commit
+        id: compare
+        run: |
+          latest="${{ steps.latest.outputs.sha }}"
+          force="${{ github.event.inputs.force }}"
+
+          if [ -z "$latest" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          previous=""
+          if [ -f "$STATE_FILE" ]; then
+            previous=$(cat "$STATE_FILE")
+          fi
+
+          if [ "$force" = "true" ] || [ "$latest" != "$previous" ]; then
+            echo "New upstream commit: $latest (previous: ${previous:-none})"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new upstream data since $previous — skipping Supabase sync."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   sync:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,3 +102,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python scripts/sync_enrolment.py
+
+      - name: Record the SIS commit we just synced
+        run: |
+          mkdir -p "$(dirname "$STATE_FILE")"
+          echo "${{ needs.check.outputs.latest_sha }}" > "$STATE_FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$STATE_FILE"
+          git diff --cached --quiet || git commit -m "sync: record SIS commit ${{ needs.check.outputs.latest_sha }} [automated]"
+          git push
