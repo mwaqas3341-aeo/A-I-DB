@@ -11,6 +11,13 @@ concurrency:
   group: sync-public-school-enrolment
   cancel-in-progress: true
 
+# Minimum permissions: this job only checks out its own repo and talks to
+# Supabase/raw.githubusercontent.com over plain HTTPS. It never needs to
+# write to any GitHub repo, so the default GITHUB_TOKEN is locked to
+# read-only.
+permissions:
+  contents: read
+
 jobs:
   sync:
     runs-on: ubuntu-latest
