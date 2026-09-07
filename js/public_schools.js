@@ -761,6 +761,7 @@ function submitPublicForm() {
     if (pubHeaders[i]) dataObj[pubHeaders[i]] = document.getElementById('pub_m_' + i).value;
   }
   PUB_EDITABLE_FIELDS.forEach(f => {
+    if (PUB_SYSTEM_REF_HEADERS.includes(f.header)) return; // never touch Drive reference columns — cert-upload widget owns these (same exclusion savePubRowEdit already applies)
     const el = document.getElementById(f.id);
     if (el) dataObj[f.header] = el.value;
   });
