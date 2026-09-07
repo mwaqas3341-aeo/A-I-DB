@@ -134,16 +134,36 @@ function _certEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Normalizes a picture-list value from ANY source into a plain array.
+// The `..._pics` columns are Postgres jsonb, so Supabase-js already
+// hands back a real parsed Array/Object for a fresh DB row — NOT the
+// JSON string these columns held before the jsonb migration. Blindly
+// JSON.parse()-ing that (or, worse, assigning it straight into an
+// <input>.value, which the DOM silently coerces to the useless string
+// "[object Object]") is what made every already-uploaded picture look
+// like it had none: no View button in the reopened form, in Row Editing
+// Mode, or in the plain table cell, since none of that data ever made
+// it past the parse. Handles all three shapes a caller might hand in:
+// a real array (fresh from Supabase), a JSON string (the hidden input's
+// own .value, or an older/legacy string-typed row), or null/undefined.
+function _certNormalizePhotos(rawVal) {
+  if (Array.isArray(rawVal)) return rawVal;
+  if (rawVal && typeof rawVal === 'string') {
+    try {
+      const parsed = JSON.parse(rawVal);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+}
+
 // Reads the field's own hidden JSON text and returns a safe array,
 // tolerating anything unexpected (empty string, malformed JSON, a
 // leftover non-array value) rather than throwing.
 function _certGetPhotos(fieldId) {
   const el = document.getElementById(fieldId);
   if (!el || !el.value) return [];
-  try {
-    const parsed = JSON.parse(el.value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
+  return _certNormalizePhotos(el.value);
 }
 function _certSetPhotos(fieldId, photos) {
   const el = document.getElementById(fieldId);
@@ -359,8 +379,7 @@ function certWidgetSyncAll() {
 // picture-list column — a row of "View" buttons only, exactly like the
 // form widget's thumbnails, never the raw JSON/id/url as text.
 function certPhotoCellHtml(rawVal) {
-  let photos = [];
-  try { const parsed = rawVal ? JSON.parse(rawVal) : []; photos = Array.isArray(parsed) ? parsed : []; } catch { photos = []; }
+  const photos = _certNormalizePhotos(rawVal);
   if (!photos.length) return '<span class="text-muted">—</span>';
   return photos.map((p, i) => `
     <a href="${_certEsc(p.url)}" target="_blank" rel="noopener" class="btn btn-xs btn-outline-secondary cert-view-btn" style="margin:1px">

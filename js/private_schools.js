@@ -1145,6 +1145,15 @@ function editPrivate(keyVal) {
     const el = document.getElementById(f.id);
     if (!el) return;
     if (['priv_district', 'priv_tehsil', 'priv_markaz'].includes(f.id)) return; // handled by cascade below
+    if (f.photo) {
+      // row[f.header] is jsonb from Supabase -- a real Array, not a JSON
+      // string. Assigning that straight into el.value would let the DOM
+      // silently coerce it to "[object Object]", which is what made
+      // every already-uploaded picture disappear (no View button) the
+      // moment the form was reopened. Always re-serialize explicitly.
+      el.value = JSON.stringify(_certNormalizePhotos(row[f.header]));
+      return;
+    }
     el.value = row[f.header] || '';
     // If this record's saved value isn't in the (possibly since-edited)
     // select options, keep it visible/selected instead of silently

@@ -591,7 +591,17 @@ function editPublic(keyVal) {
   }
   PUB_EDITABLE_FIELDS.forEach(f => {
     const el = document.getElementById(f.id);
-    if (el) el.value = row[f.header] || '';
+    if (!el) return;
+    if (f.photo) {
+      // Same fix as editPrivate() in private_schools.js — row[f.header]
+      // is jsonb (a real Array) from Supabase, not a JSON string.
+      // Assigning it straight into el.value would let the DOM silently
+      // coerce it to "[object Object]", losing every already-uploaded
+      // picture the moment the form was reopened.
+      el.value = JSON.stringify(_certNormalizePhotos(row[f.header]));
+      return;
+    }
+    el.value = row[f.header] || '';
   });
   handlePubBW();
   handlePubECCE();
