@@ -306,8 +306,14 @@ async function _onCertFilesSelected(fieldId) {
       const result = await res.json().catch(() => null);
       if (!res.ok || !result || !result.success) throw new Error((result && result.message) || `Upload failed (HTTP ${res.status}).`);
 
-      _certSetPhotos(fieldId, result.pics || []);
-      currentCount = (result.pics || []).length;
+      // The Edge Function's response field is `pictures` (see
+      // school-cert-upload/index.ts's jsonResponse calls) — NOT `pics`.
+      // Reading the wrong key here silently wiped the widget to an
+      // empty list after every successful upload (result.pics was
+      // always undefined), which is what made the View button vanish
+      // immediately after uploading instead of appearing right away.
+      _certSetPhotos(fieldId, result.pictures || []);
+      currentCount = (result.pictures || []).length;
       uploaded++;
       const savedPct = file.size > compressed.size ? Math.round((1 - compressed.size / file.size) * 100) : 0;
       if (sizesEl) sizesEl.textContent = `(${idx + 1}/${files.length}) Compressed: ${_certFmtSize(compressed.size)}` + (savedPct > 0 ? ` (${savedPct}% smaller)` : '') + ' — uploaded ✓';
@@ -351,7 +357,8 @@ async function _onCertRemovePhoto(fieldId, photoId) {
     const result = await res.json().catch(() => null);
     if (!res.ok || !result || !result.success) throw new Error((result && result.message) || `Could not remove the picture (HTTP ${res.status}).`);
 
-    _certSetPhotos(fieldId, result.pics || []);
+    // Same `pictures` vs `pics` key fix as the upload path above.
+    _certSetPhotos(fieldId, result.pictures || []);
     _certRenderThumbs(fieldId);
     if (typeof showToast === 'function') showToast('Picture removed.', true);
   } catch (e) {

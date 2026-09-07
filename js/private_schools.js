@@ -1215,6 +1215,7 @@ function submitPrivateForm() {
       dataObj['Unique ID'] = document.getElementById('privEditId').value;
     }
     PRIVATE_FIELD_CONFIG.forEach(f => {
+      if (PRIV_SYSTEM_REF_HEADERS.includes(f.header)) return; // never touch Drive reference columns — cert-upload widget owns these (same exclusion savePrivRowEdit already applies)
       const el = document.getElementById(f.id);
       if (el) dataObj[f.header] = el.value;
     });
