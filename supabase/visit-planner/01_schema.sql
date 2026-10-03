@@ -100,8 +100,7 @@ language sql stable security invoker set search_path = public as $$
     select 4, x.emis_code, x.school_name, x.level, x.gender, upper(x.district), mk.wing, mk.tehsil,
            x.markaz_name, x.markaz_code, 'PEF'
     from pef_schools x join mk on mk.markaz_name = x.markaz_name
-    where x.emis_code ~ '^[0-9]{8}$'            -- private PEF partner schools (non-EMIS codes) excluded
-      and (p_emis is null or x.emis_code = p_emis)
+    where (p_emis is null or x.emis_code = p_emis)   -- ALL PEF schools, incl. non-EMIS codes (e.g. 9-LYH-0029); the code is the identifier
   )
   select distinct on (c.emis) c.emis, c.school_name, c.level, c.school_type, c.district, c.tehsil,
          c.wing, c.markaz_name, c.markaz_code, c.source
