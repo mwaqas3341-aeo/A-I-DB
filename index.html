@@ -45,6 +45,7 @@
   <link rel="stylesheet" href="css/portal-polish.css">
   <link rel="stylesheet" href="css/theme.css">
   <link rel="stylesheet" href="css/glass-glow.css">
+  <link rel="stylesheet" href="css/visit-planner.css">
 </head>
 <body>
 <!-- Shared "Subject" suggestions — see hrEnsureSubjectCache() in hr_view.js.
@@ -268,6 +269,13 @@
               <div class="mc-arrow" style="color:#0d9488"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </a>
 
+            <a class="module-card" href="#visit-planner" data-route="visit-planner" onclick="return topNavLinkClick(event, 'visit-planner')">
+              <i class="bi bi-calendar2-week-fill mc-icon" style="color:#435E91"></i>
+              <div class="mc-title">Visit Planner</div>
+              <div class="mc-desc">Monthly school visit plan · Excel &amp; print</div>
+              <div class="mc-arrow" style="color:#435E91"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
+            </a>
+
             <a class="module-card" href="#fund" data-route="fund" onclick="return topNavLinkClick(event, 'fund')">
               <i class="bi bi-cash-coin mc-icon" style="color:#0369a1"></i>
               <div class="mc-title">FUND Record Management</div>
@@ -400,6 +408,21 @@
 
     </div><!-- /.dashboard-layout -->
   </div><!-- /#homeView -->
+
+  <!-- ── VISIT PLANNER VIEW ───────────────────────────────── -->
+  <div id="visitPlannerView" class="app-view">
+    <div class="dashboard-layout">
+      <div class="dashboard-main" style="flex:0 0 100%;max-width:100%">
+        <div class="dash-heading">
+          <i class="bi bi-calendar2-week-fill" style="color:#435E91"></i> Visit Planner
+        </div>
+        <button class="btn-back-kpi" onclick="switchGlobalTab('homeView', null)">
+          <i class="bi bi-arrow-left"></i> Back to Main Dashboard
+        </button>
+        <div id="vpRoot"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ── INSPECTION ALLOWANCE VIEW ────────────────────────── -->
   <div id="inspectionAllowanceView" class="app-view">
@@ -3736,6 +3759,9 @@
   <script src="js/user-import.js"></script>
   <!-- ── App shell JS (runs last) ── -->
   <script src="js/index.js"></script>
+  <script src="js/visit-planner-core.js"></script>
+  <script src="js/visit-planner-excel.js"></script>
+  <script src="js/visit-planner.js"></script>
   <script src="js/fund-google-drive.js"></script>
   <script src="js/fund.js"></script>
   <script src="js/expiry-alerts.js"></script>
