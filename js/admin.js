@@ -575,89 +575,10 @@ function renderScopeValueUI(existingValue) {
     }
 
   } else if (type === 'Schools') {
-    // ★ LAZY LOAD: only fetch the full Public+Private schools list
-    // (38k+ rows) the first time an admin actually selects "Schools"
-    // as the scope type — not on every Add/Edit User modal open.
-    if (!jSchoolsLoaded) {
-      area.innerHTML = `<div style="padding:24px;text-align:center;color:var(--t3)">
-        <span class="spinner-border spinner-border-sm"></span> Loading school list…
-      </div>`;
-      google.script.run
-        .withSuccessHandler(res => {
-          if (!res.success) { showToast('Could not load school list: ' + res.message, false); return; }
-          jDropdowns.schools = res.schools || [];
-          jSchoolsLoaded = true;
-          renderScopeValueUI(existingValue);
-        })
-        .withFailureHandler(err => showToast('School list load error: ' + err.message, false))
-        .getSchoolsListForScope(currentUser);
-      return;
-    }
-
-    // Filter schools by primary wing & tehsil (or primary markaz)
-    // Use jMap to get emis/uid for schools within the primary jurisdiction
-    const filteredSchools = jDropdowns.schools.filter(s => {
-      // Find this school in jMap by emis (public) or uid (private)
-      const matched = jDropdowns.jMap.find(item => {
-        return (s.emis && item.emis === s.emis) || (s.uid && item.uid === s.uid);
-      });
-      if (!matched) return false;
-      // Check if the school's district/wing/tehsil matches primary
-      return (!primary.district || matched.district === primary.district) &&
-             (!primary.wing     || matched.wing === primary.wing) &&
-             (!primary.tehsil   || matched.tehsil === primary.tehsil) &&
-             (!primary.markaz   || matched.markaz === primary.markaz);
-    });
-
-    const rows = filteredSchools.map(s => {
-      const sheetClass = s.sheet === 'Public' ? 'pub' : 'priv';
-      const emisLabel  = s.emis ? `<span class="sp-emis">EMIS: ${s.emis}</span>` : '';
-      const uidLabel   = s.uid  ? `<span class="sp-emis">UID: ${s.uid}</span>`   : '';
-      const id         = (s.emis || s.uid || '').replace(/[^a-zA-Z0-9]/g, '_');
-      const val        = s.sheet === 'Public' ? (s.emis || s.uid) : s.uid;
-      return `<div class="sp-item" id="spi_${id}">
-        <input type="checkbox" value="${val}" id="chk_${id}" onchange="onSchoolCheck()">
-        <span class="sp-name">${s.name}</span>
-        ${emisLabel}${uidLabel}
-        <span class="sp-sheet ${sheetClass}">${s.sheet}</span>
-      </div>`;
-    }).join('');
-
-    area.innerHTML = `
-      <div style="grid-column:1/-1">
-        <span class="flabel" style="display:block;margin-bottom:6px">
-          Select Schools (Col L — stores EMIS for Public, UID for Private)
-        </span>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input type="text" id="school_search" placeholder="Search name, EMIS, or UID…"
-            oninput="filterSchoolPicker(this.value)"
-            style="flex:1;height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 12px;font-size:.82rem;outline:none">
-          <div style="display:flex;gap:6px">
-            <button type="button" onclick="filterSchoolPicker('',true,'Public')"
-              style="height:36px;padding:0 10px;background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;border-radius:6px;font-size:.75rem;cursor:pointer">
-              Public only
-            </button>
-            <button type="button" onclick="filterSchoolPicker('',true,'Private')"
-              style="height:36px;padding:0 10px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:.75rem;cursor:pointer">
-              Private only
-            </button>
-            <button type="button" onclick="filterSchoolPicker('')"
-              style="height:36px;padding:0 10px;background:var(--s2);color:var(--t2);border:1px solid var(--b0);border-radius:6px;font-size:.75rem;cursor:pointer">
-              All
-            </button>
-          </div>
-        </div>
-        <div class="school-picker-wrap" id="schoolPickerList">${rows}</div>
-        <div id="school_count" style="font-size:.75rem;color:var(--t3);margin-top:6px">No schools selected</div>
-        <input type="hidden" id="scope_value_hidden">
-      </div>`;
-    if (existingValue) {
-      const saved = existingValue.split(',').map(s => s.trim().toLowerCase());
-      document.querySelectorAll('#schoolPickerList input[type=checkbox]').forEach(chk => {
-        if (saved.includes(String(chk.value).trim().toLowerCase())) chk.checked = true;
-      });
-      onSchoolCheck();
-    }
+    // ★ Cascading picker: District → Wing → Tehsil → schools (EMIS / UID).
+    // Nothing is fetched until a Tehsil is chosen, and then ONLY that tehsil's schools
+    // are loaded (no more 38k-row download when "Schools" is selected).
+    renderSchoolScopeUI(existingValue);
   }
 
   // Store the scope type for tag removal (single-value pickers only —
@@ -748,22 +669,170 @@ function updateScopeValue() {
   updateScopePreview();
 }
 
-function onSchoolCheck() {
-  const checked = document.querySelectorAll('#schoolPickerList input[type=checkbox]:checked');
-  const vals    = Array.from(checked).map(c => c.value);
-  const h = document.getElementById('scope_value_hidden');
-  if (h) h.value = vals.join(', ');
+// ═══════════════════════════════════════════════
+//  SCHOOLS SCOPE — cascading picker (District → Wing → Tehsil → EMIS)
+// ═══════════════════════════════════════════════
+let _schoolSel   = new Map();   // value (EMIS for Public, UID for Private) → { name, sheet }
+let _schoolArea  = [];          // schools of the currently chosen District/Wing/Tehsil
+let _schoolSheet = '';          // '', 'Public' or 'Private'
+
+const _spEsc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const _spOpts = (arr, ph) => `<option value="">${ph}</option>` + arr.map(v => `<option value="${_spEsc(v)}">${_spEsc(v)}</option>`).join('');
+const _spUniq = arr => [...new Set(arr.filter(Boolean))].sort();
+
+function renderSchoolScopeUI(existingValue) {
+  const area = document.getElementById('scopeValueArea');
+  _schoolSel = new Map(); _schoolArea = []; _schoolSheet = '';
+  const map = (jDropdowns && jDropdowns.jMap) || [];
+  const districts = _spUniq(map.map(r => r.district));
+  const selStyle = 'height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 10px;font-size:.82rem;background:#fff;min-width:0;flex:1 1 150px';
+
+  area.innerHTML = `
+    <div style="grid-column:1/-1">
+      <span class="flabel" style="display:block;margin-bottom:6px">
+        Select Schools (stores EMIS for Public, UID for Private) — choose District, Wing and Tehsil first
+      </span>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <select id="sp_district" style="${selStyle}" onchange="onSchoolAreaChange('district')">${_spOpts(districts, '1. District')}</select>
+        <select id="sp_wing"     style="${selStyle}" onchange="onSchoolAreaChange('wing')"     disabled>${_spOpts([], '2. Wing')}</select>
+        <select id="sp_tehsil"   style="${selStyle}" onchange="onSchoolAreaChange('tehsil')"   disabled>${_spOpts([], '3. Tehsil')}</select>
+      </div>
+      <div id="schoolSelectedChips" class="markaz-tags" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" id="school_search" placeholder="Search name, EMIS, or UID…" disabled
+          oninput="filterSchoolPicker(this.value)"
+          style="flex:1;height:36px;border:1px solid var(--b0);border-radius:6px;padding:0 12px;font-size:.82rem;outline:none">
+        <button type="button" onclick="setSchoolSheet('Public')"  style="height:36px;padding:0 10px;background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;border-radius:6px;font-size:.75rem;cursor:pointer">Public</button>
+        <button type="button" onclick="setSchoolSheet('Private')" style="height:36px;padding:0 10px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:.75rem;cursor:pointer">Private</button>
+        <button type="button" onclick="setSchoolSheet('')"        style="height:36px;padding:0 10px;background:var(--s2);color:var(--t2);border:1px solid var(--b0);border-radius:6px;font-size:.75rem;cursor:pointer">All</button>
+      </div>
+      <div class="school-picker-wrap" id="schoolPickerList">
+        <div style="padding:18px;text-align:center;color:var(--t3);font-size:.82rem">Select District, Wing and Tehsil to list its schools.</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+        <div id="school_count" style="font-size:.75rem;color:var(--t3)">No schools selected</div>
+        <button type="button" id="sp_select_all" onclick="selectAllShownSchools()" disabled
+          style="height:28px;padding:0 10px;background:var(--s2);color:var(--t2);border:1px solid var(--b0);border-radius:6px;font-size:.72rem;cursor:pointer">Select all shown</button>
+      </div>
+      <input type="hidden" id="scope_value_hidden">
+    </div>`;
+
+  if (existingValue) {
+    const codes = existingValue.split(',').map(x => x.trim()).filter(Boolean);
+    codes.forEach(c => _schoolSel.set(c, { name: '(loading…)', sheet: '' }));
+    renderSchoolChips(); updateSchoolHidden();
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res && res.success) (res.schools || []).forEach(sc => {
+          const key = sc.sheet === 'Public' ? sc.emis : sc.uid;
+          if (_schoolSel.has(key)) _schoolSel.set(key, { name: sc.name, sheet: sc.sheet });
+        });
+        renderSchoolChips();
+      })
+      .withFailureHandler(() => renderSchoolChips())
+      .getSchoolsByCodes({ codes });
+  }
+}
+
+function onSchoolAreaChange(level) {
+  const map = (jDropdowns && jDropdowns.jMap) || [];
+  const dEl = document.getElementById('sp_district'), wEl = document.getElementById('sp_wing'), tEl = document.getElementById('sp_tehsil');
+  if (level === 'district') {
+    const wings = _spUniq(map.filter(r => r.district === dEl.value).map(r => r.wing));
+    wEl.innerHTML = _spOpts(wings, '2. Wing'); wEl.disabled = !dEl.value;
+    tEl.innerHTML = _spOpts([], '3. Tehsil');  tEl.disabled = true;
+  } else if (level === 'wing') {
+    const tehsils = _spUniq(map.filter(r => r.district === dEl.value && r.wing === wEl.value).map(r => r.tehsil));
+    tEl.innerHTML = _spOpts(tehsils, '3. Tehsil'); tEl.disabled = !wEl.value;
+  }
+  _schoolArea = [];
+  document.getElementById('school_search').value = ''; document.getElementById('school_search').disabled = true;
+  document.getElementById('sp_select_all').disabled = true;
+  const list = document.getElementById('schoolPickerList');
+  if (level !== 'tehsil' || !tEl.value) {
+    list.innerHTML = '<div style="padding:18px;text-align:center;color:var(--t3);font-size:.82rem">Select District, Wing and Tehsil to list its schools.</div>';
+    return;
+  }
+  list.innerHTML = '<div style="padding:18px;text-align:center;color:var(--t3)"><span class="spinner-border spinner-border-sm"></span> Loading schools of ' + _spEsc(tEl.value) + '…</div>';
+  const want = { district: dEl.value, wing: wEl.value, tehsil: tEl.value };
+  google.script.run
+    .withSuccessHandler(res => {
+      // ignore a stale response if the admin already changed the area
+      if (dEl.value !== want.district || wEl.value !== want.wing || tEl.value !== want.tehsil) return;
+      if (!res || !res.success) { list.innerHTML = ''; showToast('Could not load schools: ' + (res && res.message), false); return; }
+      _schoolArea = res.schools || [];
+      document.getElementById('school_search').disabled = false;
+      document.getElementById('sp_select_all').disabled = !_schoolArea.length;
+      renderSchoolList();
+    })
+    .withFailureHandler(err => { list.innerHTML = ''; showToast('School list load error: ' + err.message, false); })
+    .getSchoolsForScopeArea(want);
+}
+
+function _schoolKey(sc) { return sc.sheet === 'Public' ? (sc.emis || sc.uid) : sc.uid; }
+
+function renderSchoolList() {
+  const list = document.getElementById('schoolPickerList');
+  if (!list) return;
+  if (!_schoolArea.length) { list.innerHTML = '<div style="padding:18px;text-align:center;color:var(--t3);font-size:.82rem">No schools found for this Tehsil.</div>'; return; }
+  list.innerHTML = _schoolArea.map(sc => {
+    const key = _schoolKey(sc), id = String(key).replace(/[^a-zA-Z0-9]/g, '_');
+    const cls = sc.sheet === 'Public' ? 'pub' : 'priv';
+    const label = sc.sheet === 'Public' ? `EMIS: ${_spEsc(sc.emis)}` : `UID: ${_spEsc(sc.uid)}`;
+    return `<div class="sp-item" id="spi_${id}">
+      <input type="checkbox" value="${_spEsc(key)}" id="chk_${id}" ${_schoolSel.has(key) ? 'checked' : ''} onchange="onSchoolCheck(this)">
+      <span class="sp-name">${_spEsc(sc.name)}</span><span class="sp-emis">${label}</span>
+      <span class="sp-sheet ${cls}">${sc.sheet}</span></div>`;
+  }).join('');
+  filterSchoolPicker(document.getElementById('school_search').value || '');
+}
+
+function renderSchoolChips() {
+  const box = document.getElementById('schoolSelectedChips');
+  if (!box) return;
+  box.innerHTML = [..._schoolSel.entries()].map(([k, v]) =>
+    `<div class="markaz-tag" data-value="${_spEsc(k)}"><i class="bi bi-building"></i>${_spEsc(v.name)} · ${_spEsc(k)}<span class="rm" onclick="removeSchoolSel('${_spEsc(k).replace(/'/g, '')}')">×</span></div>`).join('');
   const cnt = document.getElementById('school_count');
-  if (cnt) cnt.textContent = checked.length ? `${checked.length} school(s) selected` : 'No schools selected';
+  if (cnt) cnt.textContent = _schoolSel.size ? `${_schoolSel.size} school(s) selected` : 'No schools selected';
+}
+
+function updateSchoolHidden() {
+  const h = document.getElementById('scope_value_hidden');
+  if (h) h.value = [..._schoolSel.keys()].join(', ');
   updateScopePreview();
 }
 
-function filterSchoolPicker(q, sheetOnly, sheetName) {
+function onSchoolCheck(chk) {
+  if (!chk) return;
+  const sc = _schoolArea.find(x => String(_schoolKey(x)) === String(chk.value));
+  if (chk.checked) _schoolSel.set(chk.value, { name: sc ? sc.name : chk.value, sheet: sc ? sc.sheet : '' });
+  else _schoolSel.delete(chk.value);
+  renderSchoolChips(); updateSchoolHidden();
+}
+
+function removeSchoolSel(key) {
+  _schoolSel.delete(key);
+  const id = String(key).replace(/[^a-zA-Z0-9]/g, '_'), chk = document.getElementById('chk_' + id);
+  if (chk) chk.checked = false;
+  renderSchoolChips(); updateSchoolHidden();
+}
+
+function selectAllShownSchools() {
+  document.querySelectorAll('#schoolPickerList .sp-item').forEach(item => {
+    if (item.style.display === 'none') return;
+    const chk = item.querySelector('input[type=checkbox]');
+    if (chk && !chk.checked) { chk.checked = true; onSchoolCheck(chk); }
+  });
+}
+
+function setSchoolSheet(sheet) { _schoolSheet = sheet; filterSchoolPicker(document.getElementById('school_search').value || ''); }
+
+function filterSchoolPicker(q) {
   const lower = q ? q.toLowerCase().trim() : '';
-  document.querySelectorAll('.sp-item').forEach(item => {
+  document.querySelectorAll('#schoolPickerList .sp-item').forEach(item => {
     const text  = item.textContent.toLowerCase();
     const sheet = item.querySelector('.sp-sheet') ? item.querySelector('.sp-sheet').textContent.trim() : '';
-    item.style.display = ((!lower || text.includes(lower)) && (!sheetOnly || sheet === sheetName)) ? '' : 'none';
+    item.style.display = ((!lower || text.includes(lower)) && (!_schoolSheet || sheet === _schoolSheet)) ? '' : 'none';
   });
 }
 

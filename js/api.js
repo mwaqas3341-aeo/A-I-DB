@@ -3775,6 +3775,39 @@ async function apiCall(action, payload) {
       return { success: true, schools: [...pubSchools, ...privSchools] };
     }
 
+    // Targeted lookups for the Schools-scope picker (replaces loading all 38k schools up front)
+    case 'getSchoolsForScopeArea': {
+      const a = Array.isArray(payload) ? payload[0] : payload;
+      const { district, wing, tehsil } = a || {};
+      if (!district || !tehsil) return { success: false, message: 'District and Tehsil are required.' };
+      let pq = _sb.from('public_schools').select('emis, school_name, markaz_name, status').eq('district', district).eq('tehsil', tehsil).order('school_name').limit(3000);
+      if (wing) pq = pq.eq('wing', wing);
+      const [pub, priv] = await Promise.all([
+        pq,
+        _sb.from('private_schools').select('unique_id, school_name, markaz_name, status').eq('district', district).eq('tehsil', tehsil).order('school_name').limit(3000),
+      ]);
+      if (pub.error)  return { success: false, message: pub.error.message };
+      if (priv.error) return { success: false, message: priv.error.message };
+      return { success: true, schools: [
+        ...(pub.data  || []).map(r => ({ emis: r.emis,   name: r.school_name, markaz: r.markaz_name, sheet: 'Public',  status: r.status })),
+        ...(priv.data || []).map(r => ({ uid:  r.unique_id, name: r.school_name, markaz: r.markaz_name, sheet: 'Private', status: r.status })),
+      ] };
+    }
+
+    case 'getSchoolsByCodes': {
+      const a = Array.isArray(payload) ? payload[0] : payload;
+      const codes = ((a && a.codes) || []).map(String).filter(Boolean).slice(0, 2000);
+      if (!codes.length) return { success: true, schools: [] };
+      const [pub, priv] = await Promise.all([
+        _sb.from('public_schools').select('emis, school_name').in('emis', codes),
+        _sb.from('private_schools').select('unique_id, school_name').in('unique_id', codes),
+      ]);
+      return { success: true, schools: [
+        ...(pub.data  || []).map(r => ({ emis: r.emis,      name: r.school_name, sheet: 'Public'  })),
+        ...(priv.data || []).map(r => ({ uid:  r.unique_id, name: r.school_name, sheet: 'Private' })),
+      ] };
+    }
+
     // ── ADMIN — KPI CARDS ─────────────────────────────────────────────
     case 'getKpiCardsAdmin': {
       const { data, error } = await _sb.from('kpi_cards').select('*').order('display_order');
