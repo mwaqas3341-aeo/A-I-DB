@@ -1,0 +1,38 @@
+/* Visit Planner — scoped styles (all selectors prefixed .vp- / #vp…). Uses existing theme tokens. */
+#visitPlannerView .vp-card{background:var(--s0,#fff);border:1px solid var(--b0,#DCE3DB);border-radius:var(--r2,12px);padding:14px 16px;margin-bottom:14px;box-shadow:var(--sh1)}
+.vp-h2{font-weight:700;color:var(--brand-dark,#06432F);margin-bottom:10px;font-size:15px}
+.vp-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.vp-row label,.vp-lbl{font-size:12px;color:var(--t2,#48584B);display:flex;flex-direction:column;gap:3px;font-weight:600}
+.vp-in{border:1px solid var(--b0,#DCE3DB);border-radius:8px;padding:7px 9px;font-size:13px;background:#fff;color:var(--t1,#10180F)}
+.vp-btn{border:1px solid var(--brand,#0B6E4F);background:#fff;color:var(--brand,#0B6E4F);border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.vp-btn:hover:not(:disabled){background:var(--brand-light,#E3F2EB)}.vp-btn:disabled{opacity:.45;cursor:not-allowed}
+.vp-primary{background:var(--brand,#0B6E4F);color:#fff}.vp-primary:hover:not(:disabled){background:var(--brand-dark,#06432F)}
+.vp-excel{border-color:#168A4F;color:#168A4F}.vp-danger{border-color:var(--bad,#C23B30);color:var(--bad,#C23B30)}.vp-ghost{border-color:var(--b0,#DCE3DB);color:var(--t2,#48584B)}
+.vp-days{display:flex;flex-wrap:wrap;gap:6px 14px}.vp-days label{flex-direction:row;align-items:center;gap:5px;font-weight:500;font-size:13px}
+.vp-muted{color:var(--t3,#8A988B);font-size:12px}.vp-status{margin-top:8px;font-size:13px}
+.vp-badge{display:inline-block;padding:1px 9px;border-radius:99px;font-size:11px;font-weight:700;text-transform:uppercase;background:var(--s2,#EEF1ED)}
+.vp-st-generated{background:var(--teal-bg,#DDF0EF);color:var(--teal,#0E7C7B)}.vp-st-edited{background:var(--orange-bg,#FCE8D6);color:var(--orange-dark,#A8550E)}.vp-st-finalized{background:var(--ok-bg,#DEF2E6);color:var(--ok,#168A4F)}
+.vp-scroll{overflow:auto;border:1px solid var(--b0,#DCE3DB);border-radius:8px;-webkit-overflow-scrolling:touch}
+.vp-table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}.vp-table th{background:#435E91;color:#fff;padding:7px 8px;text-align:center;position:sticky;top:0;z-index:1}
+.vp-table td{border:1px solid var(--b0,#DCE3DB);padding:4px 6px;vertical-align:middle}.vp-small td,.vp-small th{font-size:12px;padding:4px 6px}
+.vp-sel{background:var(--brand-light,#E3F2EB)}.vp-bad{background:var(--bad-bg,#FBE4E1)}.vp-mono{font-family:var(--mono,monospace);font-size:12px}
+.vp-slot{width:100%;min-width:190px;border:1px solid var(--b0,#DCE3DB);border-radius:6px;padding:4px;font-size:12px}.vp-date{border:1px solid var(--b0,#DCE3DB);border-radius:6px;padding:3px;font-size:12px}
+.vp-seq{display:block;font-size:10px;color:var(--t3,#8A988B)}.vp-icon{border:0;background:none;color:var(--bad,#C23B30);cursor:pointer;font-size:15px}
+.vp-src{font-size:10px;padding:0 5px;border-radius:4px;background:var(--s2,#EEF1ED);color:var(--t2,#48584B)}
+.vp-paper{background:#435E91;color:#fff;font-weight:700;text-align:center;padding:6px;border-radius:8px 8px 0 0;margin-top:12px}.vp-ph{font-size:13px}
+.vp-sign{text-align:right;font-weight:700;font-size:12px;margin:14px 8px 0}
+.vp-alerts{margin-top:10px;border:1px solid var(--orange,#D9731C);background:var(--orange-bg,#FCE8D6);border-radius:8px;padding:8px 12px;font-size:12.5px}
+.vp-alerts ul{margin:4px 0 0 16px;padding:0}.vp-error{color:var(--bad,#C23B30);font-weight:600}.vp-allok{border-color:var(--ok,#168A4F);background:var(--ok-bg,#DEF2E6);color:var(--ok,#168A4F)}
+@media (max-width:640px){#visitPlannerView .vp-btn{flex:1 1 46%}.vp-row{gap:8px}}
+/* Print: only the official sheet */
+#vpPrintArea{display:none}
+@media print{
+  body.vp-printing > *:not(#vpPrintArea){display:none !important}
+  body.vp-printing #vpPrintArea{display:block !important;font-family:Arial,sans-serif;color:#000}
+  #vpPrintArea .vpp-h{background:#435E91;color:#fff;text-align:center;font-weight:700;font-size:12pt;padding:3pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #vpPrintArea table{width:100%;border-collapse:collapse;margin-top:8pt;font-size:9.5pt}
+  #vpPrintArea th{background:#435E91;color:#fff;border:1px solid #000;padding:3pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #vpPrintArea td{border:1px solid #000;padding:2.5pt 4pt}#vpPrintArea tr{page-break-inside:avoid}
+  #vpPrintArea .vpp-sign{text-align:right;font-weight:700;margin-top:60pt;font-size:10pt}
+  @page{size:A4 portrait;margin:14mm}
+}
