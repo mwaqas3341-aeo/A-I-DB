@@ -29,6 +29,21 @@
     return { headers: h2, rows };
   }
 
+  // Merge the ticked lists into ONE table. Columns = union of every list's columns (matched by header
+  // name); Emis / Unique ID / School Name / Category come first so the Category column sits by the name.
+  function mergeSheets(sheets) {
+    const seen = new Map();
+    sheets.forEach(sh => sh.headers.forEach(h => { const k = String(h).trim().toLowerCase(); if (!seen.has(k)) seen.set(k, h); }));
+    const front = ['emis', 'unique id', 'school name', 'category'].filter(k => seen.has(k));
+    const order = [...front, ...[...seen.keys()].filter(k => !front.includes(k))];
+    const rows = [];
+    sheets.forEach(sh => {
+      const pos = order.map(k => sh.headers.findIndex(h => String(h).trim().toLowerCase() === k));
+      sh.rows.forEach(r => rows.push(pos.map(i => (i >= 0 && r[i] != null ? r[i] : ''))));
+    });
+    return { headers: order.map(k => seen.get(k)), rows };
+  }
+
   function sheetName(label, used) {
     let n = label.replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31) || 'Sheet';
     let k = 1; while (used.has(n.toLowerCase())) n = n.slice(0, 28) + '_' + (++k);
@@ -64,7 +79,7 @@
           </div>
           <div class="modal-bdy">
             <div style="font-size:.82rem;color:var(--t2);margin-bottom:10px">
-              Tick the list(s) you want. Each list becomes a sheet in one Excel file, with a <b>Category</b> column after School Name.
+              Tick the list(s) you want. All ticked lists are combined into <b>one sheet</b>, with a <b>Category</b> column after School Name.
               Users only receive schools inside their own jurisdiction; admins can choose.
             </div>
             <div id="seScopeBox" style="display:none;margin-bottom:12px;padding:10px 12px;border:1px solid var(--brand);background:var(--brand-light);border-radius:8px">
@@ -153,7 +168,10 @@
           const empty = (res.sheets || []).filter(s => !s.rows.length).map(s => s.label);
           if (!sheets.length) { toast('No schools found in the selected list(s).', false); return; }
           const day = new Date().toISOString().slice(0, 10);
-          writeWorkbook(sheets, sheets.length === 1 ? sheets[0].label + '_' + day : 'School_Lists_' + day);
+          const merged = mergeSheets(sheets);          // ONE sheet — the Category column tells the lists apart
+          writeWorkbook([{ label: 'School List', headers: merged.headers, rows: merged.rows }],
+                        (sheets.length === 1 ? sheets[0].label : 'School_List') + '_' + day);
+          toast(merged.rows.length + ' school(s) exported.', true);
           if (empty.length) toast('No schools in: ' + empty.join(', '), false);
           bootstrap.Modal.getInstance(el).hide();
         })
@@ -163,5 +181,5 @@
     bootstrap.Modal.getOrCreateInstance(el).show();
   }
 
-  root.SchoolExport = { open, addCategory, writeWorkbook, CATS };
+  root.SchoolExport = { open, addCategory, writeWorkbook, mergeSheets, CATS };
 })(window);
