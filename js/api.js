@@ -375,9 +375,27 @@ function _toHeadersData(data, colMap) {
 // school form/headers key on `emis`, so rows are aliased on the way in/out.
 const _ALT_SCHOOL_TABLE = { PEF: 'pef_schools', PIEMA: 'piema_schools' };
 
+// For a user with only a primary posting (no extra scope tags) the database can do the narrowing,
+// so even an admin who picks "only my jurisdiction" does not download the whole system first.
+function _narrowFnFor(reqUser, table) {
+  if (!reqUser || String(reqUser.role || '').toLowerCase() === 'admin') return null;
+  if ((reqUser.scope_type || '').trim() && (reqUser.scope_value || '').trim()) return null;   // extra scope → filter client-side
+  const d = (reqUser.district || '').trim(), w = (reqUser.wing || '').trim(),
+        t = (reqUser.tehsil || '').trim(), m = (reqUser.markaz_name || reqUser.markaz || '').trim();
+  if (!d && !w && !t && !m) return null;
+  return q => {
+    if (d) q = q.eq('district', d);
+    if (w && table !== 'private_schools') q = q.eq('wing', w);
+    if (t) q = q.eq('tehsil', t);
+    if (m) q = q.eq('markaz_name', m);
+    return q;
+  };
+}
+
 async function _fetchAltSchools(sheetName, reqUser) {
   const table = _ALT_SCHOOL_TABLE[sheetName];
-  const raw = await _fetchAllRows(table, '*', null, null, 'emis_code');
+  const nar = _narrowFnFor(reqUser, table);
+  const raw = await _fetchAllRows(table, '*', null, nar, 'emis_code');
   const rows = (raw || []).map(r => ({ ...r, emis: r.emis_code }));
   const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
   return filterFn ? rows.filter(filterFn) : rows;
@@ -414,7 +432,8 @@ async function _buildSchoolSheet(catKey, reqUser) {
   let raw, colMap, catFn;
   if (catKey === 'SED' || catKey === 'OUTSOURCED') {
     const status = catKey === 'OUTSOURCED' ? 'Out Sourced' : 'Active';
-    const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status), 'emis');
+    const nar = _narrowFnFor(reqUser, 'public_schools');
+    const data = await _fetchAllRows('public_schools', '*', null, q => { q = q.eq('status', status); return nar ? nar(q) : q; }, 'emis');
     const f = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
     raw = f ? (data || []).filter(f) : (data || []);
     colMap = getPubColMap(); const lbl = catKey === 'OUTSOURCED' ? 'Outsourced' : 'SED'; catFn = () => lbl;
@@ -423,7 +442,8 @@ async function _buildSchoolSheet(catKey, reqUser) {
     colMap = getPubColMap(); catFn = () => catKey;
   } else {
     const wantAcademy = catKey === 'PRIVATE_ACADEMY';
-    const data = await _fetchAllRows('private_schools', '*', null, q => q.eq('status', 'Active'));
+    const nar = _narrowFnFor(reqUser, 'private_schools');
+    const data = await _fetchAllRows('private_schools', '*', null, q => { q = q.eq('status', 'Active'); return nar ? nar(q) : q; });
     const f = _buildUserSchoolFilter(reqUser, { idKey: 'unique_id' });
     const vis = f ? (data || []).filter(f) : (data || []);
     raw = vis.filter(r => /academy/i.test(String(r.school_category || '')) === wantAcademy);
@@ -1283,7 +1303,9 @@ async function apiCall(action, payload) {
     // ── SCHOOL SUMMARY (per-user counts for the School General Data cards) ──
     case 'getSchoolSummary': {
       try {
-        const reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
+        let reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
+        const mineOnly = Array.isArray(payload) && payload[1] && payload[1].myJurisdictionOnly;
+        if (mineOnly && reqUser && String(reqUser.role || '').toLowerCase() === 'admin') reqUser = { ...reqUser, role: 'user' };
         const isAdmin = !reqUser || String(reqUser.role || '').toLowerCase() === 'admin';
         const hasExtra = !isAdmin && !!(reqUser.scope_type || '').trim() && !!(reqUser.scope_value || '').trim();
         const count = async (table, idKey, build) => {
@@ -1327,10 +1349,19 @@ async function apiCall(action, payload) {
     // ── SCHOOL LIST EXPORT (choose categories; every sheet has a Category column) ──
     case 'getSchoolExportData': {
       try {
-        const reqUser = Array.isArray(payload) ? payload[0] : payload?.user;
+        let reqUser = Array.isArray(payload) ? payload[0] : payload?.user;
         const cats = (Array.isArray(payload) ? payload[1] : payload?.categories) || [];
+        const opts = (Array.isArray(payload) ? payload[2] : payload?.options) || {};
         const valid = SCHOOL_CATEGORIES.filter(c => cats.includes(c.key));
         if (!valid.length) return { success: false, message: 'Select at least one school list.' };
+        // "Only my jurisdiction": an admin is treated exactly like a normal user with the same posting
+        // (primary district/wing/tehsil/markaz + any extra scope), instead of seeing the whole system.
+        if (opts.myJurisdictionOnly && reqUser && String(reqUser.role || '').toLowerCase() === 'admin') {
+          const hasPrimary = ['district','wing','tehsil','markaz_name','markaz'].some(k => (reqUser[k] || '').trim());
+          const hasExtra = (reqUser.scope_type || '').trim() && (reqUser.scope_value || '').trim();
+          if (!hasPrimary && !hasExtra) return { success: false, message: 'Your profile has no district / wing / tehsil / markaz assigned, so "only my jurisdiction" has nothing to match. Untick it to export the whole system.' };
+          reqUser = { ...reqUser, role: 'user' };
+        }
         const sheets = [];
         for (const c of valid) {
           const b = await _buildSchoolSheet(c.key, reqUser);

@@ -65,7 +65,13 @@
           <div class="modal-bdy">
             <div style="font-size:.82rem;color:var(--t2);margin-bottom:10px">
               Tick the list(s) you want. Each list becomes a sheet in one Excel file, with a <b>Category</b> column after School Name.
-              Only schools in your jurisdiction are included.
+              Users only receive schools inside their own jurisdiction; admins can choose.
+            </div>
+            <div id="seScopeBox" style="display:none;margin-bottom:12px;padding:10px 12px;border:1px solid var(--brand);background:var(--brand-light);border-radius:8px">
+              <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0">
+                <input type="checkbox" id="seMine" style="width:18px;height:18px;margin-top:2px">
+                <span><b>Only my jurisdiction</b><br><span id="seMineHint" style="font-size:.75rem;color:var(--t2)"></span></span>
+              </label>
             </div>
             <div id="seList" style="display:flex;flex-direction:column;gap:8px"></div>
             <div style="margin-top:10px"><a href="#" id="seAll" style="font-size:.78rem">Select all</a> · <a href="#" id="seNone" style="font-size:.78rem">Clear</a></div>
@@ -90,15 +96,36 @@
     opts = opts || {};
     const el = ensureModal();
     const pre = new Set(opts.preselect || []);
-    const sum = root._schoolSummary || {};
-    el.querySelector('#seList').innerHTML = CATS.map(c => {
-      const n = sum[c.sum];
-      return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--b0);border-radius:8px;cursor:pointer">
-        <input type="checkbox" value="${c.key}" ${pre.has(c.key) ? 'checked' : ''} style="width:18px;height:18px">
-        <span style="flex:1;font-weight:600">${esc(c.label)}</span>
-        ${n == null ? '' : `<span class="count-chip" style="font-family:var(--mono)">${n}</span>`}</label>`;
-    }).join('');
-
+    const u = (typeof currentUser !== 'undefined' && currentUser) || {};
+    const isAdmin = String(u.role || '').toLowerCase() === 'admin';
+    // Admins would otherwise download every school in the system → offer "only my jurisdiction" (ticked by default).
+    const place = [u.district, u.wing, u.tehsil, u.markaz_name || u.markaz].filter(Boolean).join(' › ');
+    const hasPlace = !!place || (!!u.scope_type && !!u.scope_value);
+    const box = el.querySelector('#seScopeBox'), mine = el.querySelector('#seMine');
+    box.style.display = isAdmin ? '' : 'none';
+    mine.disabled = !hasPlace;
+    mine.checked = isAdmin && hasPlace;
+    el.querySelector('#seMineHint').textContent = hasPlace
+      ? ('Your posting: ' + (place || 'extra scope only') + (u.scope_type && u.scope_value ? ' + ' + u.scope_type + ' scope' : '') + '. Untick to download the whole system.')
+      : 'No district / wing / tehsil / markaz is assigned to your profile, so the whole system will be exported.';
+    const drawList = () => {
+      const sum = (isAdmin && mine.checked ? root._schoolSummaryMine : root._schoolSummary) || {};
+      const checked = new Set([...el.querySelectorAll('#seList input:checked')].map(i => i.value));
+      const first = !el.querySelector('#seList input');
+      el.querySelector('#seList').innerHTML = CATS.map(c => {
+        const n = sum[c.sum];
+        return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--b0);border-radius:8px;cursor:pointer">
+          <input type="checkbox" value="${c.key}" ${(first ? pre.has(c.key) : checked.has(c.key)) ? 'checked' : ''} style="width:18px;height:18px">
+          <span style="flex:1;font-weight:600">${esc(c.label)}</span>
+          ${n == null ? '' : `<span class="count-chip" style="font-family:var(--mono)">${n}</span>`}</label>`;
+      }).join('');
+    };
+    mine.onchange = drawList;
+    drawList();
+    if (isAdmin && hasPlace && !root._schoolSummaryMine) {
+      google.script.run.withSuccessHandler(r => { if (r && r.success) { root._schoolSummaryMine = r; drawList(); } })
+        .getSchoolSummary([u, { myJurisdictionOnly: true }]);
+    }
     const fBtn = el.querySelector('#seFiltered');
     if (opts.filtered && opts.filtered.rows && opts.filtered.rows.length) {
       fBtn.style.display = '';
@@ -114,6 +141,7 @@
     const go = el.querySelector('#seGo');
     go.disabled = false;
     go.onclick = () => {
+      const mine = el.querySelector('#seMine');
       const keys = [...el.querySelectorAll('#seList input:checked')].map(i => i.value);
       if (!keys.length) { toast('Select at least one school list.', false); return; }
       go.disabled = true; go.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preparing…';
@@ -130,7 +158,7 @@
           bootstrap.Modal.getInstance(el).hide();
         })
         .withFailureHandler(err => { go.disabled = false; go.innerHTML = '<i class="bi bi-download"></i> Download'; toast('Export error: ' + err.message, false); })
-        .getSchoolExportData([typeof currentUser !== 'undefined' ? currentUser : null, keys]);
+        .getSchoolExportData([typeof currentUser !== 'undefined' ? currentUser : null, keys, { myJurisdictionOnly: !!(mine && mine.checked && !mine.disabled) }]);
     };
     bootstrap.Modal.getOrCreateInstance(el).show();
   }
