@@ -11,6 +11,7 @@
   const C = window.VisitPlannerCore;
   const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const PAGE = 1000;
+  const SRC_LABEL = { PUBLIC: 'SED/Outsourced', HIGH: 'High', PIEMA: 'PIEMA', PEF: 'PEF', PRIVATE: 'Private', ACADEMY: 'Academy' };
 
   const S = {
     inited: false, userId: null,
@@ -125,7 +126,7 @@
       const on = S.selected.has(String(r.emis));
       return `<tr class="${on ? 'vp-sel' : ''}"><td><input type="checkbox" data-act="pick" data-emis="${esc(r.emis)}" ${on ? 'checked' : ''}></td>` +
         `<td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.school_name)}</td><td>${esc(r.markaz_name)}</td><td>${esc(r.tehsil)}</td>` +
-        `<td>${esc(r.wing || '')}</td><td>${esc(r.level || '')} <span class="vp-src vp-src-${esc(r.source)}">${esc(r.source)}</span></td></tr>`;
+        `<td>${esc(r.wing || '')}</td><td>${esc(r.level || '')} <span class="vp-src vp-src-${esc(r.source)}">${esc(SRC_LABEL[r.source] || r.source)}</span></td></tr>`;
     }).join('') : '<tr><td colspan="7" class="vp-muted">No schools match.</td></tr>';
     $('vpMore').style.display = rows.length > S.shown ? '' : 'none';
     $('vpMore').textContent = `Show more (${rows.length - S.shown} hidden — refine the search or filters)`;
@@ -459,7 +460,7 @@
     <div class="vp-card"><div class="vp-h2">Step 3 — Schools <span class="vp-muted" id="vpSelCount"></span></div>
       <div class="vp-row"><input id="vpSearch" class="vp-in" placeholder="Search EMIS code or school name" style="flex:1;min-width:200px">
       <select id="vpMarkazFilter" class="vp-in"><option value="">All Markaz</option></select>
-      <select id="vpSourceFilter" class="vp-in"><option value="">All types</option><option value="PUBLIC">Govt / Outsourced</option><option value="HIGH">High / H.Sec.</option><option value="PIEMA">PIEMA</option><option value="PEF">PEF</option></select>
+      <select id="vpSourceFilter" class="vp-in"><option value="">All types</option><option value="PUBLIC">Govt / Outsourced</option><option value="HIGH">High / H.Sec.</option><option value="PIEMA">PIEMA</option><option value="PEF">PEF</option><option value="PRIVATE">Private Schools</option><option value="ACADEMY">Private Academies</option></select>
       <button class="vp-btn vp-ghost" id="vpSelectAll">Select all shown</button><button class="vp-btn vp-ghost" id="vpClearSel">Clear</button><button class="vp-btn vp-ghost" id="vpBtnRefresh" title="Reload the school list">↻</button></div>
       <div class="vp-scroll" style="max-height:340px"><table class="vp-table vp-small"><thead><tr><th></th><th>EMIS</th><th>School</th><th>Markaz</th><th>Tehsil</th><th>Wing</th><th>Level / Type</th></tr></thead><tbody id="vpSchoolBody"></tbody></table></div>
       <button class="vp-btn vp-ghost" id="vpMore" style="display:none;margin-top:6px"></button></div>
