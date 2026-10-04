@@ -370,6 +370,69 @@ function _toHeadersData(data, colMap) {
   return { headers, data: mapped };
 }
 
+// ── PEF / PIEMA school data (same form & columns as public schools) ──────────
+// pef_schools / piema_schools key their schools on `emis_code`; the public
+// school form/headers key on `emis`, so rows are aliased on the way in/out.
+const _ALT_SCHOOL_TABLE = { PEF: 'pef_schools', PIEMA: 'piema_schools' };
+
+async function _fetchAltSchools(sheetName, reqUser) {
+  const table = _ALT_SCHOOL_TABLE[sheetName];
+  const raw = await _fetchAllRows(table, '*', null, null, 'emis_code');
+  const rows = (raw || []).map(r => ({ ...r, emis: r.emis_code }));
+  const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+  return filterFn ? rows.filter(filterFn) : rows;
+}
+
+// Export categories (the label written to the "Category" column)
+const SCHOOL_CATEGORIES = [
+  { key: 'SED',            label: 'SED' },
+  { key: 'PEF',            label: 'PEF' },
+  { key: 'PIEMA',          label: 'PIEMA' },
+  { key: 'PRIVATE_SCHOOL', label: 'Private School' },
+  { key: 'PRIVATE_ACADEMY',label: 'Private Academy' },
+  { key: 'OUTSOURCED',     label: 'Outsourced' },
+];
+
+// Inserts a "Category" column right after "School Name" (or after the 1st
+// column when there is no such header). catFn(rowObject) → category label.
+function _withCategoryColumn(headers, rows2d, rawRows, catFn) {
+  let idx = headers.findIndex(h => /^school\s*name$/i.test(String(h).trim()));
+  idx = idx >= 0 ? idx + 1 : 1;
+  const outHeaders = [...headers.slice(0, idx), 'Category', ...headers.slice(idx)];
+  const outRows = rows2d.map((row, i) => [...row.slice(0, idx), catFn(rawRows[i]), ...row.slice(idx)]);
+  return { headers: outHeaders, rows: outRows };
+}
+
+function _rowsTo2d(rawRows, colMap) {
+  const entries = Object.entries(colMap);
+  return { headers: entries.map(([, h]) => h), rows: rawRows.map(r => entries.map(([c]) => r[c] ?? '')) };
+}
+
+const _privCategoryLabel = r => /academy/i.test(String(r.school_category || '')) ? 'Private Academy' : 'Private School';
+
+async function _buildSchoolSheet(catKey, reqUser) {
+  let raw, colMap, catFn;
+  if (catKey === 'SED' || catKey === 'OUTSOURCED') {
+    const status = catKey === 'OUTSOURCED' ? 'Out Sourced' : 'Active';
+    const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status), 'emis');
+    const f = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+    raw = f ? (data || []).filter(f) : (data || []);
+    colMap = getPubColMap(); const lbl = catKey === 'OUTSOURCED' ? 'Outsourced' : 'SED'; catFn = () => lbl;
+  } else if (catKey === 'PEF' || catKey === 'PIEMA') {
+    raw = await _fetchAltSchools(catKey, reqUser);
+    colMap = getPubColMap(); catFn = () => catKey;
+  } else {
+    const wantAcademy = catKey === 'PRIVATE_ACADEMY';
+    const data = await _fetchAllRows('private_schools', '*', null, q => q.eq('status', 'Active'));
+    const f = _buildUserSchoolFilter(reqUser, { idKey: 'unique_id' });
+    const vis = f ? (data || []).filter(f) : (data || []);
+    raw = vis.filter(r => /academy/i.test(String(r.school_category || '')) === wantAcademy);
+    colMap = getPrivColMap(); catFn = _privCategoryLabel;
+  }
+  const { headers, rows } = _rowsTo2d(raw, colMap);
+  return _withCategoryColumn(headers, rows, raw, catFn);
+}
+
 /**
  * Builds a row-filtering predicate reflecting a user's visibility scope:
  *   - PRIMARY jurisdiction: their own posting (district/wing/tehsil/markaz_name).
@@ -1215,6 +1278,66 @@ async function apiCall(action, payload) {
       } catch (e) {
         return { success: false, message: e && e.message ? e.message : 'Failed to load summary counts.' };
       }
+    }
+
+    // ── SCHOOL SUMMARY (per-user counts for the School General Data cards) ──
+    case 'getSchoolSummary': {
+      try {
+        const reqUser = Array.isArray(payload) ? payload[0] : (payload || user);
+        const isAdmin = !reqUser || String(reqUser.role || '').toLowerCase() === 'admin';
+        const hasExtra = !isAdmin && !!(reqUser.scope_type || '').trim() && !!(reqUser.scope_value || '').trim();
+        const count = async (table, idKey, build) => {
+          if (hasExtra) {   // extra scope tags can't be expressed as simple .eq() filters
+            let rows = await _fetchAllRows(table, idKey === 'unique_id'
+              ? 'unique_id, district, tehsil, markaz_name, status, school_category'
+              : (table === 'public_schools' ? 'emis, district, wing, tehsil, markaz_name, status' : 'emis_code, district, wing, tehsil, markaz_name, status'),
+              null, null, idKey === 'unique_id' ? undefined : (table === 'public_schools' ? 'emis' : 'emis_code'));
+            rows = rows.map(r => ({ ...r, emis: r.emis ?? r.emis_code }));
+            const f = _buildUserSchoolFilter(reqUser, { idKey: idKey === 'emis_code' ? 'emis' : idKey });
+            return rows.filter(r => (!f || f(r)) && build.row(r)).length;
+          }
+          let q = _sb.from(table).select('*', { count: 'exact', head: true });
+          q = build.q(q);
+          if (!isAdmin) {
+            const d = (reqUser.district || '').trim(), w = (reqUser.wing || '').trim(),
+                  t = (reqUser.tehsil || '').trim(), m = (reqUser.markaz_name || reqUser.markaz || '').trim();
+            if (d) q = q.eq('district', d);
+            if (w && table !== 'private_schools') q = q.eq('wing', w);
+            if (t) q = q.eq('tehsil', t);
+            if (m) q = q.eq('markaz_name', m);
+          }
+          const { count, error } = await q; if (error) throw error; return count || 0;
+        };
+        const act  = { q: q => q.eq('status', 'Active'),      row: r => r.status === 'Active' };
+        const outs = { q: q => q.eq('status', 'Out Sourced'), row: r => r.status === 'Out Sourced' };
+        const privS = { q: q => q.eq('status', 'Active').neq('school_category', 'Academy'), row: r => r.status === 'Active' && r.school_category !== 'Academy' };
+        const privA = { q: q => q.eq('status', 'Active').eq('school_category', 'Academy'),  row: r => r.status === 'Active' && r.school_category === 'Academy' };
+        const privI = { q: q => q.eq('status', 'Inactive'),   row: r => r.status === 'Inactive' };
+        const [sed, outsourced, pef, piema, privateSchools, academies, privateInactive] = await Promise.all([
+          count('public_schools', 'emis', act), count('public_schools', 'emis', outs),
+          count('pef_schools', 'emis_code', act), count('piema_schools', 'emis_code', act),
+          count('private_schools', 'unique_id', privS), count('private_schools', 'unique_id', privA),
+          count('private_schools', 'unique_id', privI),
+        ]);
+        return { success: true, sed, outsourced, pef, piema, privateSchools, academies, privateInactive,
+                 total: sed + outsourced + pef + piema + privateSchools + academies };
+      } catch (e) { return { success: false, message: e && e.message ? e.message : 'Failed to load school summary.' }; }
+    }
+
+    // ── SCHOOL LIST EXPORT (choose categories; every sheet has a Category column) ──
+    case 'getSchoolExportData': {
+      try {
+        const reqUser = Array.isArray(payload) ? payload[0] : payload?.user;
+        const cats = (Array.isArray(payload) ? payload[1] : payload?.categories) || [];
+        const valid = SCHOOL_CATEGORIES.filter(c => cats.includes(c.key));
+        if (!valid.length) return { success: false, message: 'Select at least one school list.' };
+        const sheets = [];
+        for (const c of valid) {
+          const b = await _buildSchoolSheet(c.key, reqUser);
+          sheets.push({ key: c.key, label: c.label, headers: b.headers, rows: b.rows });
+        }
+        return { success: true, sheets };
+      } catch (e) { return { success: false, message: e && e.message ? e.message : 'Export failed.' }; }
     }
 
     case 'getKpiCards': {
@@ -2908,6 +3031,10 @@ async function apiCall(action, payload) {
       const p = Array.isArray(payload) ? payload : [payload];
       const reqUser  = p[0];
       const sheetName = p[1] || 'Public';
+      if (_ALT_SCHOOL_TABLE[sheetName]) {
+        const altRows = await _fetchAltSchools(sheetName, reqUser);
+        return { success: true, ..._toHeadersData(altRows, getPubColMap()) };
+      }
       const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
       // Keyset pagination on emis (unique, indexed) instead of OFFSET —
       // this table has 38,000+ rows, and OFFSET pagination was hitting
@@ -2926,6 +3053,22 @@ async function apiCall(action, payload) {
       const isNew = !!p._isNew;
       const emis = p['Emis'] || p.emis;
       if (!emis) return { success: false, message: 'Emis code is required.' };
+
+      // ── PEF / PIEMA: same form, saved to their own tables ──
+      const altSheet = Array.isArray(payload) ? payload[2] : null;
+      if (_ALT_SCHOOL_TABLE[altSheet]) {
+        if (isNew) return { success: false, message: altSheet + ' schools cannot be added here.' };
+        const rev = Object.fromEntries(Object.entries(getPubColMap()).map(([c,h])=>[h,c]));
+        let row = {};
+        for (const [h, v] of Object.entries(p)) { const col = rev[h]; if (col) row[col] = v; }
+        row = _coerceNumericColumns(_sanitizeEmpty(row));
+        // identity / master columns and the Active-Outsourced switch are not editable here
+        ['emis','school_name','district','wing','tehsil','markaz_name','level','status','fard_malikiat_pics'].forEach(k => delete row[k]);
+        row.updated_at = new Date().toISOString();
+        const r = await _checkedUpdate(_ALT_SCHOOL_TABLE[altSheet], row, 'emis_code', emis);
+        if (!r.ok) return { success: false, message: r.message };
+        return { success: true, message: 'School record updated.' };
+      }
       // Convert display keys back to db columns
       const reverseMap = Object.fromEntries(Object.entries(getPubColMap()).map(([c,h])=>[h,c]));
       let dbRow = {};
@@ -2981,29 +3124,28 @@ async function apiCall(action, payload) {
       // Used by public/private export buttons — returns { success, headers, rows (2D) }
       const sheetName = Array.isArray(payload) ? payload[0] : (payload?.sheet || payload);
       const reqUser   = Array.isArray(payload) ? payload[1] : payload?.user;
-      if (sheetName === 'Public' || sheetName === 'Out Sourced School') {
-        const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
-        const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status), 'emis');
-        const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
-        const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
-        const hdrs = _headers(getPubColMap());
-        const rows2d = visible.map(r => hdrs.map(h => {
-          const col = Object.entries(getPubColMap()).find(([,v])=>v===h)?.[0];
-          return col ? (r[col] ?? '') : '';
-        }));
-        return { success: true, headers: hdrs, rows: rows2d };
+      if (sheetName === 'Public' || sheetName === 'Out Sourced School' || _ALT_SCHOOL_TABLE[sheetName]) {
+        let visible, lbl;
+        if (_ALT_SCHOOL_TABLE[sheetName]) { visible = await _fetchAltSchools(sheetName, reqUser); lbl = sheetName; }
+        else {
+          const status = sheetName === 'Out Sourced School' ? 'Out Sourced' : 'Active';
+          const data = await _fetchAllRows('public_schools', '*', null, q => q.eq('status', status), 'emis');
+          const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'emis' });
+          visible = filterFn ? (data || []).filter(filterFn) : (data || []);
+          lbl = sheetName === 'Out Sourced School' ? 'Outsourced' : 'SED';
+        }
+        const b = _rowsTo2d(visible, getPubColMap());
+        const out = _withCategoryColumn(b.headers, b.rows, visible, () => lbl);
+        return { success: true, headers: out.headers, rows: out.rows };
       }
       if (sheetName === 'Private' || sheetName === 'Inactive') {
         const status = sheetName === 'Inactive' ? 'Inactive' : 'Active';
         const data = await _fetchAllRows('private_schools', '*', null, q => q.eq('status', status));
         const filterFn = _buildUserSchoolFilter(reqUser, { idKey: 'unique_id' });
         const visible = filterFn ? (data || []).filter(filterFn) : (data || []);
-        const hdrs = _headers(getPrivColMap());
-        const rows2d = visible.map(r => hdrs.map(h => {
-          const col = Object.entries(getPrivColMap()).find(([,v])=>v===h)?.[0];
-          return col ? (r[col] ?? '') : '';
-        }));
-        return { success: true, headers: hdrs, rows: rows2d };
+        const b = _rowsTo2d(visible, getPrivColMap());
+        const out = _withCategoryColumn(b.headers, b.rows, visible, _privCategoryLabel);
+        return { success: true, headers: out.headers, rows: out.rows };
       }
       // Staff sheet export
       const statusMap3 = { Staff:'active', Termination:'terminated', Retirement:'retired', Resignation:'resigned', Deceased:'deceased', Deleted_Archive:'deleted' };

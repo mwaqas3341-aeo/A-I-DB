@@ -106,7 +106,7 @@ function openPublicModule(sheetName) {
   pubFilteredCache  = [];
   pubSchoolHierarchy = [];
 
-  document.getElementById('pubCurrentSheet').textContent = sheetName;
+  document.getElementById('pubCurrentSheet').textContent = (typeof PUB_SHEET_LABEL !== 'undefined' && PUB_SHEET_LABEL[sheetName]) || sheetName;
   document.getElementById('pubRecordCount').innerHTML    = '<i class="bi bi-database"></i> —';
   const catEl = document.getElementById('pubFltCategory');
   if (catEl) catEl.value = sheetName;
@@ -580,9 +580,18 @@ function buildPublicForm() {
   certWidgetSyncAll();
 }
 
+function _pubApplyAltSheetUi() {
+  const alt = (currentPubSheet === 'PEF' || currentPubSheet === 'PIEMA');
+  ['wrap_pub_Status', 'wrap_pub_FardMalikiat'].forEach(id => { const w = document.getElementById(id); if (w) w.style.display = alt ? 'none' : ''; });
+  PUB_EDITABLE_FIELDS.filter(f => f.photo).forEach(f => { const w = document.getElementById('wrap_' + f.id); if (w) w.style.display = alt ? 'none' : ''; });
+  const t = document.querySelector('#publicSchoolModal .modal-hdr-title');
+  if (t) t.textContent = alt ? ('Manage ' + currentPubSheet + ' School Record') : 'Manage Public/Outsourced Record';
+}
+
 function editPublic(keyVal) {
   const row = pubData.find(r => String(r[pubHeaders[0]]) === String(keyVal));
   if (!row) return;
+  _pubApplyAltSheetUi();
 
   document.getElementById('pubEditId').value = keyVal;
   for (let i = 0; i < PUB_MASTER_COUNT; i++) {
@@ -795,7 +804,22 @@ function submitPublicForm() {
 // ══════════════════════════════════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════════════════════════════════
+const PUB_SHEET_CATEGORY = { 'Public': 'SED', 'Out Sourced School': 'OUTSOURCED', 'PEF': 'PEF', 'PIEMA': 'PIEMA' };
+const PUB_SHEET_LABEL    = { 'Public': 'Active Public Schools (SED)', 'Out Sourced School': 'Outsourced Schools', 'PEF': 'PEF Schools', 'PIEMA': 'PIEMA Schools' };
+const PUB_CATEGORY_NAME  = { 'SED': 'SED', 'OUTSOURCED': 'Outsourced', 'PEF': 'PEF', 'PIEMA': 'PIEMA' };
+
 function exportPubView() {
+  const key = PUB_SHEET_CATEGORY[currentPubSheet || 'Public'] || 'SED';
+  if (window.SchoolExport) {
+    SchoolExport.open({
+      preselect: [key],
+      filtered: (pubFilteredCache.length > 0 && pubHeaders.length > 0)
+        ? { headers: pubHeaders, rows: pubFilteredCache, name: (currentPubSheet || 'Public'), category: PUB_CATEGORY_NAME[key] }
+        : null
+    });
+    return;
+  }
+  // fallback (export dialog script missing)
   if (pubFilteredCache.length > 0 && pubHeaders.length > 0) {
     _triggerExcelDownload(pubHeaders, pubFilteredCache, currentPubSheet || 'Public');
     return;

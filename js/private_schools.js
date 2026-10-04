@@ -1270,6 +1270,16 @@ function submitPrivateForm() {
 //  EXPORT
 // ══════════════════════════════════════════════════════════════════════
 function exportPrivateView() {
+  if (window.SchoolExport) {
+    const target0 = privFilteredCache.length ? privFilteredCache : privData;
+    SchoolExport.open({
+      preselect: ['PRIVATE_SCHOOL', 'PRIVATE_ACADEMY'],
+      filtered: (target0.length > 0 && privHeaders.length > 0)
+        ? { headers: privHeaders, rows: target0, name: (currentPrivSheet || 'Private'), category: 'Private', perRow: true }
+        : null
+    });
+    return;
+  }
   const target = privFilteredCache.length ? privFilteredCache : privData;
   if (target.length > 0 && privHeaders.length > 0) {
     _triggerExcelDownload(privHeaders, target, currentPrivSheet || 'Private');

@@ -235,7 +235,7 @@
             <a class="module-card" href="#school-data" data-route="school-data" onclick="return topNavLinkClick(event, 'school-data')">
               <i class="bi bi-folder-fill mc-icon"></i>
               <div class="mc-title">School General Data Management</div>
-              <div class="mc-desc">Govt/Public · Outsourced · Private · Inactive</div>
+              <div class="mc-desc">SED · PEF · PIEMA · Outsourced · Private · Academies</div>
               <div class="mc-arrow"><i class="bi bi-grid-fill"></i> Open Modules</div>
             </a>
 
@@ -308,6 +308,17 @@
             <div class="title-line"></div>
           </div>
 
+          <!-- Summary of the logged-in user's own schools (jurisdiction-scoped) -->
+          <div id="schoolSummaryStrip" style="display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px">
+            <span class="count-chip"><b>My schools</b>&nbsp;<span id="sumTotal" style="font-family:var(--mono)">…</span></span>
+            <span class="count-chip">SED&nbsp;<span id="sumSed" style="font-family:var(--mono)">…</span></span>
+            <span class="count-chip">PEF&nbsp;<span id="sumPef" style="font-family:var(--mono)">…</span></span>
+            <span class="count-chip">PIEMA&nbsp;<span id="sumPiema" style="font-family:var(--mono)">…</span></span>
+            <span class="count-chip">Outsourced&nbsp;<span id="sumOuts" style="font-family:var(--mono)">…</span></span>
+            <span class="count-chip">Private Schools&nbsp;<span id="sumPrivS" style="font-family:var(--mono)">…</span></span>
+            <span class="count-chip">Private Academies&nbsp;<span id="sumAcad" style="font-family:var(--mono)">…</span></span>
+          </div>
+
           <div class="kpi-grid">
 
             <!-- ── GOVT / PUBLIC KPI CARD ── -->
@@ -329,6 +340,32 @@
                 <button class="kpi-sub-btn kpi-sub-btn-outsourced" data-route="public-OutSourced"
                         onclick="event.stopPropagation(); openPublicModule('Out Sourced School')">
                   <i class="bi bi-arrow-repeat"></i> Outsourced
+                </button>
+              </div>
+            </div>
+
+            <!-- ── PEF KPI CARD ── -->
+            <div class="kpi-card kpi-govt" style="cursor:pointer" data-route="public-PEF" onclick="openPublicModule('PEF')" title="Click to open PEF Schools">
+              <i class="bi bi-mortarboard-fill kpi-icon"></i>
+              <div class="kpi-title">PEF Schools</div>
+              <div style="font-size:.72rem;color:var(--t3);font-weight:600;margin-top:2px">Punjab Education Foundation</div>
+              <div class="kpi-value" id="kpiPef"><span class="spinner-border spinner-border-sm"></span></div>
+              <div class="kpi-actions">
+                <button class="kpi-sub-btn kpi-sub-btn-active" data-route="public-PEF" onclick="event.stopPropagation(); openPublicModule('PEF')">
+                  <i class="bi bi-folder2-open"></i> Open PEF Schools
+                </button>
+              </div>
+            </div>
+
+            <!-- ── PIEMA KPI CARD ── -->
+            <div class="kpi-card kpi-govt" style="cursor:pointer" data-route="public-PIEMA" onclick="openPublicModule('PIEMA')" title="Click to open PIEMA Schools">
+              <i class="bi bi-buildings-fill kpi-icon"></i>
+              <div class="kpi-title">PIEMA Schools</div>
+              <div style="font-size:.72rem;color:var(--t3);font-weight:600;margin-top:2px">Punjab Intermediate Education Management Authority</div>
+              <div class="kpi-value" id="kpiPiema"><span class="spinner-border spinner-border-sm"></span></div>
+              <div class="kpi-actions">
+                <button class="kpi-sub-btn kpi-sub-btn-active" data-route="public-PIEMA" onclick="event.stopPropagation(); openPublicModule('PIEMA')">
+                  <i class="bi bi-folder2-open"></i> Open PIEMA Schools
                 </button>
               </div>
             </div>
@@ -1597,6 +1634,8 @@
       <select id="pubFltCategory" onchange="openPublicModule(this.value)">
         <option value="Public">Active Public Schools</option>
         <option value="Out Sourced School">Outsourced Public Schools</option>
+        <option value="PEF">PEF Schools</option>
+        <option value="PIEMA">PIEMA Schools</option>
       </select>
     </div>
     <div class="filter-group">
@@ -3762,6 +3801,7 @@
   <script src="js/visit-planner-core.js"></script>
   <script src="js/visit-planner-excel.js"></script>
   <script src="js/visit-planner.js"></script>
+  <script src="js/school-export.js"></script>
   <script src="js/fund-google-drive.js"></script>
   <script src="js/fund.js"></script>
   <script src="js/expiry-alerts.js"></script>

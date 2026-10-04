@@ -358,6 +358,21 @@ function loadKPIs() {
       if (typeof showToast === 'function') showToast('Failed to load summary counts: ' + (err && err.message ? err.message : 'Unknown error'), 'error');
     })
     .getSummaryCounts(currentUser);
+
+  // Per-user summary of the schools in this user's jurisdiction (SED, PEF, PIEMA, Outsourced, Private, Academies)
+  google.script.run
+    .withSuccessHandler(r => {
+      if (!r || !r.success) return;
+      window._schoolSummary = r;
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      set('kpiPef', r.pef); set('kpiPiema', r.piema);
+      set('sumTotal', r.total); set('sumSed', r.sed); set('sumPef', r.pef); set('sumPiema', r.piema);
+      set('sumOuts', r.outsourced); set('sumPrivS', r.privateSchools); set('sumAcad', r.academies);
+    })
+    .withFailureHandler(() => {
+      ['kpiPef','kpiPiema'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+    })
+    .getSchoolSummary(currentUser);
 }
 
 // ─── Excel helper (shared) ────────────────────────
@@ -661,6 +676,8 @@ const ROUTES = {
   profile:             () => { switchGlobalTab('homeView', document.getElementById('navHomeBtn')); if (typeof openMyProfileModal === 'function') openMyProfileModal(); },
   'public-Public':     () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('Public'); },
   'public-OutSourced': () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('Out Sourced School'); },
+  'public-PEF':        () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('PEF'); },
+  'public-PIEMA':      () => { if (typeof _rawOpenPublic  === 'function') _rawOpenPublic('PIEMA'); },
   'private-Private':   () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Private'); },
   'private-Inactive':  () => { if (typeof _rawOpenPrivate === 'function') _rawOpenPrivate('Inactive'); },
   'school-data':        () => { if (typeof toggleKpiCards === 'function') toggleKpiCards(true); },
@@ -809,7 +826,9 @@ function _installRouterWrappers() {
     window.openPublicModule = function(sheetName) {
       _rawOpenPublic(sheetName);
       if (!_navInFlight) {
-        const key = (sheetName === 'Out Sourced School') ? 'public-OutSourced' : 'public-Public';
+        const key = (sheetName === 'Out Sourced School') ? 'public-OutSourced'
+                  : (sheetName === 'PEF') ? 'public-PEF'
+                  : (sheetName === 'PIEMA') ? 'public-PIEMA' : 'public-Public';
         history.pushState({ route: key }, '', '#' + key);
       }
     };
