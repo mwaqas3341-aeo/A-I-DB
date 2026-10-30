@@ -33,6 +33,14 @@ function getJurisdictionLockLevel(user) {
   if (!user || String(user.role || '').toLowerCase() === 'admin') {
     return { level: 'admin', tags: [] };
   }
+  // Dy DEO / DEO / CEO are posted at a fixed level (their own District /
+  // Wing / Tehsil on app_users) and can browse everything below it.
+  if (user.is_aeo === false) {
+    const d = String(user.designation || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (d === 'dydeo')  return { level: 'dydeo', tags: [] };
+    if (d === 'deo')    return { level: 'deo',   tags: [] };
+    if (d === 'ceo')    return { level: 'ceo',   tags: [] };
+  }
   const scopeType  = (user.scope_type  || '').trim();
   const scopeValue = (user.scope_value || '').trim();
   const tags = scopeValue ? scopeValue.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -81,6 +89,18 @@ function applyJurisdictionLock(ids, user) {
     case 'markaz':
       setLocked('district', true); setLocked('wing', true);
       setLocked('tehsil', true);   setLocked('markaz', false);
+      break;
+    case 'dydeo':   // fixed District + Wing + Tehsil, free Markaz
+      setLocked('district', true); setLocked('wing', true);
+      setLocked('tehsil', true);   setLocked('markaz', false);
+      break;
+    case 'deo':     // fixed District + Wing, free Tehsil / Markaz
+      setLocked('district', true); setLocked('wing', true);
+      setLocked('tehsil', false);  setLocked('markaz', false);
+      break;
+    case 'ceo':     // fixed District, free Wing / Tehsil / Markaz
+      setLocked('district', true); setLocked('wing', false);
+      setLocked('tehsil', false);  setLocked('markaz', false);
       break;
     case 'tehsil':
       setLocked('district', true); setLocked('wing', true);

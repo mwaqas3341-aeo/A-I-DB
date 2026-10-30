@@ -999,6 +999,7 @@ function editUser(cnic) {
     setVal('u_ddeo_code',   row[UH.DDEO_CODE]    || '');
     setVal('u_bps_scale',   row[UH.BPS_SCALE]    || '');
     document.getElementById('u_receives_budget_copy').checked = !!row[UH.RECEIVES_BUDGET_COPY];
+    applyDesignationFieldRules(false);
     refreshDyOfficePreview();
     document.getElementById('u_is_tehsil_rep').checked = false; // reset while the lookup below resolves
     google.script.run
@@ -1032,6 +1033,54 @@ function setUserDesignation(v) {
     el.appendChild(opt);
   }
   el.value = v || 'Assistant Education Officer';
+  applyDesignationFieldRules(false);
+}
+
+// Which jurisdiction fields each designation needs when adding / editing a user.
+//   AEO     → District, Wing, Tehsil, Markaz (all required)
+//   Dy DEO  → District, Wing, Tehsil
+//   DEO     → District, Wing
+//   CEO     → District only
+// Fields a designation doesn't use are hidden and cleared. Dy DEO / DEO / CEO
+// are non-AEO officers (School Management only) and carry no Extra Charge /
+// Scope or Inspection Allowance details — their own District/Wing/Tehsil is
+// what restricts the schools they can see (fn_jurisdiction_visible).
+const DESIGNATION_FIELDS = {
+  'Dy DEO': { district: true, wing: true,  tehsil: true,  markaz: false, level: 'Tehsil'   },
+  'DEO':    { district: true, wing: true,  tehsil: false, markaz: false, level: 'Wing'     },
+  'CEO':    { district: true, wing: false, tehsil: false, markaz: false, level: 'District' },
+};
+const AEO_FIELDS = { district: true, wing: true, tehsil: true, markaz: true, level: null };
+function getDesignationRules() {
+  const d = (document.getElementById('u_designation') || {}).value || '';
+  return DESIGNATION_FIELDS[d] || AEO_FIELDS;
+}
+function applyDesignationFieldRules(clearHidden) {
+  const rules = getDesignationRules();
+  const nonAeo = !!rules.level;
+  const map = { district: 'u_district', wing: 'u_wing', tehsil: 'u_tehsil', markaz: 'u_markaz' };
+  Object.entries(map).forEach(([key, id]) => {
+    const el = document.getElementById(id); if (!el) return;
+    const ff = el.closest('.ff'); if (!ff) return;
+    ff.style.display = rules[key] ? '' : 'none';
+    if (!rules[key] && clearHidden) el.value = '';
+    const lbl = ff.querySelector('.flabel');
+    if (lbl) {
+      lbl.querySelectorAll('.u-req').forEach(n => n.remove());
+      if (rules[key]) lbl.insertAdjacentHTML('beforeend', ' <span class="u-req" style="color:var(--bad)">*</span>');
+    }
+  });
+  const murFf = document.getElementById('u_markaz_ur') && document.getElementById('u_markaz_ur').closest('.ff');
+  if (murFf) murFf.style.display = rules.markaz ? '' : 'none';
+  ['uIaBillTitle','uIaBillGrid','uScopeTitle','uScopeGrid','scopeValueArea'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = nonAeo ? 'none' : '';
+  });
+  if (nonAeo) {
+    const pw = document.getElementById('scopePreviewWrap'); if (pw) pw.style.display = 'none';
+    const rep = document.getElementById('u_is_tehsil_rep'); if (rep) rep.checked = false;
+  }
+  if (typeof filterMarkazDropdown === 'function') filterMarkazDropdown();
+  refreshDyOfficePreview();
 }
 
 function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
@@ -1085,6 +1134,14 @@ function submitUser() {
   const email = document.getElementById('u_email').value.trim();
   if (!cnic) { showToast('CNIC is required.', false); return; }
   if (!name) { showToast('Name is required.', false); return; }
+  const rules = getDesignationRules();
+  const desig = document.getElementById('u_designation').value || 'AEO';
+  const need = [['district','u_district','District'],['wing','u_wing','Wing'],['tehsil','u_tehsil','Tehsil'],['markaz','u_markaz','Markaz']];
+  for (const [key, id, label] of need) {
+    if (rules[key] && !document.getElementById(id).value.trim()) {
+      showToast(`${label} is required for ${desig}.`, false); return;
+    }
+  }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     showToast('Please enter a valid email address.', false);
     return;
@@ -1094,8 +1151,8 @@ function submitUser() {
     _id:               document.getElementById('u_row_index').value.trim() || undefined,
     [UH.PERSONAL_NO]: document.getElementById('u_personal_no').value.trim(),
     [UH.NAME]:        name,
-    [UH.MARKAZ]:      document.getElementById('u_markaz').value.trim(),
-    [UH.MARKAZ_UR]:   document.getElementById('u_markaz_ur').value.trim(),
+    [UH.MARKAZ]:      rules.markaz ? document.getElementById('u_markaz').value.trim() : '',
+    [UH.MARKAZ_UR]:   rules.markaz ? document.getElementById('u_markaz_ur').value.trim() : '',
     [UH.DESIGNATION]: document.getElementById('u_designation').value.trim(),
     [UH.DESIGNATION_UR]: document.getElementById('u_designation_ur').value.trim(),
     [UH.CELL]:        document.getElementById('u_cell').value.trim(),
@@ -1104,16 +1161,16 @@ function submitUser() {
     [UH.PASSWORD]:    document.getElementById('u_password').value.trim(),
     [UH.ROLE]:        document.getElementById('u_role').value.trim(),
     [UH.DISTRICT]:    document.getElementById('u_district').value.trim(),
-    [UH.WING]:        document.getElementById('u_wing').value.trim(),
-    [UH.TEHSIL]:      document.getElementById('u_tehsil').value.trim(),
-    [UH.SCOPE_TYPE]:  document.getElementById('u_scope_type').value.trim(),
-    [UH.SCOPE_VALUE]: scopeH ? scopeH.value.trim() : '',
+    [UH.WING]:        rules.wing   ? document.getElementById('u_wing').value.trim()   : '',
+    [UH.TEHSIL]:      rules.tehsil ? document.getElementById('u_tehsil').value.trim() : '',
+    [UH.SCOPE_TYPE]:  rules.level ? rules.level : document.getElementById('u_scope_type').value.trim(),
+    [UH.SCOPE_VALUE]: rules.level ? '' : (scopeH ? scopeH.value.trim() : ''),
     [UH.ACCESS_TYPE]: document.getElementById('u_access_type').value.trim(),
     [UH.PAGE_NO]:     document.getElementById('u_page_no').value.trim(),
     [UH.DDEO_CODE]:   document.getElementById('u_ddeo_code').value.trim(),
     [UH.BPS_SCALE]:   document.getElementById('u_bps_scale').value.trim() || null,
     [UH.RECEIVES_BUDGET_COPY]: document.getElementById('u_receives_budget_copy').checked,
-    isTehsilRep: document.getElementById('u_is_tehsil_rep').checked,
+    isTehsilRep: rules.level ? false : document.getElementById('u_is_tehsil_rep').checked,
     // Dy Office Detail intentionally NOT sent — it's a Postgres GENERATED
     // column (wing + tehsil), writing to it would error the update.
   };

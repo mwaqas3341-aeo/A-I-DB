@@ -2478,7 +2478,7 @@
           </div>
           <div class="ff">
             <span class="flabel">Designation</span>
-            <select id="u_designation"></select>
+            <select id="u_designation" onchange="applyDesignationFieldRules(true)"></select>
           </div>
           <div class="ff">
             <span class="flabel">Designation (Urdu)</span>
@@ -2486,10 +2486,10 @@
           </div>
         </div>
 
-        <div class="form-section-title" style="background:rgba(13,148,136,.08);border-left-color:#0d9488;color:#0f766e">
+        <div id="uIaBillTitle" class="form-section-title" style="background:rgba(13,148,136,.08);border-left-color:#0d9488;color:#0f766e">
           <i class="bi bi-file-earmark-medical-fill" style="color:#0d9488"></i> Inspection Allowance Bill Details
         </div>
-        <div class="form-grid" style="margin-bottom:20px">
+        <div id="uIaBillGrid" class="form-grid" style="margin-bottom:20px">
           <div class="ff">
             <span class="flabel">Page No.</span>
             <input type="text" id="u_page_no" placeholder="e.g. 14">
@@ -2516,12 +2516,12 @@
           </div>
         </div>
 
-        <div class="form-section-title" style="background:rgba(245,158,11,.08);border-left-color:#f59e0b;color:#92400e">
+        <div id="uScopeTitle" class="form-section-title" style="background:rgba(245,158,11,.08);border-left-color:#f59e0b;color:#92400e">
           <i class="bi bi-diagram-3-fill" style="color:#f59e0b"></i> Extra Charge / Scope
           <span style="font-size:.7rem;font-weight:400;color:var(--t3);margin-left:8px">One active charge — replaces previous</span>
         </div>
 
-        <div class="form-grid" style="margin-bottom:14px">
+        <div id="uScopeGrid" class="form-grid" style="margin-bottom:14px">
           <div class="ff" style="grid-column:1/-1">
             <span class="flabel">Scope Type (Col K)</span>
             <select id="u_scope_type" onchange="renderScopeValueUI()">
