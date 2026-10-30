@@ -19,6 +19,7 @@ const UH = {
   NAME:        'Name',
   MARKAZ:      'Markaz Name',
   MARKAZ_UR:   'Markaz Name (Urdu)',
+  DESIGNATION: 'Designation',
   DESIGNATION_UR: 'Designation (Urdu)',
   CELL:        'Cell No',
   CNIC:        'CNIC',
@@ -990,6 +991,7 @@ function editUser(cnic) {
     filterMarkazDropdown();
     setVal('u_markaz',      row[UH.MARKAZ]       || '');
     setVal('u_markaz_ur',   row[UH.MARKAZ_UR]    || '');
+    setUserDesignation(row[UH.DESIGNATION] || '');
     setVal('u_designation_ur', row[UH.DESIGNATION_UR] || '');
     setVal('u_scope_type',  row[UH.SCOPE_TYPE]   || 'Markaz');
     renderScopeValueUI(row[UH.SCOPE_VALUE] || '');
@@ -1011,6 +1013,25 @@ function editUser(cnic) {
   };
   if (!jLoaded) showToast('Loading jurisdiction data…', true);
   jLoaded ? doEdit() : loadJurisdictionDropdowns(doEdit);
+}
+
+// Designation dropdown: AEO (default) / Dy DEO / DEO / CEO. Dy DEO, DEO and CEO
+// are non-AEO officers: they only get the School Management card (see is_aeo
+// in app_users and applyNonAeoLayout() in index.js). Any legacy free-text value
+// already on a user (e.g. "AEO/SST") is kept as an extra option so saving
+// never silently changes it.
+const USER_DESIGNATIONS = ['Assistant Education Officer', 'Dy DEO', 'DEO', 'CEO'];
+function setUserDesignation(v) {
+  const el = document.getElementById('u_designation');
+  if (!el) return;
+  el.innerHTML = USER_DESIGNATIONS.map(d => `<option value="${d}">${d === 'Assistant Education Officer' ? 'AEO — Assistant Education Officer' : d}</option>`).join('');
+  v = (v || '').trim();
+  if (v && !USER_DESIGNATIONS.includes(v)) {
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    el.appendChild(opt);
+  }
+  el.value = v || 'Assistant Education Officer';
 }
 
 function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
@@ -1038,6 +1059,7 @@ function clearUserForm() {
     const el = document.getElementById(id);
     if (el && el.options && el.options.length) el.value = el.options[0].value;
   });
+  setUserDesignation('');
   document.getElementById('scopeValueArea').innerHTML = '';
   document.getElementById('scopePreviewWrap').style.display = 'none';
   document.getElementById('u_receives_budget_copy').checked = false;
@@ -1074,6 +1096,7 @@ function submitUser() {
     [UH.NAME]:        name,
     [UH.MARKAZ]:      document.getElementById('u_markaz').value.trim(),
     [UH.MARKAZ_UR]:   document.getElementById('u_markaz_ur').value.trim(),
+    [UH.DESIGNATION]: document.getElementById('u_designation').value.trim(),
     [UH.DESIGNATION_UR]: document.getElementById('u_designation_ur').value.trim(),
     [UH.CELL]:        document.getElementById('u_cell').value.trim(),
     [UH.CNIC]:        cnic,

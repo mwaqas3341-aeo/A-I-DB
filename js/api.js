@@ -279,6 +279,7 @@ const USER_COL_MAP = {
   name:         'Name',
   markaz_name:  'Markaz Name',
   markaz_name_ur: 'Markaz Name (Urdu)',
+  designation:  'Designation',
   designation_ur: 'Designation (Urdu)',
   cell_no:      'Cell No',
   cnic:         'CNIC',
@@ -1197,6 +1198,7 @@ async function apiCall(action, payload) {
         cell_no:     fullProfile.cell_no,
         email:       fullProfile.email,
         designation: fullProfile.designation,
+        is_aeo:      fullProfile.is_aeo !== false, // false for Dy DEO / DEO / CEO (School Management only)
         markaz_name_ur: fullProfile.markaz_name_ur,
         designation_ur: fullProfile.designation_ur,
         scope_type:  fullProfile.scope_type,
@@ -3488,7 +3490,7 @@ async function apiCall(action, payload) {
 
       const { data: aeos, error } = await _sb.from('app_users')
         .select('id, personal_no, name, designation, markaz_name, tehsil, wing')
-        .eq('tehsil', tehsil).eq('wing', wing).order('name');
+        .eq('tehsil', tehsil).eq('wing', wing).eq('is_aeo', true).order('name');
       if (error) return { success: false, message: error.message };
       return { success: true, aeos: aeos || [] };
     }
@@ -3592,7 +3594,7 @@ async function apiCall(action, payload) {
 
       const { data, error } = await _sb.from('app_users')
         .select('id, personal_no, name, wing, tehsil, markaz_name, designation, ddeo_code')
-        .eq('tehsil', tehsil).eq('wing', wing).order('name');
+        .eq('tehsil', tehsil).eq('wing', wing).eq('is_aeo', true).order('name');
       if (error) return { success: false, message: error.message };
       return { success: true, data: data || [] };
     }
@@ -3611,7 +3613,7 @@ async function apiCall(action, payload) {
         .eq('tehsil', tehsil).eq('wing', wing).eq('year', year);
       if (prepErr) return { success: false, message: prepErr.message };
 
-      const { data: users } = await _sb.from('app_users').select('id').eq('tehsil', tehsil).eq('wing', wing);
+      const { data: users } = await _sb.from('app_users').select('id').eq('tehsil', tehsil).eq('wing', wing).eq('is_aeo', true);
       const userIds = (users || []).map(u => u.id);
       let deductions = [];
       if (userIds.length) {

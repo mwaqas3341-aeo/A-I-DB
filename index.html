@@ -240,14 +240,14 @@
             </a>
 
             <!-- Existing cards -->
-            <a class="module-card" href="#hr" data-route="hr" onclick="return topNavLinkClick(event, 'hr')">
+            <a class="module-card" data-aeo-only="1" href="#hr" data-route="hr" onclick="return topNavLinkClick(event, 'hr')">
               <i class="bi bi-people-fill mc-icon"></i>
               <div class="mc-title">Staff Statement</div>
               <div class="mc-desc">Teaching &amp; non-teaching staff records</div>
               <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </a>
 
-            <a class="module-card" href="#tools" data-route="tools" onclick="return topNavLinkClick(event, 'tools')">
+            <a class="module-card" data-aeo-only="1" href="#tools" data-route="tools" onclick="return topNavLinkClick(event, 'tools')">
               <i class="bi bi-tools mc-icon" style="color:var(--purple)"></i>
               <div class="mc-title">Portal Tools</div>
               <div class="mc-desc">Utilities, calculators &amp; data helpers</div>
@@ -255,28 +255,28 @@
                 <i class="bi bi-arrow-right-circle-fill"></i> Open
               </div>
             </a>
-            <a class="module-card" href="https://mwaqas3341-aeo.github.io/OfficialPerformas/" target="_blank" rel="noopener">
+            <a class="module-card" data-aeo-only="1" href="https://mwaqas3341-aeo.github.io/OfficialPerformas/" target="_blank" rel="noopener">
               <i class="bi bi-file-earmark-text-fill mc-icon"></i>
               <div class="mc-title">Official Performas</div>
               <div class="mc-desc">Download &amp; fill official documents</div>
               <div class="mc-arrow"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </a>
 
-            <a class="module-card" href="#inspection-allowance" data-route="inspection-allowance" onclick="return topNavLinkClick(event, 'inspection-allowance')">
+            <a class="module-card" data-aeo-only="1" href="#inspection-allowance" data-route="inspection-allowance" onclick="return topNavLinkClick(event, 'inspection-allowance')">
               <i class="bi bi-file-earmark-medical-fill mc-icon" style="color:#0d9488"></i>
               <div class="mc-title">Inspection Allowance</div>
               <div class="mc-desc">Prepare your Inspection Allowance bill</div>
               <div class="mc-arrow" style="color:#0d9488"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </a>
 
-            <a class="module-card" href="#visit-planner" data-route="visit-planner" onclick="return topNavLinkClick(event, 'visit-planner')">
+            <a class="module-card" data-aeo-only="1" href="#visit-planner" data-route="visit-planner" onclick="return topNavLinkClick(event, 'visit-planner')">
               <i class="bi bi-calendar2-week-fill mc-icon" style="color:#435E91"></i>
               <div class="mc-title">Visit Planner</div>
               <div class="mc-desc">Monthly school visit plan · Excel &amp; print</div>
               <div class="mc-arrow" style="color:#435E91"><i class="bi bi-arrow-right-circle-fill"></i> Open</div>
             </a>
 
-            <a class="module-card" href="#fund" data-route="fund" onclick="return topNavLinkClick(event, 'fund')">
+            <a class="module-card" data-aeo-only="1" href="#fund" data-route="fund" onclick="return topNavLinkClick(event, 'fund')">
               <i class="bi bi-cash-coin mc-icon" style="color:#0369a1"></i>
               <div class="mc-title">FUND Record Management</div>
               <div class="mc-desc">NSB &amp; FTF financial records</div>
@@ -2475,6 +2475,10 @@
           <div class="ff">
             <span class="flabel">Markaz Name (Urdu)</span>
             <input type="text" id="u_markaz_ur" dir="rtl" style="font-family:'Noto Nastaliq Urdu',serif;text-align:right" placeholder="مثال: فتح پور مردانہ">
+          </div>
+          <div class="ff">
+            <span class="flabel">Designation</span>
+            <select id="u_designation"></select>
           </div>
           <div class="ff">
             <span class="flabel">Designation (Urdu)</span>

@@ -198,6 +198,7 @@ function enterApp(user) {
   if (String(user.role).toLowerCase() === 'admin')
     document.getElementById('navAdminBtn').style.display = 'block';
 
+  applyNonAeoLayout(user);
   loadKPIs();
   loadDashboardLinksApps();
   loadDashboardKpiCards();
@@ -206,7 +207,9 @@ function enterApp(user) {
 
   const startRoute = location.hash ? location.hash.slice(1) : 'home';
   history.pushState({ route: 'home' }, '', '#home');
-  if (startRoute.startsWith('route:')) {
+  if (startRoute.startsWith('route:') && isNonAeoUser()) {
+    // admin-configured card functions are not available to Dy DEO / DEO / CEO
+  } else if (startRoute.startsWith('route:')) {
     // Admin-configured Dashboard Card opened via a fresh/new-tab hash —
     // run its function once; not added to the back/forward-aware
     // ROUTES map since the function name is arbitrary admin config,
@@ -305,11 +308,13 @@ async function _refreshCurrentUserFromDb(userId) {
       markaz_name_ur: data.markaz_name_ur, designation_ur: data.designation_ur,
       district: data.district, wing: data.wing, tehsil: data.tehsil,
       cell_no: data.cell_no, email: data.email, designation: data.designation,
+      is_aeo: data.is_aeo !== false,
       scope_type: data.scope_type, scope_value: data.scope_value,
       access_type: data.access_type, email_was_generated: data.email_was_generated,
     };
     localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(currentUser));
     localStorage.setItem('userMarkaz', currentUser.markaz || 'All');
+    applyNonAeoLayout(currentUser);
   } catch (e) { /* non-fatal — cached snapshot already loaded the app */ }
 }
 
@@ -515,6 +520,8 @@ function loadKpiCardsForModule(moduleKey, gridId, sectionId) {
   const grid    = document.getElementById(gridId);
   const section = document.getElementById(sectionId);
   if (!grid || !section) return;
+  // Dy DEO / DEO / CEO only get School Management — no Quick Access cards.
+  if (moduleKey === 'dashboard' && isNonAeoUser()) { section.style.display = 'none'; return; }
 
   google.script.run
     .withSuccessHandler(res => {
@@ -666,6 +673,31 @@ function openToolsView() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  NON-AEO OFFICERS (Dy DEO / DEO / CEO)
+//  app_users.is_aeo is false for these designations. They only get the
+//  School General Data Management card — every AEO-related module
+//  (Staff Statement, Tools, Performas, Inspection Allowance, Visit Planner,
+//  FUND/NSB) is hidden here, blocked in the router, and (for visit planner,
+//  inspection allowance, NSB/FUND, performance certificates, budget prep)
+//  also blocked server-side by the "aeo_only_module" RLS policies.
+//  Admins are never restricted.
+// ═══════════════════════════════════════════════════════════════════
+function isNonAeoUser(u) {
+  u = u || (typeof currentUser !== 'undefined' ? currentUser : null);
+  return !!u && String(u.role).toLowerCase() !== 'admin' && u.is_aeo === false;
+}
+function _nonAeoRouteAllowed(routeKey) {
+  return routeKey === 'home' || routeKey === 'profile' || routeKey === 'school-data' ||
+         routeKey.startsWith('public-') || routeKey.startsWith('private-');
+}
+function applyNonAeoLayout(u) {
+  const restricted = isNonAeoUser(u);
+  document.querySelectorAll('[data-aeo-only]').forEach(el => { el.style.display = restricted ? 'none' : ''; });
+  const quick = document.getElementById('dynamicKpiSection');
+  if (restricted && quick) { quick.style.display = 'none'; quick.dataset.nonAeoHidden = '1'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  ROUTER — hash-based navigation
 // ═══════════════════════════════════════════════════════════════════
 const ROUTES = {
@@ -732,6 +764,7 @@ Object.entries(ADMIN_SUB_TABS).forEach(([routeKey, cfg]) => {
 let _navInFlight = false;
 
 function navigateTo(routeKey, push = true) {
+  if (isNonAeoUser() && !_nonAeoRouteAllowed(routeKey)) { routeKey = 'home'; }
   const fn = ROUTES[routeKey];
   if (!fn) return;
   _navInFlight = true;
