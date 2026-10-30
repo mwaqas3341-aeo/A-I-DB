@@ -935,7 +935,19 @@ async function _callAdminFunction(action, payload) {
     },
     body: JSON.stringify({ action, payload }),
   });
-  return res.json();
+  // Never surface an empty error: the function can return a non-JSON body
+  // (gateway / JWT / timeout errors) or a JSON body with no `message`.
+  const raw = await res.text();
+  let out = null;
+  try { out = raw ? JSON.parse(raw) : null; } catch (e) { out = null; }
+  if (!out || typeof out !== 'object') {
+    return { success: false, message: `Server error (HTTP ${res.status})${raw ? ': ' + raw.slice(0, 200) : ''}` };
+  }
+  if (out.success === false || !res.ok) {
+    out.success = false;
+    out.message = out.message || out.error || out.msg || out.details || `Request failed (HTTP ${res.status})`;
+  }
+  return out;
 }
 
 /**

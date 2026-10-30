@@ -101,11 +101,11 @@ window.addEventListener('DOMContentLoaded', () => {
           showToast(res.message); loadUsers();
           if (typeof loadTehsilRepsAdmin === 'function') loadTehsilRepsAdmin();
         }
-        else showToast(res.message || 'Delete failed.', false);
+        else showToast((res && (res.message || res.error)) || 'Delete failed. Please try again.', false);
       })
       .withFailureHandler(err => {
         btn.disabled = false; btn.innerHTML = '<i class="bi bi-person-x-fill"></i> Delete User';
-        showToast('Error: ' + err.message, false);
+        showToast('Error: ' + ((err && err.message) || 'could not delete user'), false);
       })
       .deleteUser(pendingDeleteUserRow, currentUser);
   });
