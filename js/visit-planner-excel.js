@@ -19,13 +19,14 @@
 
   /**
    * data = { year, month, startDate:'YYYY-MM-DD'|null, genderTag:'M'|'F', markazLabel:'93/ML', district:'LAYYAH',
-   *          rows:[{ date:'YYYY-MM-DD', s1:{emis,name,office}|null, s2:{...}|null }] }
+   *          title?:string, sheetName?:string,
+   *          rows:[{ date:'YYYY-MM-DD', s1:{emis,name,office}|null, s2:{...}|null } | { date, special:'ON LEAVE' }] }
    */
   function build(ExcelJS, data) {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'A-I-DB Visit Planner';
     const mon = MONTHS[data.month - 1];
-    const ws = wb.addWorksheet(`Visit Plan ${mon.slice(0, 3)} ${data.year}`, {
+    const ws = wb.addWorksheet(data.sheetName || `Visit Plan ${mon.slice(0, 3)} ${data.year}`, {
       views: [{ showGridLines: true }],
       pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true,
                    margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 } }
@@ -37,7 +38,7 @@
     const heads = [
       `OFFICE OF THE ASSISTANT EDUCATION OFFICER (${data.genderTag || 'M'})`,
       `MARKAZ ${String(data.markazLabel || '').toUpperCase()}, DISTRICT ${String(data.district || '').toUpperCase()}`,
-      `TENTATIVE SCHOOL VISIT PLAN FOR ${mon.toUpperCase()} ${data.year}${wefTxt}`
+      data.title || `TENTATIVE SCHOOL VISIT PLAN FOR ${mon.toUpperCase()} ${data.year}${wefTxt}`
     ];
     heads.forEach((t, i) => {
       const r = i + 1;
@@ -67,6 +68,23 @@
     (data.rows || []).forEach(row => {
       const [y, m, d] = row.date.split('-').map(Number);
       const dt = new Date(Date.UTC(y, m - 1, d));
+      if (row.special) {                                  // whole-day "On Leave" / "Other Duty (comment)"
+        [dt, DAYS[dt.getUTCDay()]].forEach((v, i) => {
+          const cell = ws.getRow(r).getCell(i + 2);
+          cell.value = v; cell.font = body; cell.border = BORDER;
+          cell.alignment = { wrapText: true, vertical: 'top' };
+          if (i === 0) cell.numFmt = 'dd mmm yyyy';
+        });
+        ws.mergeCells(`D${r}:G${r}`);
+        for (let c = 4; c <= 7; c++) ws.getRow(r).getCell(c).border = BORDER;
+        const sc = ws.getCell(`D${r}`);
+        sc.value = row.special;
+        sc.font = Object.assign({}, body, { bold: true });
+        sc.alignment = { horizontal: 'center', vertical: 'top', wrapText: true };
+        ws.getRow(r).height = String(row.special).length > 70 ? 38 : String(row.special).length > 35 ? 25.5 : 12.75;
+        r++;
+        return;
+      }
       const cells = [dt, DAYS[dt.getUTCDay()],
         row.s1 && !row.s1.office ? row.s1.emis : '', row.s1 ? (row.s1.office ? 'Office Work' : row.s1.name) : '',
         row.s2 && !row.s2.office ? row.s2.emis : '', row.s2 ? (row.s2.office ? 'Office Work' : row.s2.name) : ''];

@@ -28,6 +28,10 @@
   const fmtDate = s => { const [y, m, d] = s.split('-').map(Number); return `${String(d).padStart(2, '0')} ${C.MONTH_NAMES[m - 1].slice(0, 3)} ${y}`; };
   const enqueue = fn => (S.queue = S.queue.then(fn, fn).catch(e => { console.error(e); toast(e.message || 'Operation failed', 'error'); }));
 
+  // Whole-day entries: 'leave' (On Leave) and 'other_duty' (Other Duty + comment)
+  const isSpecial = e => !!e && (e.entry_type === 'leave' || e.entry_type === 'other_duty');
+  const specialText = e => e.entry_type === 'leave' ? 'ON LEAVE' : 'OTHER DUTY' + (e.comment ? ': ' + e.comment : '');
+
   // ─── Session / data ───────────────────────────────────────────────
   async function getUserId() {
     const { data } = await sb().auth.getSession();
@@ -159,17 +163,24 @@
     const rows = [...dates.entries()].map(([date, sl]) => {
       const dow = C.dowOf(date), e1 = sl[1], e2 = sl[2];
       const bad = new Set(S.planner.leave_days || []).has(dow);
+      const sp = isSpecial(e1) ? e1 : null;
+      const mid = sp
+        ? `<td colspan="4" class="vp-special vp-sp-${sp.entry_type}"><strong>${sp.entry_type === 'leave' ? 'ON LEAVE' : 'OTHER DUTY'}</strong>` +
+          (sp.entry_type === 'other_duty' ? ` <input type="text" class="vp-comment" data-id="${sp.id}" maxlength="500" placeholder="Comment — what was the duty?" value="${esc(sp.comment || '')}">` : '') + `</td>`
+        : `<td class="vp-mono">${esc(e1 && e1.entry_type === 'school' ? e1.emis_code : '')}</td><td>${slotSelect(date, 1, e1)}</td>` +
+          `<td class="vp-mono">${esc(e2 && e2.entry_type === 'school' ? e2.emis_code : '')}</td><td>${slotSelect(date, 2, e2)}</td>`;
+      const dt = sp ? sp.entry_type : '';
       return `<tr class="${bad ? 'vp-bad' : ''}">` +
         `<td><input type="date" class="vp-date" value="${date}" data-old="${date}" min="${C.iso(y, m, 1)}" max="${C.iso(y, m, C.daysInMonth(y, m))}"></td>` +
-        `<td>${C.DAY_NAMES[dow]}</td><td class="vp-mono">${esc(e1 && e1.entry_type === 'school' ? e1.emis_code : '')}</td><td>${slotSelect(date, 1, e1)}</td>` +
-        `<td class="vp-mono">${esc(e2 && e2.entry_type === 'school' ? e2.emis_code : '')}</td><td>${slotSelect(date, 2, e2)}</td>` +
+        `<td>${C.DAY_NAMES[dow]}</td>${mid}` +
+        `<td><select class="vp-daytype" data-date="${date}" aria-label="Day status"><option value="" ${dt === '' ? 'selected' : ''}>School visits</option><option value="leave" ${dt === 'leave' ? 'selected' : ''}>On Leave</option><option value="other_duty" ${dt === 'other_duty' ? 'selected' : ''}>Other Duty</option></select></td>` +
         `<td><button class="vp-icon" data-act="delDate" data-date="${date}" title="Delete this date">✕</button></td></tr>`;
     }).join('');
     box.innerHTML = `<div class="vp-paper"><div class="vp-ph">OFFICE OF THE ASSISTANT EDUCATION OFFICER (${hdr.gender})</div>` +
       `<div class="vp-ph">MARKAZ ${esc(hdr.markaz.toUpperCase())}, DISTRICT ${esc(hdr.district.toUpperCase())}</div>` +
       `<div class="vp-ph">${esc(hdr.title)}</div></div>` +
-      `<div class="vp-scroll"><table class="vp-table"><thead><tr><th>Visit Date</th><th>Day</th><th>Emis Code</th><th>Morning Visit (School 1)</th><th>Emis Code</th><th>Mid-Day Visit (School 2)</th><th></th></tr></thead>` +
-      `<tbody>${rows || '<tr><td colspan="7" class="vp-muted">No visit dates yet — use “Generate Planner” or “+ Add visit date”.</td></tr>'}</tbody></table></div>` +
+      `<div class="vp-scroll"><table class="vp-table"><thead><tr><th>Visit Date</th><th>Day</th><th>Emis Code</th><th>Morning Visit (School 1)</th><th>Emis Code</th><th>Mid-Day Visit (School 2)</th><th>Day status</th><th></th></tr></thead>` +
+      `<tbody>${rows || '<tr><td colspan="8" class="vp-muted">No visit dates yet — use “Generate Planner” or “+ Add visit date”.</td></tr>'}</tbody></table></div>` +
       `<div class="vp-sign">ASSISTANT EDUCATION OFFICER (${hdr.gender})<br>Markaz ${esc(hdr.markaz)}, District ${esc(hdr.districtTitle)}</div>`;
     renderAlerts();
   }
@@ -182,21 +193,24 @@
       : `<div class="vp-alerts vp-allok">✔ All checks passed — every selected school has at least ${C.MIN_VISITS} visits, no leave-day or duplicate-date problems.</div>`;
   }
 
-  function headerInfo() {
-    const sch = [...S.selected.values()];
-    const names = sch.map(s => s.markaz_name).filter(Boolean);
+  // kind: 'tentative' | 'actual'. schools: [{ markaz_name }]
+  function makeHeader(schools, typedLabel, startDate, kind, year, month) {
+    const names = schools.map(s => s.markaz_name).filter(Boolean);
     const counts = {}; names.forEach(n => counts[n] = (counts[n] || 0) + 1);
     const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    const typed = $('vpMarkazLabel').value.trim() || (S.planner && S.planner.markaz_label) || '';
-    const markaz = typed || (top.length ? [...new Set(top.map(C.markazShort))].slice(0, 3).join(' / ') : '—');
+    const markaz = typedLabel || (top.length ? [...new Set(top.map(C.markazShort))].slice(0, 3).join(' / ') : '—');
     const fem = names.filter(n => /FEMALE/i.test(n)).length, mal = names.filter(n => /\bMALE\b/i.test(n) && !/FEMALE/i.test(n)).length;
     const u = (typeof currentUser !== 'undefined' && currentUser) || {};
     const gender = fem > mal ? 'F' : mal > fem ? 'M' : (/^W/i.test(u.wing || '') ? 'F' : 'M');
     const district = (S.pool && S.pool[0] && S.pool[0].district) || u.district || 'LAYYAH';
-    const mon = C.MONTH_NAMES[S.month - 1].toUpperCase();
-    const sd = S.planner && S.planner.start_date;
-    const wef = sd ? ` (W.E.F. ${sd.slice(8, 10)} ${mon} ${S.year})` : '';
-    return { gender, markaz, district, districtTitle: district.charAt(0) + district.slice(1).toLowerCase(), title: `TENTATIVE SCHOOL VISIT PLAN FOR ${mon} ${S.year}${wef}` };
+    const mon = C.MONTH_NAMES[month - 1].toUpperCase();
+    const wef = startDate ? ` (W.E.F. ${startDate.slice(8, 10)} ${mon} ${year})` : '';
+    const title = kind === 'actual' ? `ACTUAL SCHOOL VISITS FOR ${mon} ${year}` : `TENTATIVE SCHOOL VISIT PLAN FOR ${mon} ${year}${wef}`;
+    return { gender, markaz, district, districtTitle: district.charAt(0) + district.slice(1).toLowerCase(), title };
+  }
+  function headerInfo() {
+    const typed = $('vpMarkazLabel').value.trim() || (S.planner && S.planner.markaz_label) || '';
+    return makeHeader([...S.selected.values()], typed, S.planner && S.planner.start_date, 'tentative', S.year, S.month);
   }
 
   // ─── Persistence ──────────────────────────────────────────────────
@@ -238,13 +252,14 @@
       const err = settingsError(); if (err) { toast(err, 'error'); return; }
       const schools = [...S.selected.values()];
       if (!schools.length) { toast('Select at least one school first.', 'error'); return; }
-      if (S.entries.length && !confirm('Generating again will replace ALL existing visits in this month’s planner. Continue?')) return;
+      if (S.entries.length && !confirm('Generating again will replace all existing school visits in this month’s planner (days marked On Leave / Other Duty are kept). Continue?')) return;
       const s = settings();
-      const g = C.generate({ year: S.year, month: S.month, leaveDays: s.leave, officeDays: s.office, startDay: startDay(), schools });
+      const keep = S.entries.filter(isSpecial).map(e => ({ visit_date: e.visit_date, slot: 1, entry_type: e.entry_type, comment: e.comment || null }));
+      const g = C.generate({ year: S.year, month: S.month, leaveDays: s.leave, officeDays: s.office, startDay: startDay(), schools, blockedDates: keep.map(k => k.visit_date) });
       await ensurePlanner({ status: 'generated' });
       const del = await sb().from('visit_planner_entries').delete().eq('planner_id', S.planner.id);
       if (del.error) throw del.error;
-      const ents = C.assignSequences(C.rowsToEntries(g.rows)).map(e => Object.assign({ planner_id: S.planner.id, user_id: S.userId }, e));
+      const ents = C.assignSequences(C.rowsToEntries(g.rows).concat(keep)).map(e => Object.assign({ planner_id: S.planner.id, user_id: S.userId }, e));
       S.entries = []; S.extraDates = new Set();
       if (ents.length) {
         const { data, error } = await sb().from('visit_planner_entries').insert(ents).select();
@@ -321,6 +336,38 @@
     }).then(() => renderSheet());
   }
 
+  function onDayType(sel) {
+    const date = sel.dataset.date, v = sel.value;
+    return enqueue(async () => {
+      const cur = S.entries.filter(e => e.visit_date === date);
+      const curType = isSpecial(cur[0]) ? cur[0].entry_type : '';
+      if (v === curType) return;
+      if ((S.planner.leave_days || []).includes(C.dowOf(date)) && v) { toast(`${C.DAY_NAMES[C.dowOf(date)]} is a weekly leave day.`, 'error'); sel.value = curType; return; }
+      if (cur.length && v && !curType && !confirm(`Replace the school visits on ${fmtDate(date)} with “${v === 'leave' ? 'On Leave' : 'Other Duty'}”?`)) { sel.value = curType; return; }
+      if (cur.length) {
+        const { error } = await sb().from('visit_planner_entries').delete().eq('planner_id', S.planner.id).eq('visit_date', date);
+        if (error) throw error;
+        S.entries = S.entries.filter(e => e.visit_date !== date);
+      }
+      if (v) {
+        const row = { planner_id: S.planner.id, user_id: S.userId, visit_date: date, slot: 1, entry_type: v, comment: null };
+        const { data, error } = await sb().from('visit_planner_entries').insert(row).select().single();
+        if (error) throw error; S.entries.push(data); S.extraDates.delete(date);
+      } else S.extraDates.add(date);
+      await persistSequences(); await markEdited(); renderStatus(); renderSheet();
+    }).then(() => renderSheet());
+  }
+
+  function onCommentChange(inp) {
+    const id = inp.dataset.id, text = inp.value.trim().slice(0, 500) || null;
+    return enqueue(async () => {
+      const ex = S.entries.find(e => e.id === id); if (!ex) return;
+      const { data, error } = await sb().from('visit_planner_entries').update({ comment: text }).eq('id', id).select().single();
+      if (error) throw error; Object.assign(ex, data);
+      await markEdited(); renderStatus();
+    });
+  }
+
   function onDateChange(inp) {
     const old = inp.dataset.old, nu = inp.value;
     return enqueue(async () => {
@@ -365,7 +412,8 @@
   function sheetData() {
     const hdr = headerInfo();
     const f = e => !e ? null : e.entry_type === 'office' ? { office: true } : { emis: e.emis_code, name: e.school_name };
-    const rows = [...byDate().entries()].filter(([, sl]) => sl[1] || sl[2]).map(([date, sl]) => ({ date, s1: f(sl[1]), s2: f(sl[2]) }));
+    const rows = [...byDate().entries()].filter(([, sl]) => sl[1] || sl[2]).map(([date, sl]) =>
+      isSpecial(sl[1]) ? { date, special: specialText(sl[1]) } : { date, s1: f(sl[1]), s2: f(sl[2]) });
     return { year: S.year, month: S.month, startDate: S.planner.start_date, genderTag: hdr.gender, markazLabel: hdr.markaz, district: hdr.district, rows, hdr };
   }
 
@@ -378,14 +426,17 @@
     } catch (e) { toast(e.message || 'Excel export failed', 'error'); }
   }
 
-  function onPrint() {
-    const d = sheetData();
+  function onPrint() { printSheet(sheetData()); }
+
+  function printSheet(d) {
     let pa = $('vpPrintArea');
     if (!pa) { pa = document.createElement('div'); pa.id = 'vpPrintArea'; document.body.appendChild(pa); }
     const h = d.hdr, days = C.DAY_NAMES;
     pa.innerHTML = `<div class="vpp-h">OFFICE OF THE ASSISTANT EDUCATION OFFICER (${h.gender})</div><div class="vpp-h">MARKAZ ${esc(h.markaz.toUpperCase())}, DISTRICT ${esc(h.district.toUpperCase())}</div><div class="vpp-h">${esc(h.title)}</div>` +
       `<table><thead><tr><th>Visit Date</th><th>Day</th><th>Emis Code</th><th>Morning Visit (School 1)</th><th>Emis Code</th><th>Mid-Day Visit (School 2)</th></tr></thead><tbody>` +
-      d.rows.map(r => `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td>${esc(r.s1 && !r.s1.office ? r.s1.emis : '')}</td><td>${esc(r.s1 ? (r.s1.office ? 'Office Work' : r.s1.name) : '')}</td><td>${esc(r.s2 && !r.s2.office ? r.s2.emis : '')}</td><td>${esc(r.s2 ? (r.s2.office ? 'Office Work' : r.s2.name) : '')}</td></tr>`).join('') +
+      d.rows.map(r => r.special
+        ? `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td colspan="4" style="text-align:center;font-weight:bold">${esc(r.special)}</td></tr>`
+        : `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td>${esc(r.s1 && !r.s1.office ? r.s1.emis : '')}</td><td>${esc(r.s1 ? (r.s1.office ? 'Office Work' : r.s1.name) : '')}</td><td>${esc(r.s2 && !r.s2.office ? r.s2.emis : '')}</td><td>${esc(r.s2 ? (r.s2.office ? 'Office Work' : r.s2.name) : '')}</td></tr>`).join('') +
       `</tbody></table><div class="vpp-sign">ASSISTANT EDUCATION OFFICER (${h.gender})<br>Markaz ${esc(h.markaz)}, District ${esc(h.districtTitle)}</div>`;
     document.body.classList.add('vp-printing');
     const done = () => { document.body.classList.remove('vp-printing'); window.removeEventListener('afterprint', done); };
@@ -406,10 +457,19 @@
         $('vpSelCount').textContent = `${S.selected.size} selected · ${filteredPool().length} shown by filter · ${S.pool.length} in your jurisdiction`;
         if (S.planner) renderSheet();
       } else if (a === 'delDate') onDelDate(b.dataset.date);
+      else if (a === 'showHome') showPanel('vpHome');
+      else if (a === 'openTentative') { e.preventDefault(); showPanel('vpTentative'); }
+      else if (a === 'openActual') {
+        e.preventDefault();
+        if (!window.VisitPlannerActual) { toast('Actual Visits module failed to load. Refresh the page.', 'error'); return; }
+        showPanel('vpActual'); window.VisitPlannerActual.mount($('vpActual'));
+      }
     });
     root.addEventListener('change', e => {
       const t = e.target;
       if (t.classList.contains('vp-slot')) onSlotChange(t);
+      else if (t.classList.contains('vp-daytype')) onDayType(t);
+      else if (t.classList.contains('vp-comment')) onCommentChange(t);
       else if (t.classList.contains('vp-date')) onDateChange(t);
       else if (t.id === 'vpLeaveCount') { const n = +t.value, boxes = getChecked('vpLeave'); setChecked('vpLeave', boxes.slice(0, n)); syncLeaveHint(); }
       else if (t.name === 'vpLeave') {
@@ -440,11 +500,20 @@
     $('vpBtnRefresh').addEventListener('click', () => enqueue(async () => { await loadPool(true); renderSchools(); toast('School list refreshed.', 'success'); }));
     $('vpMarkazLabel').addEventListener('input', () => { if (S.planner) renderSheet(); });
   }
+  function showPanel(id) {
+    ['vpHome', 'vpTentative', 'vpActual'].forEach(x => { const el = $(x); if (el) el.style.display = x === id ? '' : 'none'; });
+    window.scrollTo(0, 0);
+  }
   function syncLeaveHint() { const n = +$('vpLeaveCount').value; $('vpLeaveHint').textContent = `Select ${n} weekday${n > 1 ? 's' : ''} (${getChecked('vpLeave').length}/${n} chosen). These are excluded from every month automatically.`; }
 
   function build() {
     const cur = new Date().getFullYear();
     $('vpRoot').innerHTML = `
+    <div id="vpHome" class="vp-home">
+      <a class="vp-bigcard" href="#visit-planner" data-act="openTentative"><div class="vp-bc-ico">📅</div><div class="vp-bc-t">Tentative Plans</div><div class="vp-bc-d">Generate and edit the monthly tentative school visit plan · Leave &amp; Other Duty · Excel &amp; print</div></a>
+      <a class="vp-bigcard" href="#visit-planner" data-act="openActual"><div class="vp-bc-ico">✅</div><div class="vp-bc-t">Actual Visits</div><div class="vp-bc-d">Enter only EMIS codes and dates of the visits you actually made · Leave &amp; Other Duty · Excel &amp; print</div></a>
+    </div>
+    <div id="vpTentative" style="display:none"><button class="vp-btn vp-ghost" data-act="showHome" style="margin-bottom:10px">← Visit Planner</button>
     <div class="vp-card"><div class="vp-h2">Step 1 — Planner period</div>
       <div class="vp-row"><label>Year <input type="number" id="vpYear" min="1900" max="2200" value="${S.year}" class="vp-in" style="width:96px"></label>
       <label>Month <select id="vpMonth" class="vp-in">${C.MONTH_NAMES.map((n, i) => `<option value="${i + 1}" ${i + 1 === S.month ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -469,7 +538,8 @@
       <button class="vp-btn" id="vpBtnAddDate">+ Add visit date</button><button class="vp-btn" id="vpBtnSave">💾 Save Planner</button><button class="vp-btn" id="vpBtnFinal">Mark as Finalized</button>
       <button class="vp-btn vp-excel" id="vpBtnExcel">⬇ Download Excel</button><button class="vp-btn" id="vpBtnPrint">🖨 Print</button><button class="vp-btn vp-danger" id="vpBtnDelete">Delete planner</button></div>
       <div class="vp-muted" style="margin-top:6px">Every change below is saved to the database immediately — no need to regenerate after a small correction.</div>
-      <div id="vpAlerts"></div><div id="vpSheet"></div></div>`;
+      <div id="vpAlerts"></div><div id="vpSheet"></div></div></div>
+    <div id="vpActual" style="display:none"></div>`;
     wire(); syncLeaveHint();
   }
 
@@ -482,9 +552,16 @@
       if (S.userId !== uid) { S.userId = uid; S.pool = null; S.planner = null; S.entries = []; S.selected = new Map(); }
       await loadPool(false);
       await enqueue(loadPeriod);
+      showPanel('vpHome');
     } catch (e) { console.error(e); toast(e.message || 'Could not open Visit Planner', 'error'); }
   }
 
+  // Shared helpers for the Actual Visits module (js/visit-planner-actual.js)
+  window.VisitPlannerShared = {
+    getUserId: () => S.userId,
+    getPool: () => ({ rows: S.pool || [], emis: S.poolEmis || new Set() }),
+    makeHeader, printSheet, showHome: () => showPanel('vpHome')
+  };
   window.openVisitPlannerView = open;
   // Register the hash route without editing index.js (ROUTES is a global lexical binding there).
   try { if (typeof ROUTES === 'object') ROUTES['visit-planner'] = () => open(); } catch (e) { /* router not ready */ }

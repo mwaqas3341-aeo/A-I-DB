@@ -36,3 +36,11 @@
   #vpPrintArea .vpp-sign{text-align:right;font-weight:700;margin-top:60pt;font-size:10pt}
   @page{size:A4 portrait;margin:14mm}
 }
+
+/* ── Visit Planner landing cards + Leave / Other Duty rows ─────────── */
+.vp-home{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:14px}
+.vp-bigcard{display:block;text-decoration:none;color:inherit;background:var(--s0,#fff);border:1px solid var(--b0,#DCE3DB);border-radius:var(--r2,12px);padding:22px 20px;box-shadow:var(--sh1);cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s}
+.vp-bigcard:hover{transform:translateY(-2px);border-color:#435E91;box-shadow:0 6px 18px rgba(67,94,145,.18)}
+.vp-bc-ico{font-size:30px;margin-bottom:8px}.vp-bc-t{font-weight:700;font-size:17px;color:#435E91;margin-bottom:4px}.vp-bc-d{font-size:13px;color:var(--t3,#64706a);line-height:1.45}
+.vp-special{text-align:center;background:#f4f6fb}.vp-sp-leave{background:#fdf2f2;color:#9b1c1c}.vp-sp-other_duty{background:#fff8e6;color:#7a5200}
+.vp-comment{width:min(420px,100%);margin-left:8px;padding:3px 6px;border:1px solid var(--b0,#DCE3DB);border-radius:6px;font-size:12px}

@@ -49,7 +49,7 @@
 
   /**
    * Balanced generation.
-   *  opts: { year, month, leaveDays:[0-6], officeDays:[0-6], startDay, schools:[{emis,...}] }
+   *  opts: { year, month, leaveDays:[0-6], officeDays:[0-6], startDay, blockedDates:[iso], schools:[{emis,...}] }
    *  Two slots per working day (1 = Morning, 2 = Mid-Day), as in the official template.
    *  On office-work weekdays slot 2 is "Office Work".
    *  Schools are dealt round-robin over the slots in date order, so every school's
@@ -60,7 +60,8 @@
     const schools = sortSchools(opts.schools || []);
     const n = schools.length;
     const office = new Set(opts.officeDays || []);
-    const dates = workingDates(opts.year, opts.month, opts.leaveDays, opts.startDay);
+    const blocked = new Set(opts.blockedDates || []);   // dates already marked On Leave / Other Duty
+    const dates = workingDates(opts.year, opts.month, opts.leaveDays, opts.startDay).filter(d => !blocked.has(d.iso));
     const rows = dates.map(d => ({ date: d.iso, dow: d.dow, slots: [null, null] }));
     const warnings = [];
 
