@@ -16,11 +16,18 @@
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   const titleCase = s => String(s || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  // Holidays: shaded rows in the table + a separate summary list (gazetted = red tint, local = amber tint)
+  const HOL_FILL = { gazetted: 'FFFBE3E1', local: 'FFFFF1D6' }, HOL_INK = { gazetted: 'FF9B1C1C', local: 'FF7A5200' };
+  const holType = t => t === 'gazetted' ? 'Gazetted' : 'Local';
+  const holLabel = h => `${holType(h.type).toUpperCase()} HOLIDAY — ${h.name}`;
+  const holFill = t => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: HOL_FILL[t] || HOL_FILL.local } });
 
   /**
    * data = { year, month, startDate:'YYYY-MM-DD'|null, genderTag:'M'|'F', markazLabel:'93/ML', district:'LAYYAH',
    *          title?:string, sheetName?:string, columns?:string[] (6 headers),
-   *          rows:[{ date:'YYYY-MM-DD', s1:{emis,name,office}|null, s2:{...}|null } | { date, special:'ON LEAVE' } | { date, cells:[emis,school,type,details] }] }
+   *          rows:[{ date:'YYYY-MM-DD', s1:{emis,name,office}|null, s2:{...}|null } | { date, special:'ON LEAVE' } | { date, cells:[emis,school,type,details] }
+   *                | { date, holiday:{type:'gazetted'|'local', name} } ],
+   *          holidays?: [{date,type,name}]  (summary list under the table), privateReason?: string }
    */
   function build(ExcelJS, data) {
     const wb = new ExcelJS.Workbook();
@@ -68,6 +75,23 @@
     (data.rows || []).forEach(row => {
       const [y, m, d] = row.date.split('-').map(Number);
       const dt = new Date(Date.UTC(y, m - 1, d));
+      if (row.holiday) {                                  // gazetted / local holiday: shaded, never carries a visit
+        const t = row.holiday.type, ink = Object.assign({}, body, { bold: true, color: { argb: HOL_INK[t] || HOL_INK.local } });
+        [dt, DAYS[dt.getUTCDay()]].forEach((v, i) => {
+          const cell = ws.getRow(r).getCell(i + 2);
+          cell.value = v; cell.font = ink; cell.border = BORDER; cell.fill = holFill(t);
+          cell.alignment = { wrapText: true, vertical: 'top' };
+          if (i === 0) cell.numFmt = 'dd mmm yyyy';
+        });
+        ws.mergeCells(`D${r}:G${r}`);
+        for (let c = 4; c <= 7; c++) { const cc = ws.getRow(r).getCell(c); cc.border = BORDER; cc.fill = holFill(t); }
+        const hc = ws.getCell(`D${r}`);
+        hc.value = holLabel(row.holiday); hc.font = ink;
+        hc.alignment = { horizontal: 'center', vertical: 'top', wrapText: true };
+        ws.getRow(r).height = String(hc.value).length > 60 ? 25.5 : 12.75;
+        r++;
+        return;
+      }
       if (row.special) {                                  // whole-day "On Leave" / "Other Duty (comment)"
         [dt, DAYS[dt.getUTCDay()]].forEach((v, i) => {
           const cell = ws.getRow(r).getCell(i + 2);
@@ -107,6 +131,50 @@
       }
       r++;
     });
+
+    const hols = data.holidays || [];
+    if (hols.length) {                                    // separate holiday summary list
+      r++;
+      ws.mergeCells(`B${r}:G${r}`);
+      for (let c = 2; c <= 7; c++) {
+        const cell = ws.getRow(r).getCell(c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLUE } };
+        cell.font = { name: 'Montserrat', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center' }; cell.border = BORDER;
+      }
+      ws.getCell(`B${r}`).value = `HOLIDAYS — ${mon.toUpperCase()} ${data.year}`;
+      r++;
+      ['Date', 'Day', 'Type', 'Holiday name / description'].forEach((h, i) => {
+        const col = [2, 3, 4, 5][i];
+        const cell = ws.getRow(r).getCell(col);
+        cell.value = h; cell.font = Object.assign({}, body, { bold: true }); cell.border = BORDER;
+        cell.alignment = { horizontal: 'center' }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6EBF5' } };
+      });
+      ws.mergeCells(`E${r}:G${r}`); for (let c = 5; c <= 7; c++) ws.getRow(r).getCell(c).border = BORDER;
+      r++;
+      hols.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(h => {
+        const [y, m, d] = h.date.split('-').map(Number), dt = new Date(Date.UTC(y, m - 1, d));
+        const ink = Object.assign({}, body, { color: { argb: HOL_INK[h.type] || HOL_INK.local }, bold: true });
+        [[2, dt], [3, DAYS[dt.getUTCDay()]], [4, holType(h.type)], [5, h.name]].forEach(([col, v]) => {
+          const cell = ws.getRow(r).getCell(col);
+          cell.value = v; cell.font = col === 5 ? body : ink; cell.border = BORDER; cell.fill = holFill(h.type);
+          cell.alignment = { wrapText: true, vertical: 'top', horizontal: col === 5 ? 'left' : 'center' };
+          if (col === 2) cell.numFmt = 'dd mmm yyyy';
+        });
+        ws.mergeCells(`E${r}:G${r}`); for (let c = 5; c <= 7; c++) { const cc = ws.getRow(r).getCell(c); cc.border = BORDER; cc.fill = holFill(h.type); }
+        ws.getRow(r).height = String(h.name).length > 40 ? 25.5 : 12.75;
+        r++;
+      });
+    }
+    if (data.privateReason) {                             // reason recorded in Step 3 of the tentative plan
+      r++;
+      ws.mergeCells(`B${r}:G${r}`);
+      const cell = ws.getCell(`B${r}`);
+      cell.value = `Reason for visiting private schools: ${data.privateReason}`;
+      cell.font = Object.assign({}, body, { italic: true }); cell.alignment = { wrapText: true, vertical: 'top' };
+      ws.getRow(r).height = Math.max(12.75, 12.75 * Math.ceil(String(cell.value).length / 105));
+      r++;
+    }
 
     const sig = r + 7;
     [[`ASSISTANT EDUCATION OFFICER (${data.genderTag || 'M'})`], [`Markaz ${data.markazLabel}, District ${titleCase(data.district)}`]].forEach((t, i) => {

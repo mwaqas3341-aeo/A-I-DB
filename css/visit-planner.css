@@ -44,3 +44,36 @@
 .vp-bc-ico{font-size:30px;margin-bottom:8px}.vp-bc-t{font-weight:700;font-size:17px;color:#435E91;margin-bottom:4px}.vp-bc-d{font-size:13px;color:var(--t3,#64706a);line-height:1.45}
 .vp-special{text-align:center;background:#f4f6fb}.vp-sp-leave{background:#fdf2f2;color:#9b1c1c}.vp-sp-other_duty{background:#fff8e6;color:#7a5200}
 .vp-comment{width:min(420px,100%);margin-left:8px;padding:3px 6px;border:1px solid var(--b0,#DCE3DB);border-radius:6px;font-size:12px}
+
+/* ── Tentative planner wizard, holidays ───────────────────────────── */
+.vp-stepper{list-style:none;display:flex;gap:6px;margin:0 0 12px;padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.vp-stepper li{flex:1 1 0;min-width:120px}
+.vp-step{width:100%;display:flex;align-items:center;gap:8px;border:1px solid var(--b0,#DCE3DB);background:var(--s0,#fff);border-radius:10px;padding:8px 10px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--t2,#48584B);text-align:left}
+.vp-step:disabled{cursor:not-allowed;opacity:.5}
+.vp-st-n{flex:0 0 24px;height:24px;border-radius:50%;background:var(--s2,#EEF1ED);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.vp-step.is-active{border-color:#435E91;box-shadow:0 0 0 2px rgba(67,94,145,.2);color:#435E91}.vp-step.is-active .vp-st-n{background:#435E91;color:#fff}
+.vp-step.is-done .vp-st-n{background:var(--ok,#168A4F);color:#fff}.vp-step.is-na{opacity:.45}
+.vp-nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:4px 0 14px}.vp-nav-r{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.vp-stepmsg{font-size:12.5px;flex:1 1 200px}.vp-stepmsg.is-ok{color:var(--ok,#168A4F)}.vp-stepmsg.is-err{color:var(--bad,#C23B30);font-weight:600}
+.vp-fs{border:0;margin:0;padding:0;min-width:0}.vp-fs:disabled{opacity:.6}
+.vp-req{color:var(--bad,#C23B30)}
+.vp-banner{border:1px solid #435E91;background:#eef2fa;border-radius:8px;padding:8px 12px;font-size:12.5px}.vp-banner-warn{border-color:var(--orange,#D9731C);background:var(--orange-bg,#FCE8D6)}
+.vp-summary{border:1px solid var(--b0,#DCE3DB);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px}.vp-summary ul{margin:4px 0 8px 16px;padding:0}.vp-check{color:var(--ok,#168A4F);font-weight:600}
+.vp-num{width:84px}.vp-cats td{vertical-align:middle}
+.vp-check-row{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;font-weight:600}
+.vp-hbadge{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:700}
+.vp-hb-gazetted{background:#fde2e2;color:#9b1c1c}.vp-hb-local{background:#fdf0d5;color:#8a5a00}
+.vp-table tr.vp-hol-gazetted td{background:#fdf2f2}.vp-table tr.vp-hol-local td{background:#fff8e6}
+.vp-hsum{margin-top:12px}.vp-note{font-size:12.5px;margin:8px 0}
+.vp-src-PUBLIC{background:#e3f2eb}.vp-src-HIGH{background:#e6ecf8}.vp-src-PIEMA{background:#f3e8fb}.vp-src-PEF{background:#e0f3f3}.vp-src-PRIVATE{background:#fde8d4}.vp-src-ACADEMY{background:#fbe3ee}
+#visitPlannerView textarea.vp-in{width:100%;resize:vertical}
+@media (max-width:640px){
+  .vp-step{padding:6px}.vp-step:not(.is-active) .vp-st-t{display:none}.vp-stepper li{min-width:0;flex:0 0 auto}.vp-step.is-active{flex:1}
+  .vp-nav-r{width:100%}.vp-nav-r .vp-btn{flex:1}.vp-row label select,.vp-row label input{width:100%}
+}
+@media print{
+  #vpPrintArea tr.vpp-hol-gazetted td{background:#f8d0d0 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #vpPrintArea tr.vpp-hol-local td{background:#fde9b8 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #vpPrintArea .vpp-sub{font-weight:700;margin-top:12pt;font-size:10.5pt}#vpPrintArea .vpp-hsum{width:70%}
+  #vpPrintArea .vpp-note{margin-top:8pt;font-size:9.5pt}
+}

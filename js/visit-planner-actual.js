@@ -22,7 +22,7 @@
   const COLUMNS = ['Visit Date', 'Day', 'Emis Code', 'Name of School', 'School Type', 'Visit Type / Duty Details'];
 
   const A = { el: null, built: false, userId: null, year: new Date().getFullYear(), month: new Date().getMonth() + 1,
-              plan: null, entries: [], wide: null, wideFor: null, wideWarned: false, editId: null, queue: Promise.resolve() };
+              plan: null, entries: [], holidays: new Map(), reason: '', wide: null, wideFor: null, wideWarned: false, editId: null, queue: Promise.resolve() };
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -77,10 +77,36 @@
       A.entries = data || [];
       $('vaMarkazLabel').value = p.markaz_label || '';
     } else $('vaMarkazLabel').value = '';
-    $('vaDate').min = C.iso(A.year, A.month, 1); $('vaDate').max = C.iso(A.year, A.month, C.daysInMonth(A.year, A.month));
-    if (!$('vaDate').value || $('vaDate').value.slice(0, 7) !== `${A.year}-${String(A.month).padStart(2, '0')}`) $('vaDate').value = C.iso(A.year, A.month, 1);
+    await loadHolidays();
+    fillDates();
     $('vaStatus').innerHTML = `<strong>${C.MONTH_NAMES[A.month - 1]} ${A.year}</strong> <span class="vp-muted">· ${A.plan ? 'saved' : 'no actual visits recorded yet'}</span>`;
     render();
+  }
+
+  // Holidays come from the FINALIZED tentative plan of the same month (server-side RPC; also enforced by DB triggers).
+  async function loadHolidays() {
+    A.holidays = new Map(); A.reason = '';
+    const { data, error } = await sb().rpc('visit_effective_holidays', { p_year: A.year, p_month: A.month });
+    if (error) { toast('Could not load holidays: ' + error.message, 'error'); return; }
+    (data || []).forEach(h => A.holidays.set(h.holiday_date, { type: h.holiday_type, name: h.name }));
+    const { data: tp } = await sb().from('visit_planners').select('private_visit_reason,finalized_at').eq('user_id', A.userId).eq('year', A.year).eq('month', A.month).maybeSingle();
+    if (tp && tp.finalized_at) A.reason = tp.private_visit_reason || '';
+  }
+  const HOLNAME = { gazetted: 'Gazetted holiday', local: 'Local holiday' };
+  function fillDates() {
+    const el = $('vaDate'), keep = el.value, n = C.daysInMonth(A.year, A.month);
+    let first = '';
+    el.innerHTML = Array.from({ length: n }, (_, i) => {
+      const d = C.iso(A.year, A.month, i + 1), h = A.holidays.get(d), lbl = `${fmtDate(d)} · ${C.DAY_NAMES[C.dowOf(d)].slice(0, 3)}`;
+      if (!h && !first) first = d;
+      return h ? `<option value="${d}" disabled>${esc(lbl)} — ${esc(HOLNAME[h.type] || 'Holiday')}: ${esc(h.name)} (not available)</option>` : `<option value="${d}">${esc(lbl)}</option>`;
+    }).join('');
+    el.value = keep && keep.slice(0, 7) === `${A.year}-${String(A.month).padStart(2, '0')}` && !A.holidays.has(keep) ? keep : first;
+    const b = $('vaBanner');
+    b.style.display = A.holidays.size ? '' : 'none';
+    b.innerHTML = A.holidays.size ? `<strong>Holidays this month (from your finalized tentative plan):</strong> ` +
+      [...A.holidays.entries()].map(([d, h]) => `<span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(fmtDate(d))} · ${esc(h.name)} (${esc(h.type)})</span>`).join(' ') +
+      ` <span class="vp-muted">— non-working days; no entry can be made on them.</span>` : '';
   }
 
   async function ensurePlan() {
@@ -180,6 +206,8 @@
     const type = curType(), date = $('vaDate').value;
     if (!date) throw new Error('Select a date.');
     if (+date.slice(0, 4) !== A.year || +date.slice(5, 7) !== A.month) throw new Error(`The date must be inside ${C.MONTH_NAMES[A.month - 1]} ${A.year}.`);
+    const hol = A.holidays.get(date);
+    if (hol) throw new Error(`${fmtDate(date)} is a ${hol.type} holiday (${hol.name}). No visit, leave or duty can be recorded on a holiday.`);
     const day = A.entries.filter(e => e.visit_date === date && e.id !== A.editId);
     if (day.some(e => e.entry_type === 'leave')) throw new Error(`${fmtDate(date)} is marked On Leave. Remove that entry first.`);
     if (type === 'leave') {
@@ -285,7 +313,10 @@
     $('vaSummary').innerHTML = A.entries.length
       ? `<strong>${n(visits)}</strong> school visit${n(visits) === 1 ? '' : 's'} (<strong>${n(visits.filter(e => e.visit_type === 'monitoring_assessment'))}</strong> monitoring/assessment · <strong>${n(visits.filter(e => e.visit_type === 'follow_up'))}</strong> follow-up) · ` +
         `<strong>${new Set(visits.map(e => e.emis_code)).size}</strong> different school(s) · <strong>${n(list.filter(e => e.entry_type === 'other_duty'))}</strong> other duty · <strong>${n(list.filter(e => e.entry_type === 'leave'))}</strong> leave day(s)` : '';
-    const rows = list.map(e => {
+    const holRows = [...A.holidays.entries()].map(([d, h]) => ({ _hol: h, visit_date: d }));
+    const merged = list.concat(holRows).sort((a, b) => a.visit_date.localeCompare(b.visit_date) || (a._hol ? -1 : 1));
+    const rows = merged.map(e => {
+      if (e._hol) return `<tr class="vp-hol vp-hol-${esc(e._hol.type)}"><td>${fmtDate(e.visit_date)}</td><td>${C.DAY_NAMES[C.dowOf(e.visit_date)]}</td><td colspan="4"><span class="vp-hbadge vp-hb-${esc(e._hol.type)}">${esc(HOLNAME[e._hol.type] || 'Holiday')}</span> ${esc(e._hol.name)} <span class="vp-muted">— non-working day</span></td><td></td></tr>`;
       const c = rowCells(e), days = C.DAY_NAMES[C.dowOf(e.visit_date)];
       const act = `<td style="white-space:nowrap"><button class="vp-icon" style="color:var(--brand,#0B6E4F)" data-vact="edit" data-id="${e.id}" title="Edit this entry">✎</button><button class="vp-icon" data-vact="del" data-id="${e.id}" title="Remove this entry">✕</button></td>`;
       const body = c
@@ -294,9 +325,16 @@
       return `<tr class="${A.editId === e.id ? 'vp-sel' : ''}"><td>${fmtDate(e.visit_date)}</td><td>${days}</td>${body}${act}</tr>`;
     }).join('');
     $('vaSheet').innerHTML = `<div class="vp-scroll"><table class="vp-table"><thead><tr>${COLUMNS.map(h => `<th>${h}</th>`).join('')}<th></th></tr></thead>` +
-      `<tbody>${rows || '<tr><td colspan="7" class="vp-muted">Nothing recorded for this month yet — use “Add an entry” above.</td></tr>'}</tbody></table></div>`;
+      `<tbody>${rows || '<tr><td colspan="7" class="vp-muted">Nothing recorded for this month yet — use “Add an entry” above.</td></tr>'}</tbody></table></div>` + holSummary();
     ['vaBtnExcel', 'vaBtnPrint'].forEach(id => { $(id).disabled = !A.entries.length; });
     $('vaBtnDeleteMonth').disabled = !A.plan;
+  }
+
+  function holSummary() {
+    if (!A.holidays.size) return '';
+    return `<div class="vp-hsum"><div class="vp-h2">Holidays — ${C.MONTH_NAMES[A.month - 1]} ${A.year}</div><table class="vp-table vp-small" style="min-width:0"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>` +
+      [...A.holidays.entries()].map(([d, h]) => `<tr class="vp-hol vp-hol-${esc(h.type)}"><td>${fmtDate(d)}</td><td>${esc(h.name)}</td><td><span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(HOLNAME[h.type] || h.type)}</span></td></tr>`).join('') + `</tbody></table></div>` +
+      (A.reason ? `<div class="vp-note"><strong>Reason for visiting private schools:</strong> ${esc(A.reason)}</div>` : '');
   }
 
   // ─── Output ───────────────────────────────────────────────────────
@@ -304,8 +342,10 @@
     const typed = $('vaMarkazLabel').value.trim();
     const schools = A.entries.filter(e => e.entry_type === 'school').map(e => ({ markaz_name: e.markaz }));
     const hdr = sh().makeHeader(schools, typed, null, 'actual', A.year, A.month);
-    const rows = sorted().map(e => { const c = rowCells(e); return c ? { date: e.visit_date, cells: c } : { date: e.visit_date, special: 'ON LEAVE' }; });
-    return { year: A.year, month: A.month, startDate: null, genderTag: hdr.gender, markazLabel: hdr.markaz, district: hdr.district, rows, hdr,
+    const vis = sorted().map(e => { const c = rowCells(e); return c ? { date: e.visit_date, cells: c } : { date: e.visit_date, special: 'ON LEAVE' }; });
+    const hols = [...A.holidays.entries()].map(([date, h]) => ({ date, type: h.type, name: h.name }));
+    const rows = vis.concat(hols.map(h => ({ date: h.date, holiday: { type: h.type, name: h.name } }))).sort((a, b) => a.date.localeCompare(b.date));
+    return { holidays: hols, privateReason: A.reason, year: A.year, month: A.month, startDate: null, genderTag: hdr.gender, markazLabel: hdr.markaz, district: hdr.district, rows, hdr,
              title: hdr.title, columns: COLUMNS, sheetName: `Actual Visits ${C.MONTH_NAMES[A.month - 1].slice(0, 3)} ${A.year}` };
   }
 
@@ -328,10 +368,10 @@
       <div class="vp-row"><label>Year <input type="number" id="vaYear" min="1900" max="2200" value="${A.year}" class="vp-in" style="width:96px"></label>
       <label>Month <select id="vaMonth" class="vp-in">${C.MONTH_NAMES.map((n, i) => `<option value="${i + 1}" ${i + 1 === A.month ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <button class="vp-btn" id="vaBtnLoad">Open / Load</button></div>
-      <div id="vaStatus" class="vp-status"></div></div>
+      <div id="vaStatus" class="vp-status"></div><div id="vaBanner" class="vp-banner" style="display:none;margin-top:8px"></div></div>
     <div class="vp-card" id="vaFormCard"><div class="vp-h2" id="vaFormTitle">Add an entry</div>
       <div class="vp-row">
-        <label>Date <input type="date" id="vaDate" class="vp-in"></label>
+        <label>Date <select id="vaDate" class="vp-in"></select></label>
         <label>Entry <select id="vaType" class="vp-in"><option value="school">School visit</option><option value="other_duty">Other duty</option><option value="leave">On leave</option></select></label>
       </div>
       <div id="vaSchoolBox" style="margin-top:10px">
