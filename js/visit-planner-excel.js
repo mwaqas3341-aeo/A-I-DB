@@ -19,8 +19,8 @@
 
   /**
    * data = { year, month, startDate:'YYYY-MM-DD'|null, genderTag:'M'|'F', markazLabel:'93/ML', district:'LAYYAH',
-   *          title?:string, sheetName?:string,
-   *          rows:[{ date:'YYYY-MM-DD', s1:{emis,name,office}|null, s2:{...}|null } | { date, special:'ON LEAVE' }] }
+   *          title?:string, sheetName?:string, columns?:string[] (6 headers),
+   *          rows:[{ date:'YYYY-MM-DD', s1:{emis,name,office}|null, s2:{...}|null } | { date, special:'ON LEAVE' } | { date, cells:[emis,school,type,details] }] }
    */
   function build(ExcelJS, data) {
     const wb = new ExcelJS.Workbook();
@@ -53,7 +53,7 @@
       ws.getRow(r).height = 15.75;
     });
 
-    ['Visit Date', 'Day', 'Emis Code', 'Morning Visit (School 1)', 'Emis Code', 'Mid-Day Visit (School 2)'].forEach((h, i) => {
+    (data.columns || ['Visit Date', 'Day', 'Emis Code', 'Morning Visit (School 1)', 'Emis Code', 'Mid-Day Visit (School 2)']).forEach((h, i) => {
       const cell = ws.getRow(5).getCell(i + 2);
       cell.value = h;
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLUE } };
@@ -85,7 +85,8 @@
         r++;
         return;
       }
-      const cells = [dt, DAYS[dt.getUTCDay()],
+      // row.cells = one-visit-per-row layout (Actual Visits): [emis, school, school type, visit type / duty details]
+      const cells = row.cells ? [dt, DAYS[dt.getUTCDay()], ...row.cells] : [dt, DAYS[dt.getUTCDay()],
         row.s1 && !row.s1.office ? row.s1.emis : '', row.s1 ? (row.s1.office ? 'Office Work' : row.s1.name) : '',
         row.s2 && !row.s2.office ? row.s2.emis : '', row.s2 ? (row.s2.office ? 'Office Work' : row.s2.name) : ''];
       cells.forEach((v, i) => {
@@ -97,8 +98,13 @@
         if (i === 0) cell.numFmt = 'dd mmm yyyy';
         if (i === 2 || i === 4) cell.numFmt = '@';
       });
-      const long = [cells[3], cells[5]].some(t => String(t || '').length > 30);
-      ws.getRow(r).height = long ? 25.5 : 12.75;
+      if (row.cells) {                                    // wrap long school names / comments
+        const lines = Math.max(...[[cells[3], 30], [cells[4], 22], [cells[5], 28]].map(([t, w]) => Math.ceil(String(t || '').length / w) || 1));
+        ws.getRow(r).height = Math.max(12.75, 12.75 * lines);
+      } else {
+        const long = [cells[3], cells[5]].some(t => String(t || '').length > 30);
+        ws.getRow(r).height = long ? 25.5 : 12.75;
+      }
       r++;
     });
 

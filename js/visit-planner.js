@@ -433,8 +433,10 @@
     if (!pa) { pa = document.createElement('div'); pa.id = 'vpPrintArea'; document.body.appendChild(pa); }
     const h = d.hdr, days = C.DAY_NAMES;
     pa.innerHTML = `<div class="vpp-h">OFFICE OF THE ASSISTANT EDUCATION OFFICER (${h.gender})</div><div class="vpp-h">MARKAZ ${esc(h.markaz.toUpperCase())}, DISTRICT ${esc(h.district.toUpperCase())}</div><div class="vpp-h">${esc(h.title)}</div>` +
-      `<table><thead><tr><th>Visit Date</th><th>Day</th><th>Emis Code</th><th>Morning Visit (School 1)</th><th>Emis Code</th><th>Mid-Day Visit (School 2)</th></tr></thead><tbody>` +
-      d.rows.map(r => r.special
+      `<table><thead><tr>${(d.columns || ['Visit Date', 'Day', 'Emis Code', 'Morning Visit (School 1)', 'Emis Code', 'Mid-Day Visit (School 2)']).map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>` +
+      d.rows.map(r => r.cells
+        ? `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td>${r.cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`
+        : r.special
         ? `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td colspan="4" style="text-align:center;font-weight:bold">${esc(r.special)}</td></tr>`
         : `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td>${esc(r.s1 && !r.s1.office ? r.s1.emis : '')}</td><td>${esc(r.s1 ? (r.s1.office ? 'Office Work' : r.s1.name) : '')}</td><td>${esc(r.s2 && !r.s2.office ? r.s2.emis : '')}</td><td>${esc(r.s2 ? (r.s2.office ? 'Office Work' : r.s2.name) : '')}</td></tr>`).join('') +
       `</tbody></table><div class="vpp-sign">ASSISTANT EDUCATION OFFICER (${h.gender})<br>Markaz ${esc(h.markaz)}, District ${esc(h.districtTitle)}</div>`;
