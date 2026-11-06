@@ -17,9 +17,11 @@
 
   const titleCase = s => String(s || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   // Holidays: shaded rows in the table + a separate summary list (gazetted = red tint, local = amber tint)
-  const HOL_FILL = { gazetted: 'FFFBE3E1', local: 'FFFFF1D6' }, HOL_INK = { gazetted: 'FF9B1C1C', local: 'FF7A5200' };
-  const holType = t => t === 'gazetted' ? 'Gazetted' : 'Local';
-  const holLabel = h => `${holType(h.type).toUpperCase()} HOLIDAY — ${h.name}`;
+  const HOL_FILL = { gazetted: 'FFFBE3E1', local: 'FFFFF1D6', vacation_summer: 'FFE0F0FB', vacation_winter: 'FFEAE6F7' },
+        HOL_INK = { gazetted: 'FF9B1C1C', local: 'FF7A5200', vacation_summer: 'FF14577F', vacation_winter: 'FF4A3A8A' };
+  const HOL_TYPE = { gazetted: 'Gazetted', local: 'Local', vacation_summer: 'Summer vacation', vacation_winter: 'Winter vacation' };
+  const holType = t => HOL_TYPE[t] || 'Local';
+  const holLabel = h => /^vacation_/.test(h.type) ? `${holType(h.type).toUpperCase()} — ${h.name}` : `${holType(h.type).toUpperCase()} HOLIDAY — ${h.name}`;
   const holFill = t => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: HOL_FILL[t] || HOL_FILL.local } });
 
   /**
@@ -160,9 +162,9 @@
         cell.font = { name: 'Montserrat', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
         cell.alignment = { horizontal: 'center' }; cell.border = BORDER;
       }
-      ws.getCell(`B${r}`).value = `HOLIDAYS — ${mon.toUpperCase()} ${data.year}`;
+      ws.getCell(`B${r}`).value = `HOLIDAYS & VACATIONS — ${mon.toUpperCase()} ${data.year}`;
       r++;
-      ['Date', 'Day', 'Type', 'Holiday name / description'].forEach((h, i) => {
+      ['Date', 'Day', 'Type', 'Holiday / vacation'].forEach((h, i) => {
         const col = [2, 3, 4, 5][i];
         const cell = ws.getRow(r).getCell(col);
         cell.value = h; cell.font = Object.assign({}, body, { bold: true }); cell.border = BORDER;

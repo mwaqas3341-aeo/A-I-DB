@@ -89,10 +89,21 @@
     const { data, error } = await sb().rpc('visit_effective_holidays', { p_year: A.year, p_month: A.month });
     if (error) { toast('Could not load holidays: ' + error.message, 'error'); return; }
     (data || []).forEach(h => A.holidays.set(h.holiday_date, { type: h.holiday_type, name: h.name }));
+    // summer / winter vacations (stored once per user, apply to every month they cover — no finalization needed)
+    const { data: vacs, error: ve } = await sb().rpc('visit_effective_vacations', { p_year: A.year, p_month: A.month });
+    if (ve) toast('Could not load vacations: ' + ve.message, 'error');
+    const first = C.iso(A.year, A.month, 1), last = C.iso(A.year, A.month, C.daysInMonth(A.year, A.month));
+    (vacs || []).forEach(v => {
+      const a = v.start_date > first ? v.start_date : first, b = v.end_date < last ? v.end_date : last;
+      for (let d = +a.slice(8); d <= +b.slice(8); d++) { const iso = C.iso(A.year, A.month, d); A.holidays.set(iso, { type: 'vacation_' + v.vacation_type, name: v.name, vac: true, first: iso === a, from: v.start_date, to: v.end_date }); }
+    });
     const { data: tp } = await sb().from('visit_planners').select('private_visit_reason,finalized_at').eq('user_id', A.userId).eq('year', A.year).eq('month', A.month).maybeSingle();
     if (tp && tp.finalized_at) A.reason = tp.private_visit_reason || '';
   }
-  const HOLNAME = { gazetted: 'Gazetted holiday', local: 'Local holiday' };
+  const HOLNAME = { gazetted: 'Gazetted holiday', local: 'Local holiday', vacation_summer: 'Summer vacation', vacation_winter: 'Winter vacation' };
+  const holText = h => h.vac ? (/^(summer|winter) vacation$/i.test(h.name) ? `${fmtDate(h.from)} – ${fmtDate(h.to)}` : `${h.name} (${fmtDate(h.from)} – ${fmtDate(h.to)})`) : h.name;
+  // one line per holiday / per vacation period (not one per vacation day)
+  const holList = () => [...A.holidays.entries()].filter(([, h]) => !h.vac || h.first).map(([d, h]) => ({ date: h.vac ? h.from : d, type: h.type, name: holText(h) })).sort((x, y) => x.date.localeCompare(y.date));
   function fillDates() {
     const el = $('vaDate'), keep = el.value, n = C.daysInMonth(A.year, A.month);
     let first = '';
@@ -104,8 +115,8 @@
     el.value = keep && keep.slice(0, 7) === `${A.year}-${String(A.month).padStart(2, '0')}` && !A.holidays.has(keep) ? keep : first;
     const b = $('vaBanner'); if (!b) return;
     b.style.display = A.holidays.size ? '' : 'none';
-    b.innerHTML = A.holidays.size ? `<strong>Holidays this month (from your finalized tentative plan):</strong> ` +
-      [...A.holidays.entries()].map(([d, h]) => `<span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(fmtDate(d))} · ${esc(h.name)} (${esc(h.type)})</span>`).join(' ') +
+    b.innerHTML = A.holidays.size ? `<strong>Holidays &amp; vacations this month (holidays from your finalized tentative plan):</strong> ` +
+      holList().map(h => `<span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(fmtDate(h.date))} · ${esc(h.name)}</span>`).join(' ') +
       ` <span class="vp-muted">— non-working days; no entry can be made on them.</span>` : '';
   }
 
@@ -207,7 +218,7 @@
     if (!date) throw new Error('Select a date.');
     if (+date.slice(0, 4) !== A.year || +date.slice(5, 7) !== A.month) throw new Error(`The date must be inside ${C.MONTH_NAMES[A.month - 1]} ${A.year}.`);
     const hol = A.holidays.get(date);
-    if (hol) throw new Error(`${fmtDate(date)} is a ${hol.type} holiday (${hol.name}). No visit, leave or duty can be recorded on a holiday.`);
+    if (hol) throw new Error(`${fmtDate(date)} is a non-working day: ${HOLNAME[hol.type] || 'holiday'} (${hol.name}). No visit, leave or duty can be recorded on it.`);
     const day = A.entries.filter(e => e.visit_date === date && e.id !== A.editId);
     if (day.some(e => e.entry_type === 'leave')) throw new Error(`${fmtDate(date)} is marked On Leave. Remove that entry first.`);
     if (type === 'leave') {
@@ -331,12 +342,12 @@
     $('vaSummary').innerHTML = A.entries.length
       ? `<strong>${n(visits)}</strong> school visit${n(visits) === 1 ? '' : 's'} (<strong>${n(visits.filter(e => e.visit_type === 'monitoring_assessment'))}</strong> monitoring/assessment · <strong>${n(visits.filter(e => e.visit_type === 'follow_up'))}</strong> follow-up) · ` +
         `<strong>${new Set(visits.map(e => e.emis_code)).size}</strong> different school(s) · <strong>${n(list.filter(e => e.entry_type === 'other_duty'))}</strong> other duty · <strong>${n(list.filter(e => e.entry_type === 'leave'))}</strong> leave day(s)` : '';
-    const holRows = [...A.holidays.entries()].map(([d, h]) => ({ date: d, hol: h }));
+    const holRows = [...A.holidays.entries()].filter(([, h]) => !h.vac || h.first).map(([d, h]) => ({ date: d, hol: h }));
     const merged = dayGroups().concat(holRows).sort((x, y) => x.date.localeCompare(y.date));
     const btns = id => `<span class="vp-acts" style="white-space:nowrap"><button class="vp-icon" style="color:var(--brand,#0B6E4F)" data-vact="edit" data-id="${id}" title="Edit this entry">✎</button><button class="vp-icon" data-vact="del" data-id="${id}" title="Remove this entry">✕</button></span>`;
     const rows = merged.map(g => {
       const days = C.DAY_NAMES[C.dowOf(g.date)], dateTd = `<td>${fmtDate(g.date)}</td><td>${days}</td>`;
-      if (g.hol) return `<tr class="vp-hol vp-hol-${esc(g.hol.type)}">${dateTd}<td colspan="6"><span class="vp-hbadge vp-hb-${esc(g.hol.type)}">${esc(HOLNAME[g.hol.type] || 'Holiday')}</span> ${esc(g.hol.name)} <span class="vp-muted">— non-working day</span></td></tr>`;
+      if (g.hol) return `<tr class="vp-hol vp-hol-${esc(g.hol.type)}">${dateTd}<td colspan="6"><span class="vp-hbadge vp-hb-${esc(g.hol.type)}">${esc(HOLNAME[g.hol.type] || 'Holiday')}</span> ${esc(holText(g.hol))} <span class="vp-muted">— non-working ${g.hol.vac ? 'period' : 'day'}</span></td></tr>`;
       if (g.leave) return `<tr class="${A.editId === g.leave.id ? 'vp-sel' : ''}">${dateTd}<td colspan="6" class="vp-special vp-sp-leave"><strong>ON LEAVE</strong>${g.leave.comment ? ' — ' + esc(g.leave.comment) : ''} ${btns(g.leave.id)}</td></tr>`;
       const [a, b] = g.pair, dt = g.idx === 0 ? `<td rowspan="${g.span}">${fmtDate(g.date)}</td><td rowspan="${g.span}">${days}</td>` : '';
       const sel = x => (A.editId === x.id ? ' vp-sel' : '');
@@ -350,9 +361,10 @@
   }
 
   function holSummary() {
-    if (!A.holidays.size) return '';
-    return `<div class="vp-hsum"><div class="vp-h2">Holidays — ${C.MONTH_NAMES[A.month - 1]} ${A.year}</div><table class="vp-table vp-small" style="min-width:0"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>` +
-      [...A.holidays.entries()].map(([d, h]) => `<tr class="vp-hol vp-hol-${esc(h.type)}"><td>${fmtDate(d)}</td><td>${esc(h.name)}</td><td><span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(HOLNAME[h.type] || h.type)}</span></td></tr>`).join('') + `</tbody></table></div>` +
+    const list = holList();
+    if (!list.length) return '';
+    return `<div class="vp-hsum"><div class="vp-h2">Holidays &amp; vacations — ${C.MONTH_NAMES[A.month - 1]} ${A.year}</div><table class="vp-table vp-small" style="min-width:0"><thead><tr><th>Date</th><th>Holiday / vacation</th><th>Type</th></tr></thead><tbody>` +
+      list.map(h => `<tr class="vp-hol vp-hol-${esc(h.type)}"><td>${fmtDate(h.date)}</td><td>${esc(h.name)}</td><td><span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(HOLNAME[h.type] || h.type)}</span></td></tr>`).join('') + `</tbody></table></div>` +
       (A.reason ? `<div class="vp-note"><strong>Reason for visiting private schools:</strong> ${esc(A.reason)}</div>` : '');
   }
 
@@ -362,8 +374,9 @@
     const schools = A.entries.filter(e => e.entry_type === 'school').map(e => ({ markaz_name: e.markaz }));
     const hdr = sh().makeHeader(schools, typed, null, 'actual', A.year, A.month);
     const vis = dayGroups().map(g => g.leave ? { date: g.date, special: 'ON LEAVE' + (g.leave.comment ? ' — ' + g.leave.comment : '') } : { date: g.date, pair: g.pair.map(x => x && { emis: x.emis, name: x.name, cat: x.cat }), idx: g.idx, span: g.span });
-    const hols = [...A.holidays.entries()].map(([date, h]) => ({ date, type: h.type, name: h.name }));
-    const rows = vis.concat(hols.map(h => ({ date: h.date, holiday: { type: h.type, name: h.name } }))).sort((a, b) => a.date.localeCompare(b.date));
+    const hols = holList();
+    const holRows = [...A.holidays.entries()].filter(([, h]) => !h.vac || h.first).map(([date, h]) => ({ date, holiday: { type: h.type, name: holText(h) } }));
+    const rows = vis.concat(holRows).sort((a, b) => a.date.localeCompare(b.date));
     return { holidays: hols, privateReason: A.reason, year: A.year, month: A.month, startDate: null, genderTag: hdr.gender, markazLabel: hdr.markaz, district: hdr.district, rows, hdr,
              title: hdr.title, columns: COLUMNS, sheetName: `Actual Visits ${C.MONTH_NAMES[A.month - 1].slice(0, 3)} ${A.year}` };
   }

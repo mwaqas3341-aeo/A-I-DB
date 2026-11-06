@@ -19,10 +19,10 @@
     year: new Date().getFullYear(), month: new Date().getMonth() + 1,
     planner: null, entries: [], selected: new Map(), extraDates: new Set(),
     q: '', markaz: '', source: '', shown: 150, queue: Promise.resolve(),
-    targets: [], holidays: [], jsel: { d: '', w: '', t: '', m: '' }, catSel: new Map(), editHol: null, step: 1, noHol: false
+    targets: [], holidays: [], vacations: [], editVac: null, jsel: { d: '', w: '', t: '', m: '' }, catSel: new Map(), editHol: null, step: 1, noHol: false
   };
   const STEPS = ['Month & jurisdiction', 'School categories', 'Private-school reason', 'Holidays', 'Leave & schools', 'Plan & submit'];
-  const HOLTYPE = { gazetted: 'Gazetted holiday', local: 'Local holiday' };
+  const HOLTYPE = { gazetted: 'Gazetted holiday', local: 'Local holiday', vacation_summer: 'Summer vacation', vacation_winter: 'Winter vacation' };
 
   const $  = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -61,13 +61,35 @@
     if (!jurSaved()) out.push('Step 1: District, Wing, Tehsil and Markaz are not saved.');
     if (!S.targets.length) out.push('Step 2: select at least one school category with Min/Max visits.');
     if (hasPrivate() && !(p.private_visit_reason || '').trim()) out.push('Step 3: the reason for visiting private schools is mandatory.');
-    if (!S.holidays.length && !p.no_holidays_confirmed) out.push('Step 4: add holidays or confirm that this month has none.');
+    if (!S.holidays.length && !S.vacations.length && !p.no_holidays_confirmed) out.push('Step 4: add holidays / vacation or confirm that this month has none.');
     if (p.config_step < 5) out.push('Step 5: save the leave settings and choose the schools.');
     return out;
   }
   const dateInMonth = d => !!d && +d.slice(0, 4) === S.year && +d.slice(5, 7) === S.month;
-  const holMap = () => new Map(S.holidays.map(h => [h.date, h]));
-  const holDates = () => S.holidays.map(h => h.date);
+  // Non-working days = this plan's gazetted/local holidays + every day of any summer/winter vacation touching the month.
+  const monthEdges = () => [C.iso(S.year, S.month, 1), C.iso(S.year, S.month, C.daysInMonth(S.year, S.month))];
+  function vacSegments() {
+    const [ms, me] = monthEdges();
+    return S.vacations.map(v => ({ id: v.id, type: 'vacation_' + v.type, name: v.name, from: v.start, to: v.end, a: v.start > ms ? v.start : ms, b: v.end < me ? v.end : me }));
+  }
+  const holText = h => h.vac ? (/^(summer|winter) vacation$/i.test(h.name) ? `${fmtDate(h.from)} – ${fmtDate(h.to)}` : `${h.name} (${fmtDate(h.from)} – ${fmtDate(h.to)})`) : h.name;
+  function holMap() {
+    const m = new Map(S.holidays.map(h => [h.date, h]));
+    vacSegments().forEach(g => { for (let d = +g.a.slice(8); d <= +g.b.slice(8); d++) { const iso = C.iso(S.year, S.month, d); m.set(iso, { type: g.type, name: g.name, vac: true, first: iso === g.a, from: g.from, to: g.to }); } });
+    return m;
+  }
+  const holDates = () => [...holMap().keys()];
+  // one summary line per holiday / per vacation segment (used by sheet, print and Excel)
+  const holSummaryList = () => S.holidays.map(h => ({ date: h.date, type: h.type, name: h.name }))
+    .concat(vacSegments().map(g => ({ date: g.a, type: g.type, name: holText({ vac: true, name: g.name, from: g.from, to: g.to }) })))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  function addMonthsClamp(iso, n) {            // same arithmetic as Postgres: start + n months, day clamped to month end
+    const y = +iso.slice(0, 4), m = +iso.slice(5, 7) - 1 + n, d = +iso.slice(8, 10);
+    const ty = y + Math.floor(m / 12), tm = ((m % 12) + 12) % 12;
+    return C.iso(ty, tm + 1, Math.min(d, C.daysInMonth(ty, tm + 1)));
+  }
+  function dayBefore(iso) { const dt = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) - 1)); return C.iso(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate()); }
+  const vacMax = from => dayBefore(addMonthsClamp(from, 3));
   function stepMsg(text, kind) { const el = $('vpStepMsg'); if (!el) return; el.textContent = text || ''; el.className = 'vp-stepmsg' + (text ? (kind === 'ok' ? ' is-ok' : ' is-err') : ''); }
 
   // ─── Session / data ───────────────────────────────────────────────
@@ -101,7 +123,10 @@
     $('vpStatusBar').innerHTML = '<span class="vp-muted">Loading planner…</span>';
     const { data: p, error } = await sb().from('visit_planners').select('*').eq('user_id', S.userId).eq('year', S.year).eq('month', S.month).maybeSingle();
     if (error) { toast(error.message, 'error'); return; }
-    S.planner = p || null; S.entries = []; S.extraDates = new Set(); S.selected = new Map(); S.targets = []; S.holidays = []; S.editHol = null; S.noHol = false; S.autoSel = false;
+    { const [ms, me] = monthEdges();
+      const { data: vs, error: ve } = await sb().from('visit_vacations').select('id,vacation_type,start_date,end_date,name').eq('user_id', S.userId).lte('start_date', me).gte('end_date', ms).order('start_date');
+      S.vacations = ve ? [] : (vs || []).map(v => ({ id: v.id, type: v.vacation_type, start: v.start_date, end: v.end_date, name: v.name })); }
+    S.planner = p || null; S.entries = []; S.extraDates = new Set(); S.selected = new Map(); S.targets = []; S.holidays = []; S.editHol = null; S.editVac = null; S.noHol = false; S.autoSel = false;
     if (p) {
       const [tg, hl] = await Promise.all([
         sb().from('visit_planner_category_targets').select('category,min_visits,max_visits').eq('planner_id', p.id).order('category'),
@@ -221,13 +246,13 @@
     const dates = byDate(), hm = holMap();
     const [y, m] = [S.year, S.month];
     const hdr = headerInfo();
-    const all = new Map(dates); hm.forEach((h, d) => { if (!all.has(d)) all.set(d, {}); });
+    const all = new Map(dates); hm.forEach((h, d) => { if (!all.has(d) && (!h.vac || h.first)) all.set(d, {}); });
     const lk = locked();
     const rows = [...new Map([...all.entries()].sort((a, b) => a[0].localeCompare(b[0]))).entries()].map(([date, sl]) => {
       const dow = C.dowOf(date), e1 = sl[1], e2 = sl[2];
       const hol = hm.get(date);
       if (hol) return `<tr class="vp-hol vp-hol-${esc(hol.type)}"><td class="vp-mono">${fmtDate(date)}</td><td>${C.DAY_NAMES[dow]}</td>` +
-        `<td colspan="4"><span class="vp-hbadge vp-hb-${esc(hol.type)}">${esc(HOLTYPE[hol.type] || hol.type)}</span> ${esc(hol.name)} <span class="vp-muted">— non-working day</span></td><td>Holiday</td><td></td></tr>`;
+        `<td colspan="4"><span class="vp-hbadge vp-hb-${esc(hol.type)}">${esc(HOLTYPE[hol.type] || hol.type)}</span> ${esc(holText(hol))} <span class="vp-muted">— non-working ${hol.vac ? 'period' : 'day'}</span></td><td>Holiday</td><td></td></tr>`;
       const bad = new Set(S.planner.leave_days || []).has(dow);
       const dis = lk ? 'disabled' : '';
       const sp = isSpecial(e1) ? e1 : null;
@@ -255,9 +280,10 @@
 
   function holSummaryHtml() {
     const p = S.planner, rsn = p && hasPrivate() && p.private_visit_reason ? `<div class="vp-note"><strong>Reason for visiting private schools:</strong> ${esc(p.private_visit_reason)}</div>` : '';
-    if (!S.holidays.length) return rsn;
-    return `<div class="vp-hsum"><div class="vp-h2">Holidays — ${C.MONTH_NAMES[S.month - 1]} ${S.year}</div><table class="vp-table vp-small" style="min-width:0"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>` +
-      S.holidays.map(h => `<tr class="vp-hol vp-hol-${esc(h.type)}"><td>${fmtDate(h.date)}</td><td>${esc(h.name)}</td><td><span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(HOLTYPE[h.type] || h.type)}</span></td></tr>`).join('') + `</tbody></table></div>` + rsn;
+    const list = holSummaryList();
+    if (!list.length) return rsn;
+    return `<div class="vp-hsum"><div class="vp-h2">Holidays &amp; vacations — ${C.MONTH_NAMES[S.month - 1]} ${S.year}</div><table class="vp-table vp-small" style="min-width:0"><thead><tr><th>Date</th><th>Holiday / vacation</th><th>Type</th></tr></thead><tbody>` +
+      list.map(h => `<tr class="vp-hol vp-hol-${esc(h.type)}"><td>${fmtDate(h.date)}</td><td>${esc(h.name)}</td><td><span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(HOLTYPE[h.type] || h.type)}</span></td></tr>`).join('') + `</tbody></table></div>` + rsn;
   }
 
   function renderAlerts() {
@@ -511,9 +537,10 @@
     const hm = holMap();
     const vis = [...byDate().entries()].filter(([d, sl]) => !hm.has(d) && (sl[1] || sl[2])).map(([date, sl]) =>
       isSpecial(sl[1]) ? { date, special: specialText(sl[1]) } : { date, s1: f(sl[1]), s2: f(sl[2]) });
-    const rows = vis.concat(S.holidays.map(h => ({ date: h.date, holiday: { type: h.type, name: h.name } }))).sort((a, b) => a.date.localeCompare(b.date));
+    const holRows = [...hm.entries()].filter(([, h]) => !h.vac || h.first).map(([date, h]) => ({ date, holiday: { type: h.type, name: holText(h) } }));
+    const rows = vis.concat(holRows).sort((a, b) => a.date.localeCompare(b.date));
     return { year: S.year, month: S.month, startDate: S.planner.start_date, genderTag: hdr.gender, markazLabel: hdr.markaz, district: hdr.district, rows, hdr,
-      holidays: S.holidays.map(h => ({ date: h.date, type: h.type, name: h.name })), privateReason: hasPrivate() ? (S.planner.private_visit_reason || '') : '' };
+      holidays: holSummaryList(), privateReason: hasPrivate() ? (S.planner.private_visit_reason || '') : '' };
   }
 
   async function onExcel() {
@@ -539,7 +566,7 @@
     };
     const hol = r => `<tr class="vpp-hol vpp-hol-${esc(r.holiday.type)}"><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td colspan="${cols.length - 2}" style="text-align:center;font-weight:bold">${esc((HOLTYPE[r.holiday.type] || 'Holiday').toUpperCase())} — ${esc(r.holiday.name)}</td></tr>`;
     const hs = (d.holidays || []).length
-      ? `<div class="vpp-sub">Holidays — ${C.MONTH_NAMES[d.month - 1]} ${d.year}</div><table class="vpp-hsum"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>` +
+      ? `<div class="vpp-sub">Holidays &amp; vacations — ${C.MONTH_NAMES[d.month - 1]} ${d.year}</div><table class="vpp-hsum"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>` +
         d.holidays.map(x => `<tr class="vpp-hol vpp-hol-${esc(x.type)}"><td>${fmtDate(x.date)}</td><td>${esc(x.name)}</td><td>${esc(HOLTYPE[x.type] || x.type)}</td></tr>`).join('') + `</tbody></table>` : '';
     pa.innerHTML = (cols.length > 6 ? '<style>@page{size:A4 landscape;margin:12mm}</style>' : '') + `<div class="vpp-h">OFFICE OF THE ASSISTANT EDUCATION OFFICER (${h.gender})</div><div class="vpp-h">MARKAZ ${esc(h.markaz.toUpperCase())}, DISTRICT ${esc(h.district.toUpperCase())}</div><div class="vpp-h">${esc(h.title)}</div>` +
       `<table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>` +
@@ -679,29 +706,60 @@
   }
 
   // Step 4 ------------------------------------------------------------
+  const isVacType = t => t === 'summer' || t === 'winter';
   function renderHolidays() {
     const list = $('vpHList'); if (!list) return;
-    const lk = locked(), eh = S.editHol && S.holidays.find(h => h.id === S.editHol);
+    const lk = locked(), eh = S.editHol && S.holidays.find(h => h.id === S.editHol), ev = S.editVac && S.vacations.find(v => v.id === S.editVac);
+    const ty = $('vpHType').value, vac = isVacType(ty);
+    $('vpHDateWrap').style.display = vac ? 'none' : ''; $('vpVacWrap').style.display = vac ? '' : 'none';
     $('vpHDate').min = C.iso(S.year, S.month, 1); $('vpHDate').max = C.iso(S.year, S.month, C.daysInMonth(S.year, S.month));
-    $('vpHAdd').textContent = eh ? 'Update holiday' : '+ Add holiday'; $('vpHCancel').style.display = eh ? '' : 'none';
+    $('vpHName').placeholder = vac ? 'Optional — defaults to ' + (ty === 'summer' ? 'Summer vacation' : 'Winter vacation') : 'e.g. Iqbal Day';
+    const f = $('vpVFrom').value; $('vpVTo').max = f ? vacMax(f) : ''; $('vpVTo').min = f || '';
+    $('vpHAdd').textContent = eh || ev ? 'Update' : vac ? '+ Add vacation' : '+ Add holiday'; $('vpHCancel').style.display = eh || ev ? '' : 'none';
     $('vpHMonthTxt').textContent = `${C.MONTH_NAMES[S.month - 1]} ${S.year}`;
-    const nh = $('vpNoHol'); nh.checked = !!(S.planner && S.planner.no_holidays_confirmed); nh.disabled = lk || S.holidays.length > 0;
-    list.innerHTML = S.holidays.length ? `<div class="vp-scroll"><table class="vp-table vp-small" style="min-width:420px"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th><th></th></tr></thead><tbody>` +
-      S.holidays.map(h => `<tr class="vp-hol vp-hol-${esc(h.type)}"><td class="vp-mono">${fmtDate(h.date)} <span class="vp-muted">${DAY_SHORT[C.dowOf(h.date)]}</span></td><td>${esc(h.name)}</td>` +
-        `<td><span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(HOLTYPE[h.type])}</span></td><td style="white-space:nowrap"><button type="button" class="vp-btn vp-ghost" data-act="editHol" data-id="${esc(h.id)}" ${lk ? 'disabled' : ''}>Edit</button> ` +
-        `<button type="button" class="vp-icon" data-act="delHol" data-id="${esc(h.id)}" ${lk ? 'disabled' : ''} title="Remove">✕</button></td></tr>`).join('') + `</tbody></table></div>`
-      : `<div class="vp-muted">No holidays added for ${C.MONTH_NAMES[S.month - 1]} ${S.year}.</div>`;
+    const nh = $('vpNoHol'); nh.checked = !!(S.planner && S.planner.no_holidays_confirmed); nh.disabled = lk || S.holidays.length > 0 || S.vacations.length > 0;
+    const hrow = h => `<tr class="vp-hol vp-hol-${esc(h.type)}"><td class="vp-mono">${fmtDate(h.date)} <span class="vp-muted">${DAY_SHORT[C.dowOf(h.date)]}</span></td><td>${esc(h.name)}</td>` +
+      `<td><span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(HOLTYPE[h.type])}</span></td><td style="white-space:nowrap"><button type="button" class="vp-btn vp-ghost" data-act="editHol" data-id="${esc(h.id)}" ${lk ? 'disabled' : ''}>Edit</button> ` +
+      `<button type="button" class="vp-icon" data-act="delHol" data-id="${esc(h.id)}" ${lk ? 'disabled' : ''} title="Remove">✕</button></td></tr>`;
+    const vrow = v => { const t = 'vacation_' + v.type; return `<tr class="vp-hol vp-hol-${t}"><td class="vp-mono">${fmtDate(v.start)} → ${fmtDate(v.end)}</td><td>${esc(v.name)}</td>` +
+      `<td><span class="vp-hbadge vp-hb-${t}">${esc(HOLTYPE[t])}</span></td><td style="white-space:nowrap"><button type="button" class="vp-btn vp-ghost" data-act="editVac" data-id="${esc(v.id)}" ${lk ? 'disabled' : ''}>Edit</button> ` +
+      `<button type="button" class="vp-icon" data-act="delVac" data-id="${esc(v.id)}" ${lk ? 'disabled' : ''} title="Remove">✕</button></td></tr>`; };
+    list.innerHTML = S.holidays.length || S.vacations.length ? `<div class="vp-scroll"><table class="vp-table vp-small" style="min-width:420px"><thead><tr><th>Date / period</th><th>Name</th><th>Type</th><th></th></tr></thead><tbody>` +
+      S.vacations.map(vrow).join('') + S.holidays.map(hrow).join('') + `</tbody></table></div>` +
+      (S.vacations.length ? '<div class="vp-muted" style="margin-top:4px">A vacation applies to every month it covers — present and future plans, tentative and actual.</div>' : '')
+      : `<div class="vp-muted">No holidays or vacations added for ${C.MONTH_NAMES[S.month - 1]} ${S.year}.</div>`;
   }
-  function resetHolForm() { S.editHol = null; $('vpHDate').value = ''; $('vpHName').value = ''; $('vpHType').value = 'gazetted'; renderHolidays(); }
+  function resetHolForm() { S.editHol = null; S.editVac = null; $('vpHDate').value = ''; $('vpHName').value = ''; $('vpHType').value = 'gazetted'; $('vpVFrom').value = ''; $('vpVTo').value = ''; $('vpVDur').value = ''; renderHolidays(); }
+  function onVacDuration() {
+    const f = $('vpVFrom').value, n = +$('vpVDur').value;
+    if (f && n) $('vpVTo').value = dayBefore(addMonthsClamp(f, n));
+    renderHolidays();
+  }
+  async function reloadKeepStep() { const st = S.step; await loadPeriod(); S.step = st; renderAll(); }
   function onHolidaySave() {
     return enqueue(async () => {
       if (!S.planner || locked()) return;
-      const date = $('vpHDate').value, type = $('vpHType').value, name = $('vpHName').value.trim();
+      const type = $('vpHType').value, name = $('vpHName').value.trim();
+      if (isVacType(type)) {                                  // ── summer / winter vacation (date range, up to 3 months)
+        const from = $('vpVFrom').value, to = $('vpVTo').value;
+        if (!from || !to) return stepFail('Pick the vacation start and end dates.');
+        if (to < from) return stepFail('The vacation end date cannot be before its start date.');
+        if (to > vacMax(from)) return stepFail('A vacation can last at most 3 months from its start date.');
+        const other = S.vacations.find(v => v.id !== S.editVac && v.start <= to && v.end >= from);
+        if (other) return stepFail(`This period overlaps another vacation (${fmtDate(other.start)} – ${fmtDate(other.end)}).`);
+        const row = { vacation_type: type, start_date: from, end_date: to, name: name.slice(0, 120) };
+        if (S.editVac) { const { error } = await sb().from('visit_vacations').update(row).eq('id', S.editVac); if (error) throw error; }
+        else { const { error } = await sb().from('visit_vacations').insert(Object.assign({ user_id: S.userId }, row)); if (error) throw error; }
+        S.editVac = null; $('vpVFrom').value = ''; $('vpVTo').value = ''; $('vpVDur').value = ''; $('vpHName').value = '';
+        await reloadKeepStep(); stepMsg('Vacation saved — all months it covers are adjusted.', 'ok'); return;
+      }
+      const date = $('vpHDate').value;
       if (!date) return stepFail('Choose the holiday date.');
       if (!dateInMonth(date)) return stepFail(`The date must fall inside ${C.MONTH_NAMES[S.month - 1]} ${S.year}.`);
       if (!name) return stepFail('Enter the holiday name.');
-      if (!HOLTYPE[type]) return stepFail('Choose the holiday type.');
+      if (type !== 'gazetted' && type !== 'local') return stepFail('Choose the holiday type.');
       if (S.holidays.some(h => h.date === date && h.id !== S.editHol)) return stepFail('A holiday is already recorded on that date.');
+      if (holMap().get(date) && holMap().get(date).vac) return stepFail('That date is already inside a vacation.');
       if (S.entries.some(e => e.visit_date === date)) return stepFail('Visits are already planned on that date — remove them first.');
       const row = { holiday_date: date, holiday_type: type, name: name.slice(0, 120) };
       if (S.editHol) { const { error } = await sb().from('visit_planner_holidays').update(row).eq('id', S.editHol); if (error) throw error; }
@@ -720,17 +778,24 @@
       await reloadHolidays(); await refreshPlanner(); if (S.editHol === id) S.editHol = null; renderAll();
     });
   }
+  function onVacationDelete(id) {
+    return enqueue(async () => {
+      const { error } = await sb().from('visit_vacations').delete().eq('id', id); if (error) throw error;
+      if (S.editVac === id) S.editVac = null;
+      await reloadKeepStep(); stepMsg('Vacation removed.', 'ok');
+    });
+  }
   function onNoHolidays(on) {
     return enqueue(async () => {
       if (!S.planner || locked()) return;
-      if (on && S.holidays.length) { stepMsg('Remove the holidays first, or leave this unticked.', 'err'); renderAll(); return; }
+      if (on && (S.holidays.length || S.vacations.length)) { stepMsg('Remove the holidays / vacation first, or leave this unticked.', 'err'); renderAll(); return; }
       await patchPlanner(on ? { no_holidays_confirmed: true } : { no_holidays_confirmed: false, config_step: Math.min(cfg(), 3) });
       renderAll();
     });
   }
   async function saveHolStep() {
     if (isLegacy()) return true;
-    if (!S.holidays.length && !S.planner.no_holidays_confirmed) return stepFail('Add at least one holiday, or tick “This month has no holidays”.');
+    if (!S.holidays.length && !S.vacations.length && !S.planner.no_holidays_confirmed) return stepFail('Add a holiday or vacation, or tick “This month has no holidays”.');
     await patchPlanner({ config_step: Math.max(cfg(), 4) });
     return true;
   }
@@ -755,7 +820,7 @@
       `<li><strong>Jurisdiction:</strong> ${j ? esc(`${j.d} › ${j.w} › ${j.t} › ${j.m === 'ALL' ? 'All Markaz' : j.m}`) : '<span class="vp-muted">legacy plan — not set</span>'}</li>` +
       `<li><strong>Categories:</strong> ${S.targets.length ? S.targets.map(t => `<span class="vp-src vp-src-${esc(t.category)}">${esc(SRC_LABEL[t.category] || t.category)}</span> ${t.min_visits}–${t.max_visits} per school`).join(' · ') : '<span class="vp-muted">none</span>'}</li>` +
       (hasPrivate() ? `<li><strong>Private-school reason:</strong> ${esc(p.private_visit_reason || '—')}</li>` : '') +
-      `<li><strong>Holidays:</strong> ${S.holidays.length ? S.holidays.map(h => `<span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(fmtDate(h.date))} ${esc(h.name)}</span>`).join(' ') : (p.no_holidays_confirmed ? 'None this month' : '<span class="vp-muted">not set</span>')}</li></ul>` +
+      `<li><strong>Holidays / vacations:</strong> ${holSummaryList().length ? holSummaryList().map(h => `<span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(fmtDate(h.date))} ${esc(h.name)}</span>`).join(' ') : (p.no_holidays_confirmed ? 'None this month' : '<span class="vp-muted">not set</span>')}</li></ul>` +
       (iss.length ? `<div class="vp-error">${iss.map(esc).join('<br>')}</div>` : '<div class="vp-check">✔ All mandatory configuration is valid.</div>') + `</div>`;
   }
 
@@ -800,6 +865,8 @@
       else if (a === 'goStep') goTo(+b.dataset.step);
       else if (a === 'editHol') { const h = S.holidays.find(x => x.id === b.dataset.id); if (h) { S.editHol = h.id; $('vpHDate').value = h.date; $('vpHType').value = h.type; $('vpHName').value = h.name; renderHolidays(); } }
       else if (a === 'delHol') { if (confirm('Remove this holiday?')) onHolidayDelete(b.dataset.id); }
+      else if (a === 'editVac') { const v = S.vacations.find(x => x.id === b.dataset.id); if (v) { S.editVac = v.id; S.editHol = null; $('vpHType').value = v.type; $('vpVFrom').value = v.start; $('vpVTo').value = v.end; $('vpVDur').value = ''; $('vpHName').value = v.name; renderHolidays(); } }
+      else if (a === 'delVac') { if (confirm('Remove this vacation? It will be removed from every month it covers.')) onVacationDelete(b.dataset.id); }
       else if (a === 'showHome') showPanel('vpHome');
       else if (a === 'openTentative') { e.preventDefault(); showPanel('vpTentative'); }
       else if (a === 'openActual') {
@@ -814,6 +881,8 @@
       else if (t.classList.contains('vp-ccheck')) { if (t.checked) S.catSel.set(t.dataset.cat, S.catSel.get(t.dataset.cat) || { min: '', max: '' }); else S.catSel.delete(t.dataset.cat); renderCats(); stepMsg(''); }
       else if (t.classList.contains('vp-cmin') || t.classList.contains('vp-cmax')) { const st = S.catSel.get(t.dataset.cat); if (st) st[t.classList.contains('vp-cmin') ? 'min' : 'max'] = t.value; }
       else if (t.id === 'vpNoHol') onNoHolidays(t.checked);
+      else if (t.id === 'vpHType' || t.id === 'vpVFrom' || t.id === 'vpVTo') renderHolidays();
+      else if (t.id === 'vpVDur') onVacDuration();
       else if (t.id === 'vpMonth' || t.id === 'vpYear') enqueue(loadPeriod);
       else if (t.classList.contains('vp-slot')) onSlotChange(t);
       else if (t.classList.contains('vp-daytype')) onDayType(t);
@@ -886,14 +955,17 @@
     <div class="vp-pane" data-pane="3"><div class="vp-card"><div class="vp-h2">Step 3 — Reason for visiting private schools</div>
       <div id="vpPrivNA" class="vp-muted">Not required — no private category was selected.</div>
       <fieldset class="vp-fs" id="vpPrivBox"><label class="vp-lbl" style="width:100%">Reason <span class="vp-req">*</span><textarea id="vpPrivReason" class="vp-in" rows="4" maxlength="1000" placeholder="Why will private schools be visited this month?"></textarea></label></fieldset></div></div>
-    <div class="vp-pane" data-pane="4"><div class="vp-card"><div class="vp-h2">Step 4 — Holidays for <span id="vpHMonthTxt"></span></div>
-      <fieldset class="vp-fs"><div class="vp-row"><label>Date <input type="date" id="vpHDate" class="vp-in"></label>
-        <label>Type <select id="vpHType" class="vp-in"><option value="gazetted">Gazetted holiday</option><option value="local">Local holiday</option></select></label>
-        <label style="flex:1;min-width:180px">Holiday name <input type="text" id="vpHName" class="vp-in" maxlength="120" placeholder="e.g. Iqbal Day"></label>
+    <div class="vp-pane" data-pane="4"><div class="vp-card"><div class="vp-h2">Step 4 — Holidays &amp; vacations for <span id="vpHMonthTxt"></span></div>
+      <fieldset class="vp-fs"><div class="vp-row"><label>Type <select id="vpHType" class="vp-in"><option value="gazetted">Gazetted holiday</option><option value="local">Local holiday</option><option value="summer">Summer vacation</option><option value="winter">Winter vacation</option></select></label>
+        <label id="vpHDateWrap">Date <input type="date" id="vpHDate" class="vp-in"></label>
+        <span id="vpVacWrap" class="vp-row" style="display:none"><label>From <input type="date" id="vpVFrom" class="vp-in"></label>
+          <label>Duration <select id="vpVDur" class="vp-in"><option value="">Custom</option><option value="1">1 month</option><option value="2">2 months</option><option value="3">3 months</option></select></label>
+          <label>To <input type="date" id="vpVTo" class="vp-in"></label></span>
+        <label style="flex:1;min-width:180px">Name <input type="text" id="vpHName" class="vp-in" maxlength="120" placeholder="e.g. Iqbal Day"></label>
         <button type="button" class="vp-btn vp-primary" id="vpHAdd">+ Add holiday</button><button type="button" class="vp-btn vp-ghost" id="vpHCancel" style="display:none">Cancel edit</button></div>
         <div id="vpHList" style="margin-top:10px"></div>
         <label class="vp-check-row"><input type="checkbox" id="vpNoHol"> This month has no gazetted or local holidays</label></fieldset>
-      <div class="vp-muted">Holidays are non-working days: no visit can be planned on them, and they appear (locked) in the Actual Visit Planner once this plan is finalized.</div></div></div>
+      <div class="vp-muted">Holidays are non-working days: no visit can be planned on them, and they appear (locked) in the Actual Visit Planner once this plan is finalized. A summer / winter vacation (up to 3 months) is entered once with From / To dates and applies at once to every month it covers — present and future, tentative and actual.</div></div></div>
     <div class="vp-pane" data-pane="5">
     <div class="vp-card"><div class="vp-h2">Step 5 — Weekly leave &amp; settings</div><fieldset class="vp-fs">
       <div class="vp-row"><label>Weekly leave days <select id="vpLeaveCount" class="vp-in"><option>1</option><option selected>2</option><option>3</option></select></label></div>

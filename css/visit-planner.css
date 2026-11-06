@@ -82,3 +82,11 @@
 .vp-table.vp-fixed{table-layout:fixed;width:100%;min-width:0;font-size:12.5px}
 .vp-table.vp-fixed th,.vp-table.vp-fixed td{white-space:normal;overflow-wrap:anywhere;word-break:break-word;vertical-align:top}
 @media (max-width:640px){.vp-table.vp-fixed{min-width:640px}}
+
+/* summer / winter vacation */
+.vp-hb-vacation_summer{background:#dcebf8;color:#14577f}.vp-hb-vacation_winter{background:#e8e3f6;color:#4a3a8a}
+.vp-table tr.vp-hol-vacation_summer td{background:#eef6fc}.vp-table tr.vp-hol-vacation_winter td{background:#f3f0fb}
+@media print{
+  #vpPrintArea tr.vpp-hol-vacation_summer td{background:#cfe6f7 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #vpPrintArea tr.vpp-hol-vacation_winter td{background:#e1daf5 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
