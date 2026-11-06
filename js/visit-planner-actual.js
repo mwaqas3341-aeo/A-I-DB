@@ -451,7 +451,7 @@
       <label>Month <select id="vaMonth" class="vp-in">${C.MONTH_NAMES.map((n, i) => `<option value="${i + 1}" ${i + 1 === A.month ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <button class="vp-btn" id="vaBtnLoad">Open / Load</button></div>
       <div id="vaStatus" class="vp-status"></div><div id="vaBanner" class="vp-banner" style="display:none;margin-top:8px"></div></div>
-    <div class="vp-card"><div class="vp-collhead"><div class="vp-h2" style="margin:0">Visit progress — actual vs tentative plan <span class="vp-muted">(on screen only)</span></div><button type="button" id="vaProgBtn" class="vp-collbtn" aria-expanded="true" aria-controls="vaProgress"><span class="vp-collico">▲</span><span class="vp-colltxt">Minimize</span></button></div><div id="vaProgress" style="margin-top:8px"></div></div>
+    <div class="vp-card"><div class="vp-collhead"><div class="vp-h2 vp-collttl" style="margin:0"><span class="vp-collbar"></span>Visit progress — actual vs tentative plan <span class="vp-muted">(on screen only)</span></div><button type="button" id="vaProgBtn" class="vp-collbtn" aria-expanded="true" aria-controls="vaProgress"><span class="vp-collico">▲</span><span class="vp-colltxt">Minimize</span></button></div><div id="vaProgress" style="margin-top:8px"></div></div>
     <div class="vp-card" id="vaFormCard"><div class="vp-h2" id="vaFormTitle">Add an entry</div>
       <div class="vp-row">
         <label>Date <select id="vaDate" class="vp-in"></select></label>
