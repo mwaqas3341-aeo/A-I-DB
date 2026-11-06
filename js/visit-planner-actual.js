@@ -113,7 +113,7 @@
     box.innerHTML = head + legend +
       `<div class="vp-h2" style="margin-top:10px;font-size:13px">Schools visited</div>` + (visited.length
         ? tbl(['Emis Code', 'Name of School', 'Visits done', 'Expected (tentative)', 'Remaining', 'Status'],
-            visited.map(r => `<tr class="${r.done >= (r.ex ? Math.min(r.ex, 2) : 2) ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.done}</td><td>${has ? r.ex : '—'}</td><td>${has ? r.rem : '—'}</td><td>${status(r)}</td></tr>`).join(''))
+            visited.map(r => `<tr class="${r.done >= (r.ex ? Math.min(r.ex, 2) : 2) ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.done}</td><td>${has ? r.ex : '—'}</td><td>${has ? r.rem : '—'}</td><td>${r.done >= (r.ex ? Math.min(r.ex, 2) : 2) ? '<span class="vp-badge">No need to visit now — focus on other schools</span>' : status(r)}</td></tr>`).join(''))
         : '<div class="vp-muted">No school visits recorded yet.</div>') +
       (has ? `<div class="vp-h2" style="margin-top:12px;font-size:13px">Not visited yet (${pending.length})</div>` + (pending.length
         ? tbl(['Emis Code', 'Name of School', 'Expected visits', 'Visits done'], pending.map(r => `<tr class="vp-row-warn"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.ex}</td><td>0</td></tr>`).join(''))
