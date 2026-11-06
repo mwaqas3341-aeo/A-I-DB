@@ -77,8 +77,8 @@
       A.entries = data || [];
       $('vaMarkazLabel').value = p.markaz_label || '';
     } else $('vaMarkazLabel').value = '';
-    await loadHolidays();
-    fillDates();
+    try { await loadHolidays(); } catch (e) { console.error(e); A.holidays = new Map(); A.reason = ''; }   // holidays are an add-on: never block the page
+    try { fillDates(); } catch (e) { console.error(e); }
     $('vaStatus').innerHTML = `<strong>${C.MONTH_NAMES[A.month - 1]} ${A.year}</strong> <span class="vp-muted">· ${A.plan ? 'saved' : 'no actual visits recorded yet'}</span>`;
     render();
   }
@@ -102,7 +102,7 @@
       return h ? `<option value="${d}" disabled>${esc(lbl)} — ${esc(HOLNAME[h.type] || 'Holiday')}: ${esc(h.name)} (not available)</option>` : `<option value="${d}">${esc(lbl)}</option>`;
     }).join('');
     el.value = keep && keep.slice(0, 7) === `${A.year}-${String(A.month).padStart(2, '0')}` && !A.holidays.has(keep) ? keep : first;
-    const b = $('vaBanner');
+    const b = $('vaBanner'); if (!b) return;
     b.style.display = A.holidays.size ? '' : 'none';
     b.innerHTML = A.holidays.size ? `<strong>Holidays this month (from your finalized tentative plan):</strong> ` +
       [...A.holidays.entries()].map(([d, h]) => `<span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(fmtDate(d))} · ${esc(h.name)} (${esc(h.type)})</span>`).join(' ') +
@@ -429,7 +429,10 @@
       await loadWide();
       if (!A.built || !el.firstChild) build(); else syncForm();
       await enqueue(load);
-    } catch (e) { console.error(e); toast(e.message || 'Could not open Actual Visits', 'error'); }
+    } catch (e) {
+      console.error(e); toast(e.message || 'Could not open Actual Visits', 'error');
+      if (el && !el.firstChild) el.innerHTML = `<div class="vp-card"><div class="vp-error">Could not open Actual Visits: ${esc(e.message || e)}</div><button class="vp-btn" onclick="location.reload()">Reload</button></div>`;
+    }
   }
 
   window.VisitPlannerActual = { mount };
