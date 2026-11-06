@@ -630,7 +630,7 @@
     const count = {}; jurPool().forEach(r => { count[r.source] = (count[r.source] || 0) + 1; });
     const cats = Object.keys(count).sort();
     if (!cats.length) { box.innerHTML = '<div class="vp-error">No schools were found in this jurisdiction.</div>'; return; }
-    box.innerHTML = `<div class="vp-scroll"><table class="vp-table vp-small vp-cats" style="min-width:520px"><thead><tr><th></th><th>Category</th><th>Eligible schools</th><th>Min visits</th><th>Max visits</th></tr></thead><tbody>` +
+    box.innerHTML = `<div class="vp-scroll"><table class="vp-table vp-small vp-cats" style="min-width:520px"><thead><tr><th></th><th>Category</th><th>Eligible schools</th><th>Min visits per school</th><th>Max visits per school</th></tr></thead><tbody>` +
       cats.map(c => { const st = S.catSel.get(c), on = !!st; return `<tr class="${on ? 'vp-sel' : ''}"><td><input type="checkbox" class="vp-ccheck" data-cat="${esc(c)}" ${on ? 'checked' : ''} aria-label="Include ${esc(SRC_LABEL[c] || c)}"></td>` +
         `<td><span class="vp-src vp-src-${esc(c)}">${esc(SRC_LABEL[c] || c)}</span></td><td>${count[c]}</td>` +
         `<td><input type="number" min="0" step="1" class="vp-in vp-num vp-cmin" data-cat="${esc(c)}" value="${on ? esc(st.min) : ''}" ${on ? '' : 'disabled'}></td>` +
@@ -748,7 +748,7 @@
     box.innerHTML = `<div class="vp-summary"><div class="vp-h2">Plan configuration</div><ul>` +
       `<li><strong>Month:</strong> ${C.MONTH_NAMES[S.month - 1]} ${S.year}</li>` +
       `<li><strong>Jurisdiction:</strong> ${j ? esc(`${j.d} › ${j.w} › ${j.t} › ${j.m === 'ALL' ? 'All Markaz' : j.m}`) : '<span class="vp-muted">legacy plan — not set</span>'}</li>` +
-      `<li><strong>Categories:</strong> ${S.targets.length ? S.targets.map(t => `<span class="vp-src vp-src-${esc(t.category)}">${esc(SRC_LABEL[t.category] || t.category)}</span> ${t.min_visits}–${t.max_visits}`).join(' · ') : '<span class="vp-muted">none</span>'}</li>` +
+      `<li><strong>Categories:</strong> ${S.targets.length ? S.targets.map(t => `<span class="vp-src vp-src-${esc(t.category)}">${esc(SRC_LABEL[t.category] || t.category)}</span> ${t.min_visits}–${t.max_visits} per school`).join(' · ') : '<span class="vp-muted">none</span>'}</li>` +
       (hasPrivate() ? `<li><strong>Private-school reason:</strong> ${esc(p.private_visit_reason || '—')}</li>` : '') +
       `<li><strong>Holidays:</strong> ${S.holidays.length ? S.holidays.map(h => `<span class="vp-hbadge vp-hb-${esc(h.type)}">${esc(fmtDate(h.date))} ${esc(h.name)}</span>`).join(' ') : (p.no_holidays_confirmed ? 'None this month' : '<span class="vp-muted">not set</span>')}</li></ul>` +
       (iss.length ? `<div class="vp-error">${iss.map(esc).join('<br>')}</div>` : '<div class="vp-check">✔ All mandatory configuration is valid.</div>') + `</div>`;
@@ -876,7 +876,7 @@
         <label>Markaz <span class="vp-req">*</span><select id="vpJMarkaz" class="vp-in" data-lvl="m"></select></label></div>
       <div class="vp-muted" style="margin-top:6px">Planning <strong id="vpJMonthTxt"></strong>. Choose in order: District → Wing → Tehsil → Markaz. Only your assigned jurisdiction is offered.</div></fieldset></div></div>
     <div class="vp-pane" data-pane="2"><div class="vp-card"><div class="vp-h2">Step 2 — School categories &amp; visit limits</div>
-      <div class="vp-muted" style="margin-bottom:8px">Tick each category you will visit and set the minimum and maximum visits for the month (whole numbers, Min ≤ Max).</div>
+      <div class="vp-muted" style="margin-bottom:8px">Tick each category you will visit and set, for every school of that category, the minimum and maximum visits in the month (whole numbers, Min ≤ Max). Each school gets its minimum automatically when the plan is generated.</div>
       <fieldset class="vp-fs"><div id="vpCatBox"></div></fieldset></div></div>
     <div class="vp-pane" data-pane="3"><div class="vp-card"><div class="vp-h2">Step 3 — Reason for visiting private schools</div>
       <div id="vpPrivNA" class="vp-muted">Not required — no private category was selected.</div>

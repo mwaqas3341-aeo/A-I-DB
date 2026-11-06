@@ -57,7 +57,7 @@
    *  successive visits are ~n/2 days apart and no school is booked twice on one day.
    *  opts.holidayDates: ISO dates that are holidays — never scheduled.
    *  opts.targets (optional): [{category, min, max}] — visits per school category (school.source). When given, each
-   *  category receives at least `min` and at most `max` visits (see allocateByCategory); otherwise every school is
+   *  school of a category receives at least `min` and at most `max` visits (per school; see allocateByCategory); otherwise every school is
    *  dealt round-robin exactly as before.
    *  Returns { rows:[{date,dow,slots:[school|{office:true}|null, ...]}], warnings:[], capacity, required, counts? }
    */
@@ -97,32 +97,35 @@
 
 
   /**
-   * How many visits each category gets. targets: [{category,min,max}], capacity = free visit slots, have[cat] = #schools chosen.
-   * Everyone first gets `min` (scaled down round-robin if the calendar cannot hold all minimums), then the remaining
-   * slots are handed out one at a time (round-robin) to categories still below `max`. Slots nobody may take stay empty.
+   * How many visits each category gets. targets: [{category,min,max}] where min/max are PER SCHOOL of that category,
+   * have[cat] = #schools chosen. Every school first gets `min` visits (scaled down round-robin if the calendar cannot hold
+   * everybody's minimum), then the remaining slots are handed out one at a time (round-robin) to categories whose schools
+   * are still below `max`. Slots nobody may take stay empty (reported as a warning).
    */
   function allocateByCategory(targets, capacity, have) {
     const cats = targets.filter(t => (have[t.category] || 0) > 0);
     const count = {}, warnings = [];
+    const lo = t => t.min * have[t.category], hi = t => t.max * have[t.category];
     cats.forEach(t => { count[t.category] = 0; });
     let left = capacity;
-    const wantMin = cats.reduce((a, t) => a + t.min, 0);
+    const wantMin = cats.reduce((a, t) => a + lo(t), 0);
     if (wantMin > capacity) {
-      warnings.push(`The minimum visits of all categories (${wantMin}) exceed the ${capacity} visit slot(s) available this month (after weekly leave, office days and holidays). Slots were shared between the categories; reduce the minimums or add working days.`);
+      warnings.push(`Each school's minimum visits add up to ${wantMin}, but only ${capacity} visit slot(s) are available this month (after weekly leave, office days and holidays). Slots were shared between the categories; reduce the minimums or the number of schools, or add working days.`);
       for (let guard = 0; left > 0 && guard < 100000; guard++) {
         let moved = false;
-        cats.forEach(t => { if (left > 0 && count[t.category] < t.min) { count[t.category]++; left--; moved = true; } });
+        cats.forEach(t => { if (left > 0 && count[t.category] < lo(t)) { count[t.category]++; left--; moved = true; } });
         if (!moved) break;
       }
     } else {
-      cats.forEach(t => { count[t.category] = t.min; left -= t.min; });
+      cats.forEach(t => { count[t.category] = lo(t); left -= lo(t); });
       for (let guard = 0; left > 0 && guard < 100000; guard++) {
         let moved = false;
-        cats.forEach(t => { if (left > 0 && count[t.category] < t.max) { count[t.category]++; left--; moved = true; } });
+        cats.forEach(t => { if (left > 0 && count[t.category] < hi(t)) { count[t.category]++; left--; moved = true; } });
         if (!moved) break;
       }
+      if (left > 0) warnings.push(`${left} visit slot(s) stay empty because every selected school already has its maximum number of visits. Raise a category's maximum or select more schools to fill them.`);
     }
-    targets.forEach(t => { if (!(have[t.category] > 0) && t.min > 0) warnings.push(`No ${t.category} school is selected, so its minimum of ${t.min} visit(s) cannot be met.`); });
+    targets.forEach(t => { if (!(have[t.category] > 0) && t.min > 0) warnings.push(`No ${t.category} school is selected, so its minimum of ${t.min} visit(s) per school cannot be met.`); });
     return { count, warnings, unused: left };
   }
 
@@ -165,7 +168,7 @@
       }
       r.slots[i] = seq[p];
     }
-    const required = (opts.targets || []).reduce((a, t) => a + t.min, 0);
+    const required = (opts.targets || []).reduce((a, t) => a + t.min * (have[t.category] || 0), 0);
     return { rows, warnings, capacity: free.length, required, counts: alloc.count };
   }
 
@@ -214,19 +217,15 @@
       if (perDay[k] === 2) msgs.push({ level: 'error', msg: `${e.school_name} — EMIS ${e.emis_code} is planned twice on ${e.visit_date}.` });
       if (ctx.poolEmis && !ctx.poolEmis.has(e.emis_code)) msgs.push({ level: 'error', msg: `${e.school_name} — EMIS ${e.emis_code} is outside your permitted jurisdiction.` });
     });
-    if (ctx.targets && ctx.targets.length) {
-      const perCat = {};
-      (ctx.entries || []).forEach(e => { if (e.entry_type === 'school') { const sc = (ctx.schools || []).find(x => String(x.emis) === String(e.emis_code)); const c = sc && sc.source; if (c) perCat[c] = (perCat[c] || 0) + 1; } });
-      ctx.targets.forEach(t => {
-        const c = perCat[t.category] || 0;
-        if (c < t.min) msgs.push({ level: 'warn', msg: `${t.category}: ${c} planned visit(s), below the minimum of ${t.min}.` });
-        if (c > t.max) msgs.push({ level: 'error', msg: `${t.category}: ${c} planned visit(s), above the maximum of ${t.max}.` });
-      });
-    }
+    const tgt = {}; (ctx.targets || []).forEach(t => { tgt[t.category] = t; });
+    const useTargets = (ctx.targets || []).length > 0;
     const workDays = workingDates(ctx.year, ctx.month, ctx.leaveDays, 1, (ctx.holidays || []).map(h => h.date)).length;
     (ctx.schools || []).forEach(s => {
-      const c = perSchool[String(s.emis)] || 0;
-      if (c < MIN_VISITS) {
+      const c = perSchool[String(s.emis)] || 0, t = useTargets ? tgt[s.source] : null;
+      if (t) {
+        if (c < t.min) msgs.push({ level: 'warn', msg: `${s.school_name} — EMIS ${s.emis} (${s.source}) has ${c} planned visit${c === 1 ? '' : 's'}, below its minimum of ${t.min}.` });
+        if (c > t.max) msgs.push({ level: 'error', msg: `${s.school_name} — EMIS ${s.emis} (${s.source}) has ${c} planned visits, above its maximum of ${t.max}.` });
+      } else if (!useTargets && c < MIN_VISITS) {
         msgs.push({ level: 'warn', msg: `${s.school_name} — EMIS ${s.emis} has only ${c} planned visit${c === 1 ? '' : 's'}. At least ${MIN_VISITS} visits are required.` +
           (workDays * 2 < MIN_VISITS * (ctx.schools || []).length ? ' This month has too few working days for every school to be visited twice.' : '') });
       }
