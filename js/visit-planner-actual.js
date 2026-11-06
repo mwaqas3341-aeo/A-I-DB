@@ -426,9 +426,10 @@
       const uid = sh().getUserId();
       if (!uid) { toast('Session expired — please sign in again.', 'error'); return; }
       if (A.userId !== uid) { A.userId = uid; A.plan = null; A.entries = []; A.built = false; A.wide = null; }
-      await loadWide();
-      if (!A.built || !el.firstChild) build(); else syncForm();
+      if (!A.built || !el.firstChild) build(); else syncForm();          // show the page at once …
+      const wideP = loadWide().then(() => { try { syncForm(); } catch (e) { console.error(e); } });   // … the big school list loads in the background
       await enqueue(load);
+      await wideP;
     } catch (e) {
       console.error(e); toast(e.message || 'Could not open Actual Visits', 'error');
       if (el && !el.firstChild) el.innerHTML = `<div class="vp-card"><div class="vp-error">Could not open Actual Visits: ${esc(e.message || e)}</div><button class="vp-btn" onclick="location.reload()">Reload</button></div>`;
