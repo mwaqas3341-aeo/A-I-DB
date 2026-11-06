@@ -96,8 +96,20 @@
     A.expected = m;
   }
   // On-screen only (not part of the Excel / print download): actual vs tentative per school, and schools not visited yet.
+  function wireProgressToggle() {
+    const b = $('vaProgBtn'); if (!b || b._w) return; b._w = 1;
+    b.addEventListener('click', () => {
+      const box = $('vaProgress'), open = box.style.display === 'none';
+      box.style.display = open ? '' : 'none';
+      b.setAttribute('aria-expanded', String(open));
+      b.querySelector('.vp-collico').textContent = open ? '▲' : '▼';
+      b.querySelector('.vp-colltxt').textContent = open ? 'Minimize' : 'Maximize';
+      b.classList.toggle('is-min', !open);
+    });
+  }
   function renderProgress() {
     const box = $('vaProgress'); if (!box) return;
+    wireProgressToggle();
     const act = new Map();
     A.entries.filter(e => e.entry_type === 'school' && e.emis_code).forEach(e => { const x = act.get(e.emis_code) || { name: e.school_name || '', n: 0 }; x.n++; act.set(e.emis_code, x); });
     const exp = A.expected || new Map(), has = A.expected && A.expected.size > 0;
@@ -439,7 +451,7 @@
       <label>Month <select id="vaMonth" class="vp-in">${C.MONTH_NAMES.map((n, i) => `<option value="${i + 1}" ${i + 1 === A.month ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <button class="vp-btn" id="vaBtnLoad">Open / Load</button></div>
       <div id="vaStatus" class="vp-status"></div><div id="vaBanner" class="vp-banner" style="display:none;margin-top:8px"></div></div>
-    <div class="vp-card"><details id="vaProgDet" open><summary class="vp-h2" style="cursor:pointer">Visit progress — actual vs tentative plan <span class="vp-muted">(on screen only · click to minimize / expand)</span></summary><div id="vaProgress" style="margin-top:8px"></div></details></div>
+    <div class="vp-card"><div class="vp-collhead"><div class="vp-h2" style="margin:0">Visit progress — actual vs tentative plan <span class="vp-muted">(on screen only)</span></div><button type="button" id="vaProgBtn" class="vp-collbtn" aria-expanded="true" aria-controls="vaProgress"><span class="vp-collico">▲</span><span class="vp-colltxt">Minimize</span></button></div><div id="vaProgress" style="margin-top:8px"></div></div>
     <div class="vp-card" id="vaFormCard"><div class="vp-h2" id="vaFormTitle">Add an entry</div>
       <div class="vp-row">
         <label>Date <select id="vaDate" class="vp-in"></select></label>

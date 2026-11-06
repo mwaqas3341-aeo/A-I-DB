@@ -100,3 +100,12 @@
 .vp-table tr.vp-row-ok td .vp-badge,.vp-table tr.vp-row-warn td .vp-badge{background:transparent;border:0;padding:0;color:inherit;font-weight:600}
 .vp-table tr.vp-row-ok td{background:#cfeed6!important}.vp-table tr.vp-row-warn td{background:#fcdcb8!important}
 .vp-key.vp-row-ok{background:#cfeed6}.vp-key.vp-row-warn{background:#fcdcb8}
+
+/* collapsible card header button */
+.vp-collhead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.vp-collbtn{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border:0;border-radius:999px;cursor:pointer;font:600 13px/1 inherit;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,#1f8f5f 0%,#0d5c3a 100%);box-shadow:0 2px 6px rgba(13,92,58,.35),inset 0 1px 0 rgba(255,255,255,.3);transition:transform .15s,box-shadow .15s,filter .15s}
+.vp-collbtn:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 4px 10px rgba(13,92,58,.4),inset 0 1px 0 rgba(255,255,255,.3)}
+.vp-collbtn:active{transform:translateY(0)}
+.vp-collbtn:focus-visible{outline:3px solid rgba(31,143,95,.45);outline-offset:2px}
+.vp-collbtn .vp-collico{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.22);font-size:10px}
+.vp-collbtn.is-min{background:linear-gradient(135deg,#f59e2b 0%,#c76a00 100%);box-shadow:0 2px 6px rgba(199,106,0,.35),inset 0 1px 0 rgba(255,255,255,.3)}
