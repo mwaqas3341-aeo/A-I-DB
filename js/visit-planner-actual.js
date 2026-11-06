@@ -19,7 +19,7 @@
   const KIND_LABEL = Object.fromEntries(KINDS);
   const SRC_KIND = { PUBLIC: 'public', HIGH: 'public', PIEMA: 'piema', PEF: 'pef', PRIVATE: 'private', ACADEMY: 'private' };
   const VISIT_LABEL = { monitoring_assessment: 'Online Monitoring / Assessment Visit', follow_up: 'Follow Up Visit' };
-  const COLUMNS = ['Visit Date', 'Day', 'Emis Code', 'Name of School', 'School Type', 'Visit Type / Duty Details'];
+  const COLUMNS = ['Visit Date', 'Day', 'Emis Code', 'Name of School', 'Emis Code', 'Name of School', 'Visit Category (School 1)', 'Visit Category (School 2)'];
 
   const A = { el: null, built: false, userId: null, year: new Date().getFullYear(), month: new Date().getMonth() + 1,
               plan: null, entries: [], holidays: new Map(), reason: '', wide: null, wideFor: null, wideWarned: false, editId: null, queue: Promise.resolve() };
@@ -307,25 +307,46 @@
     return [e.emis_code || '', e.school_name || '', KIND_LABEL[e.school_type] || '', VISIT_LABEL[e.visit_type] || ''];
   }
 
+  // One day → up to two schools per row; a third/fourth school adds a second row for that date.
+  function itemOf(e) {
+    if (e.entry_type === 'other_duty') return { id: e.id, emis: e.emis_code || '', name: e.school_name || 'Other Duty', cat: 'Other Duty' + (e.comment ? ' — ' + e.comment : '') };
+    return { id: e.id, emis: e.emis_code || '', name: e.school_name || '', cat: [KIND_LABEL[e.school_type], VISIT_LABEL[e.visit_type]].filter(Boolean).join(' — ') };
+  }
+  function dayGroups() {
+    const by = new Map();
+    sorted().forEach(e => { if (!by.has(e.visit_date)) by.set(e.visit_date, []); by.get(e.visit_date).push(e); });
+    const out = [];
+    by.forEach((list, date) => {
+      list.filter(e => e.entry_type === 'leave').forEach(e => out.push({ date, leave: e }));
+      const items = list.filter(e => e.entry_type !== 'leave').map(itemOf);
+      const span = Math.ceil(items.length / 2);
+      for (let i = 0; i < items.length; i += 2) out.push({ date, pair: [items[i], items[i + 1] || null], idx: i / 2, span });
+    });
+    return out;
+  }
+
   function render() {
     const list = sorted(), visits = list.filter(e => e.entry_type === 'school');
     const n = (arr) => arr.length;
     $('vaSummary').innerHTML = A.entries.length
       ? `<strong>${n(visits)}</strong> school visit${n(visits) === 1 ? '' : 's'} (<strong>${n(visits.filter(e => e.visit_type === 'monitoring_assessment'))}</strong> monitoring/assessment · <strong>${n(visits.filter(e => e.visit_type === 'follow_up'))}</strong> follow-up) · ` +
         `<strong>${new Set(visits.map(e => e.emis_code)).size}</strong> different school(s) · <strong>${n(list.filter(e => e.entry_type === 'other_duty'))}</strong> other duty · <strong>${n(list.filter(e => e.entry_type === 'leave'))}</strong> leave day(s)` : '';
-    const holRows = [...A.holidays.entries()].map(([d, h]) => ({ _hol: h, visit_date: d }));
-    const merged = list.concat(holRows).sort((a, b) => a.visit_date.localeCompare(b.visit_date) || (a._hol ? -1 : 1));
-    const rows = merged.map(e => {
-      if (e._hol) return `<tr class="vp-hol vp-hol-${esc(e._hol.type)}"><td>${fmtDate(e.visit_date)}</td><td>${C.DAY_NAMES[C.dowOf(e.visit_date)]}</td><td colspan="4"><span class="vp-hbadge vp-hb-${esc(e._hol.type)}">${esc(HOLNAME[e._hol.type] || 'Holiday')}</span> ${esc(e._hol.name)} <span class="vp-muted">— non-working day</span></td><td></td></tr>`;
-      const c = rowCells(e), days = C.DAY_NAMES[C.dowOf(e.visit_date)];
-      const act = `<td style="white-space:nowrap"><button class="vp-icon" style="color:var(--brand,#0B6E4F)" data-vact="edit" data-id="${e.id}" title="Edit this entry">✎</button><button class="vp-icon" data-vact="del" data-id="${e.id}" title="Remove this entry">✕</button></td>`;
-      const body = c
-        ? `<td class="vp-mono">${esc(c[0])}</td><td>${esc(c[1])}</td><td>${esc(c[2])}</td><td>${esc(c[3])}</td>`
-        : `<td colspan="4" class="vp-special vp-sp-leave"><strong>ON LEAVE</strong></td>`;
-      return `<tr class="${A.editId === e.id ? 'vp-sel' : ''}"><td>${fmtDate(e.visit_date)}</td><td>${days}</td>${body}${act}</tr>`;
+    const holRows = [...A.holidays.entries()].map(([d, h]) => ({ date: d, hol: h }));
+    const merged = dayGroups().concat(holRows).sort((x, y) => x.date.localeCompare(y.date));
+    const btns = id => `<span class="vp-acts" style="white-space:nowrap"><button class="vp-icon" style="color:var(--brand,#0B6E4F)" data-vact="edit" data-id="${id}" title="Edit this entry">✎</button><button class="vp-icon" data-vact="del" data-id="${id}" title="Remove this entry">✕</button></span>`;
+    const rows = merged.map(g => {
+      const days = C.DAY_NAMES[C.dowOf(g.date)], dateTd = `<td>${fmtDate(g.date)}</td><td>${days}</td>`;
+      if (g.hol) return `<tr class="vp-hol vp-hol-${esc(g.hol.type)}">${dateTd}<td colspan="6"><span class="vp-hbadge vp-hb-${esc(g.hol.type)}">${esc(HOLNAME[g.hol.type] || 'Holiday')}</span> ${esc(g.hol.name)} <span class="vp-muted">— non-working day</span></td></tr>`;
+      if (g.leave) return `<tr class="${A.editId === g.leave.id ? 'vp-sel' : ''}">${dateTd}<td colspan="6" class="vp-special vp-sp-leave"><strong>ON LEAVE</strong> ${btns(g.leave.id)}</td></tr>`;
+      const [a, b] = g.pair, dt = g.idx === 0 ? `<td rowspan="${g.span}">${fmtDate(g.date)}</td><td rowspan="${g.span}">${days}</td>` : '';
+      const sel = x => (A.editId === x.id ? ' vp-sel' : '');
+      const cell = x => `<td class="vp-mono${sel(x)}">${esc(x.emis)}</td><td class="${sel(x)}">${esc(x.name)} ${btns(x.id)}</td>`;
+      return b
+        ? `<tr>${dt}${cell(a)}${cell(b)}<td class="${sel(a)}">${esc(a.cat)}</td><td class="${sel(b)}">${esc(b.cat)}</td></tr>`
+        : `<tr>${dt}<td class="vp-mono${sel(a)}">${esc(a.emis)}</td><td colspan="3" class="${sel(a)}">${esc(a.name)} ${btns(a.id)}</td><td colspan="2" class="${sel(a)}">${esc(a.cat)}</td></tr>`;
     }).join('');
-    $('vaSheet').innerHTML = `<div class="vp-scroll"><table class="vp-table"><thead><tr>${COLUMNS.map(h => `<th>${h}</th>`).join('')}<th></th></tr></thead>` +
-      `<tbody>${rows || '<tr><td colspan="7" class="vp-muted">Nothing recorded for this month yet — use “Add an entry” above.</td></tr>'}</tbody></table></div>` + holSummary();
+    $('vaSheet').innerHTML = `<div class="vp-scroll"><table class="vp-table" style="min-width:900px"><thead><tr>${COLUMNS.map(h => `<th>${h}</th>`).join('')}</tr></thead>` +
+      `<tbody>${rows || '<tr><td colspan="8" class="vp-muted">Nothing recorded for this month yet — use “Add an entry” above.</td></tr>'}</tbody></table></div>` + holSummary();
     ['vaBtnExcel', 'vaBtnPrint'].forEach(id => { $(id).disabled = !A.entries.length; });
     $('vaBtnDeleteMonth').disabled = !A.plan;
   }
@@ -342,7 +363,7 @@
     const typed = $('vaMarkazLabel').value.trim();
     const schools = A.entries.filter(e => e.entry_type === 'school').map(e => ({ markaz_name: e.markaz }));
     const hdr = sh().makeHeader(schools, typed, null, 'actual', A.year, A.month);
-    const vis = sorted().map(e => { const c = rowCells(e); return c ? { date: e.visit_date, cells: c } : { date: e.visit_date, special: 'ON LEAVE' }; });
+    const vis = dayGroups().map(g => g.leave ? { date: g.date, special: 'ON LEAVE' } : { date: g.date, pair: g.pair.map(x => x && { emis: x.emis, name: x.name, cat: x.cat }), idx: g.idx, span: g.span });
     const hols = [...A.holidays.entries()].map(([date, h]) => ({ date, type: h.type, name: h.name }));
     const rows = vis.concat(hols.map(h => ({ date: h.date, holiday: { type: h.type, name: h.name } }))).sort((a, b) => a.date.localeCompare(b.date));
     return { holidays: hols, privateReason: A.reason, year: A.year, month: A.month, startDate: null, genderTag: hdr.gender, markazLabel: hdr.markaz, district: hdr.district, rows, hdr,

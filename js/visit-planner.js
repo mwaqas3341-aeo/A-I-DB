@@ -532,13 +532,18 @@
     if (!pa) { pa = document.createElement('div'); pa.id = 'vpPrintArea'; document.body.appendChild(pa); }
     const h = d.hdr, days = C.DAY_NAMES;
     const cols = d.columns || ['Visit Date', 'Day', 'Emis Code', 'Morning Visit (School 1)', 'Emis Code', 'Mid-Day Visit (School 2)'];
+    const pairRow = r => {
+      const [a, b] = r.pair, dt = r.idx === 0 ? `<td rowspan="${r.span}">${fmtDate(r.date)}</td><td rowspan="${r.span}">${days[C.dowOf(r.date)]}</td>` : '';
+      return b ? `<tr>${dt}<td>${esc(a.emis)}</td><td>${esc(a.name)}</td><td>${esc(b.emis)}</td><td>${esc(b.name)}</td><td>${esc(a.cat)}</td><td>${esc(b.cat)}</td></tr>`
+               : `<tr>${dt}<td>${esc(a.emis)}</td><td colspan="3">${esc(a.name)}</td><td colspan="2">${esc(a.cat)}</td></tr>`;
+    };
     const hol = r => `<tr class="vpp-hol vpp-hol-${esc(r.holiday.type)}"><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td colspan="${cols.length - 2}" style="text-align:center;font-weight:bold">${esc((HOLTYPE[r.holiday.type] || 'Holiday').toUpperCase())} — ${esc(r.holiday.name)}</td></tr>`;
     const hs = (d.holidays || []).length
       ? `<div class="vpp-sub">Holidays — ${C.MONTH_NAMES[d.month - 1]} ${d.year}</div><table class="vpp-hsum"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th></tr></thead><tbody>` +
         d.holidays.map(x => `<tr class="vpp-hol vpp-hol-${esc(x.type)}"><td>${fmtDate(x.date)}</td><td>${esc(x.name)}</td><td>${esc(HOLTYPE[x.type] || x.type)}</td></tr>`).join('') + `</tbody></table>` : '';
-    pa.innerHTML = `<div class="vpp-h">OFFICE OF THE ASSISTANT EDUCATION OFFICER (${h.gender})</div><div class="vpp-h">MARKAZ ${esc(h.markaz.toUpperCase())}, DISTRICT ${esc(h.district.toUpperCase())}</div><div class="vpp-h">${esc(h.title)}</div>` +
+    pa.innerHTML = (cols.length > 6 ? '<style>@page{size:A4 landscape;margin:12mm}</style>' : '') + `<div class="vpp-h">OFFICE OF THE ASSISTANT EDUCATION OFFICER (${h.gender})</div><div class="vpp-h">MARKAZ ${esc(h.markaz.toUpperCase())}, DISTRICT ${esc(h.district.toUpperCase())}</div><div class="vpp-h">${esc(h.title)}</div>` +
       `<table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>` +
-      d.rows.map(r => r.holiday ? hol(r) : r.cells
+      d.rows.map(r => r.holiday ? hol(r) : r.pair ? pairRow(r) : r.cells
         ? `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td>${r.cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`
         : r.special
         ? `<tr><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td colspan="4" style="text-align:center;font-weight:bold">${esc(r.special)}</td></tr>`
