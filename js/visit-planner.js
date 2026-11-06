@@ -607,15 +607,16 @@
   }
   async function saveJur() {
     const j = S.jsel;
+    if (isLegacy() && !(j.d && j.w && j.t && j.m)) return true;     // existing plans: setup steps are optional
     if (!j.d) return stepFail('Select a District.');
     if (!j.w) return stepFail('Select a Wing.');
     if (!j.t) return stepFail('Select a Tehsil.');
     if (!j.m) return stepFail('Select a Markaz (or “All Markaz in this Tehsil”).');
     const was = jurSaved();
     const changed = !!was && (was.d !== j.d || was.w !== j.w || was.t !== j.t || was.m !== j.m);
-    if (changed && cfg() >= 2 && !confirm('Changing the jurisdiction resets Steps 2–5 — you will need to confirm categories, holidays and schools again. Continue?')) return false;
+    if (changed && !isLegacy() && cfg() >= 2 && !confirm('Changing the jurisdiction resets Steps 2–5 — you will need to confirm categories, holidays and schools again. Continue?')) return false;
     if (!S.planner) { const err = settingsError(); if (err) return stepFail(err); await ensurePlanner({}); }
-    const keep = was && !changed ? Math.max(cfg(), 1) : 1;
+    const keep = isLegacy() ? 5 : was && !changed ? Math.max(cfg(), 1) : 1;
     await patchPlanner({ jur_district: j.d, jur_wing: j.w, jur_tehsil: j.t, jur_markaz: j.m, config_step: keep });
     if (changed) { const ok = new Set(jurPool().map(r => String(r.emis))), used = new Set(S.entries.map(e => e.emis_code)); [...S.selected.keys()].forEach(k => { if (!ok.has(k) && !used.has(k)) S.selected.delete(k); }); }
     return true;
@@ -636,6 +637,7 @@
         `<td><input type="number" min="0" step="1" class="vp-in vp-num vp-cmax" data-cat="${esc(c)}" value="${on ? esc(st.max) : ''}" ${on ? '' : 'disabled'}></td></tr>`; }).join('') + `</tbody></table></div>`;
   }
   async function saveCats() {
+    if (isLegacy() && !S.catSel.size) return true;                   // optional for existing plans
     const targets = [];
     for (const [c, st] of S.catSel) {
       const lbl = SRC_LABEL[c] || c;
@@ -722,6 +724,7 @@
     });
   }
   async function saveHolStep() {
+    if (isLegacy()) return true;
     if (!S.holidays.length && !S.planner.no_holidays_confirmed) return stepFail('Add at least one holiday, or tick “This month has no holidays”.');
     await patchPlanner({ config_step: Math.max(cfg(), 4) });
     return true;
