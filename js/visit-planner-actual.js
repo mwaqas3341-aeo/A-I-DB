@@ -22,7 +22,7 @@
   const COLUMNS = ['Visit Date', 'Day', 'Emis Code', 'Name of School', 'Visit Details', 'Emis Code', 'Name of School', 'Visit Details'];
 
   const A = { el: null, built: false, userId: null, year: new Date().getFullYear(), month: new Date().getMonth() + 1,
-              plan: null, entries: [], holidays: new Map(), reason: '', wide: null, wideFor: null, wideWarned: false, editId: null, queue: Promise.resolve() };
+              plan: null, entries: [], expected: null, holidays: new Map(), reason: '', wide: null, wideFor: null, wideWarned: false, editId: null, queue: Promise.resolve() };
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -77,10 +77,46 @@
       A.entries = data || [];
       $('vaMarkazLabel').value = p.markaz_label || '';
     } else $('vaMarkazLabel').value = '';
+    try { await loadExpected(); } catch (e) { console.error(e); A.expected = null; }
     try { await loadHolidays(); } catch (e) { console.error(e); A.holidays = new Map(); A.reason = ''; }   // holidays are an add-on: never block the page
     try { fillDates(); } catch (e) { console.error(e); }
     $('vaStatus').innerHTML = `<strong>${C.MONTH_NAMES[A.month - 1]} ${A.year}</strong> <span class="vp-muted">· ${A.plan ? 'saved' : 'no actual visits recorded yet'}</span>`;
     render();
+  }
+
+  // Expected visits per school = the school visits planned in this month's tentative plan.
+  async function loadExpected() {
+    A.expected = null;
+    const { data: tp, error } = await sb().from('visit_planners').select('id').eq('user_id', A.userId).eq('year', A.year).eq('month', A.month).maybeSingle();
+    if (error || !tp) return;
+    const { data, error: e2 } = await sb().from('visit_planner_entries').select('emis_code,school_name').eq('planner_id', tp.id).eq('entry_type', 'school');
+    if (e2) return;
+    const m = new Map();
+    (data || []).forEach(r => { if (!r.emis_code) return; const x = m.get(r.emis_code) || { name: r.school_name || '', n: 0 }; x.n++; m.set(r.emis_code, x); });
+    A.expected = m;
+  }
+  // On-screen only (not part of the Excel / print download): actual vs tentative per school, and schools not visited yet.
+  function renderProgress() {
+    const box = $('vaProgress'); if (!box) return;
+    const act = new Map();
+    A.entries.filter(e => e.entry_type === 'school' && e.emis_code).forEach(e => { const x = act.get(e.emis_code) || { name: e.school_name || '', n: 0 }; x.n++; act.set(e.emis_code, x); });
+    const exp = A.expected || new Map(), has = A.expected && A.expected.size > 0;
+    const visited = [...act.entries()].map(([emis, a]) => { const ex = (exp.get(emis) || {}).n || 0; return { emis, name: a.name || (exp.get(emis) || {}).name || '', done: a.n, ex, rem: Math.max(ex - a.n, 0) }; })
+      .sort((x, y) => y.rem - x.rem || x.emis.localeCompare(y.emis));
+    const pending = [...exp.entries()].filter(([emis]) => !act.has(emis)).map(([emis, x]) => ({ emis, name: x.name, ex: x.n })).sort((x, y) => x.emis.localeCompare(y.emis));
+    const status = r => !r.ex ? '<span class="vp-badge">Not in plan</span>' : r.rem === 0 ? '<span class="vp-badge vp-st-finalized">Complete</span>' : '<span class="vp-badge vp-st-edited">In progress</span>';
+    const totalEx = [...exp.values()].reduce((a, x) => a + x.n, 0), totalDone = visited.reduce((a, r) => a + Math.min(r.done, r.ex), 0);
+    const head = has ? `<div class="vp-status"><strong>${totalDone}</strong> of <strong>${totalEx}</strong> planned visits done · <strong>${visited.filter(r => r.ex && r.rem === 0).length}</strong> school(s) complete · <strong>${visited.filter(r => r.rem > 0).length}</strong> in progress · <strong>${pending.length}</strong> not visited yet</div>`
+      : `<div class="vp-muted">${A.expected ? 'The tentative plan for this month has no school visits.' : 'No tentative plan was found for this month, so expected visits cannot be shown.'}</div>`;
+    const tbl = (cols, rows) => `<div class="vp-scroll"><table class="vp-table vp-small vp-fixed"><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    box.innerHTML = head +
+      `<div class="vp-h2" style="margin-top:10px;font-size:13px">Schools visited</div>` + (visited.length
+        ? tbl(['Emis Code', 'Name of School', 'Visits done', 'Expected (tentative)', 'Remaining', 'Status'],
+            visited.map(r => `<tr><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.done}</td><td>${has ? r.ex : '—'}</td><td>${has ? r.rem : '—'}</td><td>${status(r)}</td></tr>`).join(''))
+        : '<div class="vp-muted">No school visits recorded yet.</div>') +
+      (has ? `<div class="vp-h2" style="margin-top:12px;font-size:13px">Not visited yet (${pending.length})</div>` + (pending.length
+        ? tbl(['Emis Code', 'Name of School', 'Expected visits', 'Visits done'], pending.map(r => `<tr><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.ex}</td><td>0</td></tr>`).join(''))
+        : '<div class="vp-check">✔ Every planned school has been visited at least once.</div>') : '');
   }
 
   // Holidays come from the FINALIZED tentative plan of the same month (server-side RPC; also enforced by DB triggers).
@@ -357,6 +393,7 @@
     $('vaSheet').innerHTML = `<div class="vp-scroll"><table class="vp-table vp-fixed"><colgroup><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:17%"><col style="width:16%"><col style="width:8%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr>${COLUMNS.map(h => `<th>${h}</th>`).join('')}</tr></thead>` +
       `<tbody>${rows || '<tr><td colspan="8" class="vp-muted">Nothing recorded for this month yet — use “Add an entry” above.</td></tr>'}</tbody></table></div>` + holSummary();
     ['vaBtnExcel', 'vaBtnPrint'].forEach(id => { $(id).disabled = !A.entries.length; });
+    try { renderProgress(); } catch (e) { console.error(e); }
     $('vaBtnDeleteMonth').disabled = !A.plan;
   }
 
@@ -427,7 +464,8 @@
     <div class="vp-card"><div class="vp-h2">Actual visits sheet</div>
       <div class="vp-row"><label>Markaz label <input type="text" id="vaMarkazLabel" class="vp-in" placeholder="e.g. 93/ML (auto if blank)" style="width:170px"></label>
       <button class="vp-btn vp-excel" id="vaBtnExcel">⬇ Download Excel</button><button class="vp-btn" id="vaBtnPrint">🖨 Print</button><button class="vp-btn vp-danger" id="vaBtnDeleteMonth">Delete month</button></div>
-      <div id="vaSummary" class="vp-status"></div><div id="vaSheet"></div></div>`;
+      <div id="vaSummary" class="vp-status"></div><div id="vaSheet"></div></div>
+    <div class="vp-card"><div class="vp-h2">Visit progress — actual vs tentative plan <span class="vp-muted">(on screen only)</span></div><div id="vaProgress"></div></div>`;
     $('vaBack').addEventListener('click', () => sh().showHome());
     $('vaBtnLoad').addEventListener('click', () => enqueue(load));
     $('vaType').addEventListener('change', () => syncForm());
