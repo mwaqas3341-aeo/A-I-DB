@@ -109,11 +109,11 @@
     const head = has ? `<div class="vp-status"><strong>${totalDone}</strong> of <strong>${totalEx}</strong> planned visits done · <strong>${visited.filter(r => r.ex && r.rem === 0).length}</strong> school(s) complete · <strong>${visited.filter(r => r.rem > 0).length}</strong> in progress · <strong>${pending.length}</strong> not visited yet</div>`
       : `<div class="vp-muted">${A.expected ? 'The tentative plan for this month has no school visits.' : 'No tentative plan was found for this month, so expected visits cannot be shown.'}</div>`;
     const tbl = (cols, rows) => `<div class="vp-scroll"><table class="vp-table vp-small vp-fixed"><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
-    const legend = '<div class="vp-muted" style="margin-top:6px"><span class="vp-key vp-row-ok"></span> 2 or more visits — no further focus needed &nbsp; <span class="vp-key vp-row-warn"></span> fewer than 2 visits — needs attention</div>';
+    const legend = '<div class="vp-muted" style="margin-top:6px"><span class="vp-key vp-row-ok"></span> expected visits reached (per tentative plan min/max, never more than 2 needed) — no further focus &nbsp; <span class="vp-key vp-row-warn"></span> expected visits not reached yet — needs attention</div>';
     box.innerHTML = head + legend +
       `<div class="vp-h2" style="margin-top:10px;font-size:13px">Schools visited</div>` + (visited.length
         ? tbl(['Emis Code', 'Name of School', 'Visits done', 'Expected (tentative)', 'Remaining', 'Status'],
-            visited.map(r => `<tr class="${r.done >= 2 ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.done}</td><td>${has ? r.ex : '—'}</td><td>${has ? r.rem : '—'}</td><td>${status(r)}</td></tr>`).join(''))
+            visited.map(r => `<tr class="${r.done >= (r.ex ? Math.min(r.ex, 2) : 2) ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.done}</td><td>${has ? r.ex : '—'}</td><td>${has ? r.rem : '—'}</td><td>${status(r)}</td></tr>`).join(''))
         : '<div class="vp-muted">No school visits recorded yet.</div>') +
       (has ? `<div class="vp-h2" style="margin-top:12px;font-size:13px">Not visited yet (${pending.length})</div>` + (pending.length
         ? tbl(['Emis Code', 'Name of School', 'Expected visits', 'Visits done'], pending.map(r => `<tr class="vp-row-warn"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.ex}</td><td>0</td></tr>`).join(''))
