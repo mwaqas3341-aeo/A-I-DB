@@ -95,3 +95,8 @@
 .vp-table tr.vp-row-ok td{background:#dff3e4}.vp-table tr.vp-row-warn td{background:#fde9d3}
 .vp-key{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:middle;border:1px solid rgba(0,0,0,.15)}
 .vp-key.vp-row-ok{background:#dff3e4}.vp-key.vp-row-warn{background:#fde9d3}
+/* progress rows: whole row one colour, status chip must not add another */
+.vp-table tr.vp-row-ok,.vp-table tr.vp-row-warn{background:transparent}
+.vp-table tr.vp-row-ok td .vp-badge,.vp-table tr.vp-row-warn td .vp-badge{background:transparent;border:0;padding:0;color:inherit;font-weight:600}
+.vp-table tr.vp-row-ok td{background:#cfeed6!important}.vp-table tr.vp-row-warn td{background:#fcdcb8!important}
+.vp-key.vp-row-ok{background:#cfeed6}.vp-key.vp-row-warn{background:#fcdcb8}
