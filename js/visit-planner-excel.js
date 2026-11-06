@@ -41,7 +41,7 @@
     });
     // 6-column layouts (tentative / legacy one-visit-per-row) end at column G; the grouped Actual Visits layout (data.pair) has 8 columns, B..I
     const LC = data.columns && data.columns.length === 8 ? 9 : 7, L = String.fromCharCode(64 + LC);
-    (LC === 9 ? [2.57, 14, 10, 11, 30, 11, 30, 24, 24] : [2.57, 23.86, 11.5, 11.5, 29.57, 19.43, 26.86]).forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+    (LC === 9 ? [2.57, 14, 10, 11, 28, 26, 11, 28, 26] : [2.57, 23.86, 11.5, 11.5, 29.57, 19.43, 26.86]).forEach((w, i) => { ws.getColumn(i + 1).width = w; });
     if (LC === 9) ws.pageSetup.orientation = 'landscape';
 
     const wef = data.startDate ? new Date(Date.UTC(+data.startDate.slice(0, 4), +data.startDate.slice(5, 7) - 1, +data.startDate.slice(8, 10))) : null;
@@ -117,13 +117,10 @@
         const [a, b2] = row.pair, first = row.idx === 0;
         const put = (c, v, opt) => { const cell = ws.getRow(r).getCell(c); cell.value = v === '' || v == null ? null : v; cell.font = body; cell.border = BORDER; cell.alignment = Object.assign({ wrapText: true, vertical: 'top' }, opt || {}); return cell; };
         const dc = put(2, first ? dt : null); dc.numFmt = 'dd mmm yyyy'; put(3, first ? DAYS[dt.getUTCDay()] : null);
-        put(4, a.emis).numFmt = '@'; put(5, a.name); put(8, a.cat);
-        if (b2) { put(6, b2.emis).numFmt = '@'; put(7, b2.name); put(9, b2.cat); }
-        else {                                            // a single school: its name (and category) span the whole row width
-          put(6, null); put(7, null); put(9, null);
-          ws.mergeCells(`E${r}:G${r}`); ws.mergeCells(`H${r}:I${r}`);
-        }
-        const lines = Math.max(...[[a.name, b2 ? 30 : 72], [a.cat, b2 ? 24 : 48], [b2 && b2.name, 30], [b2 && b2.cat, 24]].map(([t, w]) => Math.ceil(String(t || '').length / w) || 1));
+        put(4, a.emis).numFmt = '@'; put(5, a.name); put(6, a.cat);                 // EMIS | school | visit details
+        if (b2) { put(7, b2.emis).numFmt = '@'; put(8, b2.name); put(9, b2.cat); }
+        else { put(7, null); put(8, null); put(9, null); ws.mergeCells(`F${r}:I${r}`); }   // a single school: its visit details span the rest of the row
+        const lines = Math.max(...[[a.name, 28], [a.cat, b2 ? 26 : 95], [b2 && b2.name, 28], [b2 && b2.cat, 26]].map(([t, w]) => Math.ceil(String(t || '').length / w) || 1));
         ws.getRow(r).height = Math.max(12.75, 12.75 * lines);
         if (row.idx === 0) pStart = r;
         if (row.span > 1 && row.idx === row.span - 1) { ws.mergeCells(`B${pStart}:B${r}`); ws.mergeCells(`C${pStart}:C${r}`); }   // date + day span all rows of that date

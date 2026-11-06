@@ -19,7 +19,7 @@
   const KIND_LABEL = Object.fromEntries(KINDS);
   const SRC_KIND = { PUBLIC: 'public', HIGH: 'public', PIEMA: 'piema', PEF: 'pef', PRIVATE: 'private', ACADEMY: 'private' };
   const VISIT_LABEL = { monitoring_assessment: 'Online Monitoring / Assessment Visit', follow_up: 'Follow Up Visit' };
-  const COLUMNS = ['Visit Date', 'Day', 'Emis Code', 'Name of School', 'Emis Code', 'Name of School', 'Visit Category (School 1)', 'Visit Category (School 2)'];
+  const COLUMNS = ['Visit Date', 'Day', 'Emis Code', 'Name of School', 'Visit Details', 'Emis Code', 'Name of School', 'Visit Details'];
 
   const A = { el: null, built: false, userId: null, year: new Date().getFullYear(), month: new Date().getMonth() + 1,
               plan: null, entries: [], holidays: new Map(), reason: '', wide: null, wideFor: null, wideWarned: false, editId: null, queue: Promise.resolve() };
@@ -181,7 +181,7 @@
     const kind = kindSel.value;
     $('vaSchoolBox').style.display = t === 'leave' ? 'none' : '';
     $('vaVisitWrap').style.display = t === 'school' ? '' : 'none';
-    $('vaCommentWrap').style.display = t === 'other_duty' ? '' : 'none';
+    $('vaCommentLbl').textContent = t === 'other_duty' ? 'Comment — what was the duty? (inquiry, exam duty, any other duty) — required' : 'Details / comment (optional)';
     const needEmis = !!kind && kind === 'public' && !adm, needPick = !!kind && !needEmis;
     $('vaEmisWrap').style.display = needEmis ? '' : 'none';
     $('vaPickBox').style.display = needPick ? '' : 'none';
@@ -212,7 +212,7 @@
     if (day.some(e => e.entry_type === 'leave')) throw new Error(`${fmtDate(date)} is marked On Leave. Remove that entry first.`);
     if (type === 'leave') {
       if (day.length) throw new Error(`${fmtDate(date)} already has entries. Remove them first to mark the day as leave.`);
-      return { visit_date: date, entry_type: 'leave', emis_code: null, school_type: null, visit_type: null, comment: null };
+      return { visit_date: date, entry_type: 'leave', emis_code: null, school_type: null, visit_type: null, comment: $('vaComment').value.trim().slice(0, 500) || null };
     }
     const kind = curKind(), sel = selectedSchool();
     if (type === 'school') {
@@ -220,7 +220,7 @@
       if (!sel) throw new Error(kind === 'public' && !isAdmin() ? 'Enter a valid EMIS code of a Public school in your jurisdiction.' : 'Select the school.');
       const vt = $('vaVisit').value; if (!vt) throw new Error('Select the visit type: Online Monitoring / Assessment or Follow Up.');
       if (day.some(e => e.emis_code === sel.emis)) throw new Error(`${sel.school_name || sel.emis} is already recorded on ${fmtDate(date)}.`);
-      return { visit_date: date, entry_type: 'school', emis_code: sel.emis, school_type: sel.kind || kind, visit_type: vt, comment: null };
+      return { visit_date: date, entry_type: 'school', emis_code: sel.emis, school_type: sel.kind || kind, visit_type: vt, comment: $('vaComment').value.trim().slice(0, 500) || null };
     }
     const comment = $('vaComment').value.trim().slice(0, 500);
     if (!comment) throw new Error('Write a comment describing the other duty (inquiry, exam duty, any other duty).');
@@ -310,7 +310,7 @@
   // One day → up to two schools per row; a third/fourth school adds a second row for that date.
   function itemOf(e) {
     if (e.entry_type === 'other_duty') return { id: e.id, emis: e.emis_code || '', name: e.school_name || 'Other Duty', cat: 'Other Duty' + (e.comment ? ' — ' + e.comment : '') };
-    return { id: e.id, emis: e.emis_code || '', name: e.school_name || '', cat: [KIND_LABEL[e.school_type], VISIT_LABEL[e.visit_type]].filter(Boolean).join(' — ') };
+    return { id: e.id, emis: e.emis_code || '', name: e.school_name || '', cat: [KIND_LABEL[e.school_type], VISIT_LABEL[e.visit_type], e.comment].filter(Boolean).join(' — ') };
   }
   function dayGroups() {
     const by = new Map();
@@ -337,13 +337,11 @@
     const rows = merged.map(g => {
       const days = C.DAY_NAMES[C.dowOf(g.date)], dateTd = `<td>${fmtDate(g.date)}</td><td>${days}</td>`;
       if (g.hol) return `<tr class="vp-hol vp-hol-${esc(g.hol.type)}">${dateTd}<td colspan="6"><span class="vp-hbadge vp-hb-${esc(g.hol.type)}">${esc(HOLNAME[g.hol.type] || 'Holiday')}</span> ${esc(g.hol.name)} <span class="vp-muted">— non-working day</span></td></tr>`;
-      if (g.leave) return `<tr class="${A.editId === g.leave.id ? 'vp-sel' : ''}">${dateTd}<td colspan="6" class="vp-special vp-sp-leave"><strong>ON LEAVE</strong> ${btns(g.leave.id)}</td></tr>`;
+      if (g.leave) return `<tr class="${A.editId === g.leave.id ? 'vp-sel' : ''}">${dateTd}<td colspan="6" class="vp-special vp-sp-leave"><strong>ON LEAVE</strong>${g.leave.comment ? ' — ' + esc(g.leave.comment) : ''} ${btns(g.leave.id)}</td></tr>`;
       const [a, b] = g.pair, dt = g.idx === 0 ? `<td rowspan="${g.span}">${fmtDate(g.date)}</td><td rowspan="${g.span}">${days}</td>` : '';
       const sel = x => (A.editId === x.id ? ' vp-sel' : '');
-      const cell = x => `<td class="vp-mono${sel(x)}">${esc(x.emis)}</td><td class="${sel(x)}">${esc(x.name)} ${btns(x.id)}</td>`;
-      return b
-        ? `<tr>${dt}${cell(a)}${cell(b)}<td class="${sel(a)}">${esc(a.cat)}</td><td class="${sel(b)}">${esc(b.cat)}</td></tr>`
-        : `<tr>${dt}<td class="vp-mono${sel(a)}">${esc(a.emis)}</td><td colspan="3" class="${sel(a)}">${esc(a.name)} ${btns(a.id)}</td><td colspan="2" class="${sel(a)}">${esc(a.cat)}</td></tr>`;
+      const cell = (x, span) => `<td class="vp-mono${sel(x)}">${esc(x.emis)}</td><td class="${sel(x)}">${esc(x.name)} ${btns(x.id)}</td><td class="${sel(x)}"${span ? ` colspan="${span}"` : ''}>${esc(x.cat)}</td>`;
+      return b ? `<tr>${dt}${cell(a)}${cell(b)}</tr>` : `<tr>${dt}${cell(a, 4)}</tr>`;
     }).join('');
     $('vaSheet').innerHTML = `<div class="vp-scroll"><table class="vp-table" style="min-width:900px"><thead><tr>${COLUMNS.map(h => `<th>${h}</th>`).join('')}</tr></thead>` +
       `<tbody>${rows || '<tr><td colspan="8" class="vp-muted">Nothing recorded for this month yet — use “Add an entry” above.</td></tr>'}</tbody></table></div>` + holSummary();
@@ -363,7 +361,7 @@
     const typed = $('vaMarkazLabel').value.trim();
     const schools = A.entries.filter(e => e.entry_type === 'school').map(e => ({ markaz_name: e.markaz }));
     const hdr = sh().makeHeader(schools, typed, null, 'actual', A.year, A.month);
-    const vis = dayGroups().map(g => g.leave ? { date: g.date, special: 'ON LEAVE' } : { date: g.date, pair: g.pair.map(x => x && { emis: x.emis, name: x.name, cat: x.cat }), idx: g.idx, span: g.span });
+    const vis = dayGroups().map(g => g.leave ? { date: g.date, special: 'ON LEAVE' + (g.leave.comment ? ' — ' + g.leave.comment : '') } : { date: g.date, pair: g.pair.map(x => x && { emis: x.emis, name: x.name, cat: x.cat }), idx: g.idx, span: g.span });
     const hols = [...A.holidays.entries()].map(([date, h]) => ({ date, type: h.type, name: h.name }));
     const rows = vis.concat(hols.map(h => ({ date: h.date, holiday: { type: h.type, name: h.name } }))).sort((a, b) => a.date.localeCompare(b.date));
     return { holidays: hols, privateReason: A.reason, year: A.year, month: A.month, startDate: null, genderTag: hdr.gender, markazLabel: hdr.markaz, district: hdr.district, rows, hdr,
@@ -409,8 +407,8 @@
         <div class="vp-muted" id="vaResolved" style="margin-top:4px"></div>
         <div class="vp-row" id="vaVisitWrap" style="margin-top:8px"><label>Visit type <select id="vaVisit" class="vp-in"><option value="">— select —</option><option value="monitoring_assessment">${VISIT_LABEL.monitoring_assessment}</option><option value="follow_up">${VISIT_LABEL.follow_up}</option></select></label></div>
       </div>
-      <div id="vaCommentWrap" style="display:none;margin-top:10px"><label class="vp-lbl">Comment — what was the duty? (inquiry, exam duty, any other duty)
-        <textarea id="vaComment" class="vp-in" maxlength="500" rows="2" style="width:100%" placeholder="Type the details of your other duty"></textarea></label></div>
+      <div id="vaCommentWrap" style="margin-top:10px"><label class="vp-lbl"><span id="vaCommentLbl">Details / comment (optional)</span>
+        <textarea id="vaComment" class="vp-in" maxlength="500" rows="2" style="width:100%" placeholder="Any details of this entry (shown under Visit Details in the sheet and download)"></textarea></label></div>
       <div class="vp-row" style="margin-top:12px"><button class="vp-btn vp-primary" id="vaBtnAdd">＋ Add</button><button class="vp-btn vp-ghost" id="vaBtnCancel" style="display:none">Cancel edit</button></div>
       <div class="vp-muted" style="margin-top:6px">Add as many schools as you visited on a date — each entry is saved immediately and can be edited (✎) or removed (✕) below.${adm ? ' As Admin you can pick any school using District → Wing → Tehsil → Markaz.' : ' School lists show your primary and all assigned jurisdictions.'} For “Other duty” every school of the district is available.</div></div>
     <div class="vp-card"><div class="vp-h2">Actual visits sheet</div>
