@@ -77,3 +77,8 @@
   #vpPrintArea .vpp-sub{font-weight:700;margin-top:12pt;font-size:10.5pt}#vpPrintArea .vpp-hsum{width:70%}
   #vpPrintArea .vpp-note{margin-top:8pt;font-size:9.5pt}
 }
+
+/* Actual Visits sheet: fit the page, wrap long text onto the next line (no sideways stretching) */
+.vp-table.vp-fixed{table-layout:fixed;width:100%;min-width:0;font-size:12.5px}
+.vp-table.vp-fixed th,.vp-table.vp-fixed td{white-space:normal;overflow-wrap:anywhere;word-break:break-word;vertical-align:top}
+@media (max-width:640px){.vp-table.vp-fixed{min-width:640px}}

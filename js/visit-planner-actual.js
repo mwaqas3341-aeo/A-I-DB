@@ -343,7 +343,7 @@
       const cell = (x, span) => `<td class="vp-mono${sel(x)}">${esc(x.emis)}</td><td class="${sel(x)}">${esc(x.name)} ${btns(x.id)}</td><td class="${sel(x)}"${span ? ` colspan="${span}"` : ''}>${esc(x.cat)}</td>`;
       return b ? `<tr>${dt}${cell(a)}${cell(b)}</tr>` : `<tr>${dt}${cell(a, 4)}</tr>`;
     }).join('');
-    $('vaSheet').innerHTML = `<div class="vp-scroll"><table class="vp-table" style="min-width:900px"><thead><tr>${COLUMNS.map(h => `<th>${h}</th>`).join('')}</tr></thead>` +
+    $('vaSheet').innerHTML = `<div class="vp-scroll"><table class="vp-table vp-fixed"><colgroup><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:17%"><col style="width:16%"><col style="width:8%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr>${COLUMNS.map(h => `<th>${h}</th>`).join('')}</tr></thead>` +
       `<tbody>${rows || '<tr><td colspan="8" class="vp-muted">Nothing recorded for this month yet — use “Add an entry” above.</td></tr>'}</tbody></table></div>` + holSummary();
     ['vaBtnExcel', 'vaBtnPrint'].forEach(id => { $(id).disabled = !A.entries.length; });
     $('vaBtnDeleteMonth').disabled = !A.plan;
