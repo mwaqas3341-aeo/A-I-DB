@@ -439,7 +439,7 @@
       <label>Month <select id="vaMonth" class="vp-in">${C.MONTH_NAMES.map((n, i) => `<option value="${i + 1}" ${i + 1 === A.month ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <button class="vp-btn" id="vaBtnLoad">Open / Load</button></div>
       <div id="vaStatus" class="vp-status"></div><div id="vaBanner" class="vp-banner" style="display:none;margin-top:8px"></div></div>
-    <div class="vp-card"><div class="vp-h2">Visit progress — actual vs tentative plan <span class="vp-muted">(on screen only)</span></div><div id="vaProgress"></div></div>
+    <div class="vp-card"><details id="vaProgDet" open><summary class="vp-h2" style="cursor:pointer">Visit progress — actual vs tentative plan <span class="vp-muted">(on screen only · click to minimize / expand)</span></summary><div id="vaProgress" style="margin-top:8px"></div></details></div>
     <div class="vp-card" id="vaFormCard"><div class="vp-h2" id="vaFormTitle">Add an entry</div>
       <div class="vp-row">
         <label>Date <select id="vaDate" class="vp-in"></select></label>
