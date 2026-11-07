@@ -107,7 +107,7 @@
     const count = {}, warnings = [];
     const lo = t => t.min * have[t.category], hi = t => t.max * have[t.category];
     cats.forEach(t => { count[t.category] = 0; });
-    let left = capacity, over = 0;
+    let left = capacity, over = 0; const extra = {};
     const wantMin = cats.reduce((a, t) => a + lo(t), 0);
     if (wantMin > capacity) {
       warnings.push(`Each school's minimum visits add up to ${wantMin}, but only ${capacity} visit slot(s) are available this month (after weekly leave, office days and holidays). Slots were shared between the categories; reduce the minimums or the number of schools, or add working days.`);
@@ -126,12 +126,20 @@
       // every school is at its maximum but working days are still free: never leave a day empty — top up randomly
       if (left > 0 && cats.length) {
         over = left;
-        for (let k = 0; left > 0; k++, left--) count[cats[k % cats.length].category]++;
-        warnings.push(`All schools reached their maximum, so ${over} extra visit(s) were added to randomly chosen schools to fill every working day.`);
+        // spread the extra visits evenly over SCHOOLS: always give the next one to the school with the fewest visits so far
+        const sc = [];
+        cats.forEach(t => { extra[t.category] = new Array(have[t.category]).fill(0); for (let i = 0; i < have[t.category]; i++) sc.push({ cat: t.category, i, cur: t.max }); });
+        let start = 0;
+        while (left > 0) {
+          let best = null;
+          for (let q = 0; q < sc.length; q++) { const x = sc[(start + q) % sc.length]; if (!best || x.cur < best.cur) best = x; }
+          best.cur++; extra[best.cat][best.i]++; count[best.cat]++; left--; start = (start + 1) % sc.length;
+        }
+        warnings.push(`All schools reached their maximum, so ${over} extra visit(s) were spread evenly over the schools (fewest visits first) to fill every working day.`);
       }
     }
     targets.forEach(t => { if (!(have[t.category] > 0) && t.min > 0) warnings.push(`No ${t.category} school is selected, so its minimum of ${t.min} visit(s) per school cannot be met.`); });
-    return { count, warnings, unused: left, over };
+    return { count, warnings, unused: left, over, extra };
   }
 
   /** Category-aware generation: balanced inside each category, categories interleaved proportionally. */
@@ -160,7 +168,14 @@
     Object.keys(alloc.count).forEach(cat => {
       const n = alloc.count[cat], list = bySchool[cat].slice();
       if (alloc.over) for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
-      for (let k = 0; k < n; k++) items.push({ key: (k + 0.5) / n, cat, school: list[k % list.length] });
+      let visits = [];
+      if (alloc.over && alloc.extra[cat]) {
+        // every school at its max plus its share of the extras; emitted in rounds so repeats are spread over the month
+        const mx = ((opts.targets || []).find(t => t.category === cat) || {}).max || 0;
+        const want = list.map((sc, i) => mx + alloc.extra[cat][i]);
+        for (let r = 0; visits.length < n; r++) { let any = false; list.forEach((sc, i) => { if (want[i] > r) { visits.push(sc); any = true; } }); if (!any) break; }
+      } else for (let k = 0; k < n; k++) visits.push(list[k % list.length]);
+      for (let k = 0; k < n; k++) items.push({ key: (k + 0.5) / n, cat, school: visits[k] });
     });
     items.sort((a, b) => a.key - b.key || String(a.cat).localeCompare(String(b.cat)));
     const seq = items.map(i => i.school);
