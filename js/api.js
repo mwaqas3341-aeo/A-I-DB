@@ -296,6 +296,8 @@ const USER_COL_MAP = {
   bps_scale:      'BPS Scale',
   dy_office_detail: 'Dy Office Detail', // DB-generated (wing+tehsil) — display only, never written from saveUser
   receives_budget_copy: 'Receives Budget Copy',
+  whatsapp_no:          'WhatsApp No',
+  whatsapp_enabled:     'WhatsApp Service',
 };
 
 // Public school: Supabase column → display header.
@@ -3905,6 +3907,13 @@ async function apiCall(action, payload) {
         const newId = result && (result.userId || result.id || (result.user && result.user.id));
         if (result && result.success && dbRow.email && newId) {
           await _sb.from('app_users').update({ email: dbRow.email }).eq('id', newId);
+        }
+        // WhatsApp fields are not known to the Edge Function — write them directly once the user exists.
+        if (result && result.success && (dbRow.whatsapp_no || dbRow.whatsapp_enabled)) {
+          let waId = newId;
+          if (!waId && dbRow.cnic) { const { data: nu } = await _sb.from('app_users').select('id').eq('cnic', dbRow.cnic).maybeSingle(); waId = nu && nu.id; }
+          const { error: waErr } = waId ? await _sb.from('app_users').update({ whatsapp_no: dbRow.whatsapp_no || null, whatsapp_enabled: !!dbRow.whatsapp_enabled }).eq('id', waId) : { error: { message: 'new user not found' } };
+          if (waErr) result.message = (result.message || 'User created.') + ' But WhatsApp details were not saved: ' + waErr.message;
         }
         if (result && result.success) {
           const trErr = await syncTehsilRep(newId);

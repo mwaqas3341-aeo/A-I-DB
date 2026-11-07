@@ -37,6 +37,8 @@ const UH = {
   BPS_SCALE:   'BPS Scale',
   DY_OFFICE:   'Dy Office Detail',  // read-only, DB-generated — never sent on save
   RECEIVES_BUDGET_COPY: 'Receives Budget Copy',
+  WHATSAPP_NO: 'WhatsApp No',
+  WHATSAPP_ENABLED: 'WhatsApp Service',
 };
 const LA_COL = { LINK_NAME:0, LINK_URL:1, APP_NAME:2, APP_URL:3, APP_CATEGORY:4, LINK_CATEGORY:5 };
 
@@ -869,7 +871,7 @@ function renderUserTable() {
   const show = [UH.PERSONAL_NO, UH.NAME, UH.CNIC, UH.CELL, UH.ROLE,
                 UH.DISTRICT, UH.TEHSIL, UH.WING, UH.MARKAZ,
                 UH.SCOPE_TYPE, UH.SCOPE_VALUE, UH.ACCESS_TYPE,
-                UH.PAGE_NO, UH.DDEO_CODE, UH.BPS_SCALE, UH.DY_OFFICE, UH.RECEIVES_BUDGET_COPY];
+                UH.PAGE_NO, UH.DDEO_CODE, UH.BPS_SCALE, UH.DY_OFFICE, UH.RECEIVES_BUDGET_COPY, UH.WHATSAPP_NO, UH.WHATSAPP_ENABLED];
   const cols = show.filter(h => userHeaders.includes(h));
   document.getElementById('userTHead').innerHTML =
     `<tr><th style="min-width:90px">Actions</th>${cols.map(h => `<th>${h}</th>`).join('')}</tr>`;
@@ -898,6 +900,7 @@ function renderUserTable() {
         if (h === UH.SCOPE_TYPE)  return `<td><span class="scope-badge sb-${v}">${v}</span></td>`;
         if (h === UH.ACCESS_TYPE) return `<td><span class="scope-badge sb-${v.replace(' ', '-')}">${v}</span></td>`;
         if (h === UH.ROLE)        return `<td><span class="scope-badge sb-${v}">${v}</span></td>`;
+        if (h === UH.WHATSAPP_ENABLED) return `<td><span class="scope-badge" style="${row[h] ? 'background:#dcf8e6;color:#0a7a3d' : 'background:#eee;color:#777'}">${row[h] ? 'Enabled' : 'Off'}</span></td>`;
         return `<td>${v}</td>`;
       }).join('')}
     </tr>`;
@@ -999,6 +1002,8 @@ function editUser(cnic) {
     setVal('u_ddeo_code',   row[UH.DDEO_CODE]    || '');
     setVal('u_bps_scale',   row[UH.BPS_SCALE]    || '');
     document.getElementById('u_receives_budget_copy').checked = !!row[UH.RECEIVES_BUDGET_COPY];
+    setVal('u_whatsapp_no', row[UH.WHATSAPP_NO] || '');
+    document.getElementById('u_whatsapp_enabled').checked = !!row[UH.WHATSAPP_ENABLED];
     applyDesignationFieldRules(false);
     refreshDyOfficePreview();
     document.getElementById('u_is_tehsil_rep').checked = false; // reset while the lookup below resolves
@@ -1112,6 +1117,8 @@ function clearUserForm() {
   document.getElementById('scopeValueArea').innerHTML = '';
   document.getElementById('scopePreviewWrap').style.display = 'none';
   document.getElementById('u_receives_budget_copy').checked = false;
+  document.getElementById('u_whatsapp_no').value = '';
+  document.getElementById('u_whatsapp_enabled').checked = false;
   document.getElementById('u_is_tehsil_rep').checked = false;
   refreshDyOfficePreview();
 }
@@ -1142,6 +1149,12 @@ function submitUser() {
       showToast(`${label} is required for ${desig}.`, false); return;
     }
   }
+  const waNo = document.getElementById('u_whatsapp_no').value.trim();
+  const waOn = document.getElementById('u_whatsapp_enabled').checked;
+  if (waNo && !/^(\+?92|0)3\d{9}$/.test(waNo.replace(/[\s-]/g, ''))) {
+    showToast('WhatsApp number must look like 03XX-XXXXXXX (or +923XXXXXXXXX).', false); return;
+  }
+  if (waOn && !waNo) { showToast('Enter the WhatsApp number to enable the WhatsApp service for this user.', false); return; }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     showToast('Please enter a valid email address.', false);
     return;
@@ -1170,6 +1183,8 @@ function submitUser() {
     [UH.DDEO_CODE]:   document.getElementById('u_ddeo_code').value.trim(),
     [UH.BPS_SCALE]:   document.getElementById('u_bps_scale').value.trim() || null,
     [UH.RECEIVES_BUDGET_COPY]: document.getElementById('u_receives_budget_copy').checked,
+    [UH.WHATSAPP_NO]: waNo || null,
+    [UH.WHATSAPP_ENABLED]: waOn,
     isTehsilRep: rules.level ? false : document.getElementById('u_is_tehsil_rep').checked,
     // Dy Office Detail intentionally NOT sent — it's a Postgres GENERATED
     // column (wing + tehsil), writing to it would error the update.
