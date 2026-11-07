@@ -139,7 +139,7 @@
       return `<tr class="${ok ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td class="vp-num">${r.done}</td><td class="vp-num">${has ? r.ex : '—'}</td><td class="vp-num">${has ? r.rem : '—'}</td><td>${st}</td></tr>`;
     };
     box.innerHTML = head + legend + (all.length
-      ? '<div style="margin-top:10px"></div>' + tbl(['Emis Code', 'Name of School', 'Visits done', 'Expected (tentative)', 'Remaining', 'Status'], all.map(row).join(''), [10, 27, 9, 11, 10, 33])
+      ? '<div style="margin-top:10px"></div>' + tbl(['Emis Code', 'Name of School', 'Visits done', 'Expected', 'Remaining', 'Status'], all.map(row).join(''), [8, 34, 7, 9, 8, 34])
       : '<div class="vp-muted" style="margin-top:8px">No school visits recorded yet.</div>');
   }
 

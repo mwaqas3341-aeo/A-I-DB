@@ -115,4 +115,4 @@
 /* progress summary: big, bold numbers */
 .vp-sumline{font-size:15px;line-height:1.9}
 .vp-bignum{font-size:24px;font-weight:800;color:#0d5c3a;padding:0 2px}
-.vp-table td.vp-num{font-size:16px;font-weight:800}
+.vp-table td.vp-num{font-size:24px;font-weight:800;text-align:center;line-height:1.2}
