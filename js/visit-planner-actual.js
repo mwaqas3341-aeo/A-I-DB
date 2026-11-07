@@ -220,7 +220,7 @@
     const sel = $('vaPick'); const keep = want || sel.value;
     const l = listForKind(), shown = l.slice(0, MAX_OPTIONS);
     if (keep && !shown.some(r => r.emis === keep)) { const hit = baseList(curType()).find(r => r.emis === keep); if (hit) shown.push(hit); }
-    sel.innerHTML = '<option value="">— select school —</option>' + shown.map(r =>
+    sel.innerHTML = '<option value="">' + (curType() === 'other_duty' ? '— no specific school (optional) —' : '— select school —') + '</option>' + shown.map(r =>
       `<option value="${esc(r.emis)}" ${r.emis === keep ? 'selected' : ''}>${esc(r.school_name)} (${esc(r.emis)})${r.markaz_name ? ' — ' + esc(r.markaz_name) : ''}</option>`).join('');
     $('vaPickInfo').textContent = `${l.length} ${KIND_LABEL[curKind()] || ''} school${l.length === 1 ? '' : 's'}` + (l.length > MAX_OPTIONS ? ` — showing ${MAX_OPTIONS}, type in the filter box to narrow` : '');
   }
@@ -229,7 +229,7 @@
     const code = $('vaEmis').value.trim(), out = $('vaResolved');
     if (!code) { out.textContent = ''; return null; }
     const hit = baseList(curType()).find(r => r.emis.toLowerCase() === code.toLowerCase());
-    if (!hit) { out.innerHTML = `<span class="vp-error">EMIS ${esc(code)} not found ${curType() === 'other_duty' ? 'in your district' : 'in your jurisdiction'}.</span>`; return null; }
+    if (!hit) { out.innerHTML = `<span class="vp-error">EMIS ${esc(code)} not found ${curType() === 'other_duty' ? 'in your tehsil / wing / district' : 'in your jurisdiction'}.</span>`; return null; }
     if (hit.kind !== curKind()) { out.innerHTML = `<span class="vp-error">${esc(hit.school_name)} is a ${esc(KIND_LABEL[hit.kind])} school — choose “${esc(KIND_LABEL[hit.kind])}” as the school type.</span>`; return null; }
     out.innerHTML = `✔ ${esc(hit.school_name)}${hit.markaz_name ? ' — ' + esc(hit.markaz_name) : ''}`; return hit;
   }
@@ -241,7 +241,9 @@
     const kind = kindSel.value;
     $('vaSchoolBox').style.display = t === 'leave' ? 'none' : '';
     $('vaVisitWrap').style.display = t === 'school' ? '' : 'none';
-    $('vaCommentLbl').textContent = t === 'other_duty' ? 'Comment — what was the duty? (inquiry, exam duty, any other duty) — required' : 'Details / comment (optional)';
+    $('vaCommentLbl').innerHTML = t === 'other_duty' ? 'Comment — what was the duty? (inquiry, exam duty, any other duty) <span style="color:#c0392b;font-weight:700">* required</span>' : 'Details / comment (optional)';
+    $('vaComment').style.borderColor = t === 'other_duty' ? '#c0392b' : '';
+    $('vaEmisLbl').textContent = t === 'other_duty' ? 'EMIS code of the Public school (optional — leave blank if no specific school)' : 'EMIS code of the Public school';
     const needEmis = !!kind && kind === 'public' && !adm, needPick = !!kind && !needEmis;
     $('vaEmisWrap').style.display = needEmis ? '' : 'none';
     $('vaPickBox').style.display = needPick ? '' : 'none';
@@ -284,7 +286,8 @@
     }
     const comment = $('vaComment').value.trim().slice(0, 500);
     if (!comment) throw new Error('Write a comment describing the other duty (inquiry, exam duty, any other duty).');
-    if (kind && !sel) throw new Error('Select the school for this duty, or choose “— no specific school —”.');
+    // EMIS / school is optional for Other Duty: blank = no specific school. A typed but unknown EMIS is still rejected.
+    if (kind === 'public' && !isAdmin() && !sel && $('vaEmis').value.trim()) throw new Error(`EMIS ${$('vaEmis').value.trim()} was not found in your tehsil / wing / district. Correct it or clear the box to save without a school.`);
     return { visit_date: date, entry_type: 'other_duty', emis_code: sel ? sel.emis : null, school_type: sel ? (sel.kind || kind) : null, visit_type: null, comment };
   }
 
@@ -463,7 +466,7 @@
           <label>District <select id="vaFD" class="vp-in"></select></label><label>Wing <select id="vaFW" class="vp-in"></select></label>
           <label>Tehsil <select id="vaFT" class="vp-in"></select></label><label>Markaz <select id="vaFM" class="vp-in"></select></label></div>
         <div class="vp-row" style="margin-top:8px">
-          <label id="vaEmisWrap" style="flex:1;min-width:220px;display:none">EMIS code of the Public school <input type="text" id="vaEmis" class="vp-in" placeholder="e.g. 36110001" style="width:100%" autocomplete="off"></label>
+          <label id="vaEmisWrap" style="flex:1;min-width:220px;display:none"><span id="vaEmisLbl">EMIS code of the Public school</span> <input type="text" id="vaEmis" class="vp-in" placeholder="e.g. 36110001" style="width:100%" autocomplete="off"></label>
           <div id="vaPickBox" style="flex:1;min-width:260px;display:none"><div class="vp-lbl">School</div>
             <input type="text" id="vaFilter" class="vp-in" placeholder="Type EMIS or name to filter the list" style="width:100%;margin:3px 0" autocomplete="off">
             <select id="vaPick" class="vp-in" style="width:100%"></select><div class="vp-muted" id="vaPickInfo"></div></div>
