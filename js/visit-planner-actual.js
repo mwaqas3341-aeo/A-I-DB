@@ -93,6 +93,16 @@
     if (e2) return;
     const m = new Map();
     (data || []).forEach(r => { if (!r.emis_code) return; const x = m.get(r.emis_code) || { name: r.school_name || '', n: 0 }; x.n++; m.set(r.emis_code, x); });
+    // Extra visits the generator adds to fill otherwise empty days do not raise a school's expectation:
+    // expected = planned visits capped at the category MAX chosen when the tentative plan was prepared.
+    try {
+      const { data: tg } = await sb().from('visit_planner_category_targets').select('category,min_visits,max_visits').eq('planner_id', tp.id);
+      const tmap = new Map((tg || []).map(t => [t.category, t]));
+      if (tmap.size) {
+        const src = new Map(sh().getPool().rows.map(r => [String(r.emis), r.source]));
+        m.forEach((x, emis) => { const t = tmap.get(src.get(String(emis))); if (t && t.max_visits > 0) x.n = Math.max(Math.min(x.n, t.max_visits), t.min_visits || 0); });
+      }
+    } catch (e) { console.error(e); }
     A.expected = m;
   }
   // On-screen only (not part of the Excel / print download): actual vs tentative per school, and schools not visited yet.
