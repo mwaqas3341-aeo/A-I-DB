@@ -138,7 +138,7 @@
             visited.map(r => `<tr class="${r.done >= (r.ex ? r.need : 2) ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.done}</td><td>${has ? r.ex : '—'}</td><td>${has ? r.rem : '—'}</td><td>${r.done >= (r.ex ? r.need : 2) ? '<span class="vp-badge">No need to visit now — focus on other schools</span>' : status(r)}</td></tr>`).join(''), [10, 27, 9, 11, 10, 33])
         : '<div class="vp-muted">No school visits recorded yet.</div>') +
       (has ? `<div class="vp-h2" style="margin-top:12px;font-size:13px">Not visited yet (${pending.length})</div>` + (pending.length
-        ? tbl(['Emis Code', 'Name of School', 'Expected visits', 'Visits done'], pending.map(r => `<tr class="vp-row-warn"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.ex}</td><td>0</td></tr>`).join(''), [14, 50, 18, 18])
+        ? tbl(['Emis Code', 'Name of School', 'Expected visits', 'Visits done'], pending.map(r => `<tr class="vp-row-warn"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.ex}</td><td>0</td></tr>`).join(''), [10, 62, 14, 14])
         : '<div class="vp-check">✔ Every planned school has been visited at least once.</div>') : '');
   }
 
