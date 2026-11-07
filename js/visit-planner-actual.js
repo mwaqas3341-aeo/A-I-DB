@@ -128,17 +128,17 @@
     const pending = [...exp.entries()].filter(([emis]) => !act.has(emis)).map(([emis, x]) => ({ emis, name: x.name, ex: x.n })).sort((x, y) => x.emis.localeCompare(y.emis));
     const status = r => !r.ex ? '<span class="vp-badge">Not in plan</span>' : r.rem === 0 ? '<span class="vp-badge vp-st-finalized">Complete</span>' : '<span class="vp-badge vp-st-edited">In progress</span>';
     const totalEx = [...exp.values()].reduce((a, x) => a + x.n, 0), totalDone = visited.reduce((a, r) => a + Math.min(r.done, r.ex), 0);
-    const head = has ? `<div class="vp-status"><strong>${totalDone}</strong> of <strong>${totalEx}</strong> planned visits done · <strong>${visited.filter(r => r.ex && r.rem === 0).length}</strong> school(s) complete · <strong>${visited.filter(r => r.rem > 0).length}</strong> in progress · <strong>${pending.length}</strong> not visited yet</div>`
+    const head = has ? `<div class="vp-status vp-sumline"><strong class="vp-bignum">${totalDone}</strong> of <strong class="vp-bignum">${totalEx}</strong> planned visits done · <strong class="vp-bignum">${visited.filter(r => r.ex && r.rem === 0).length}</strong> school(s) complete · <strong class="vp-bignum">${visited.filter(r => r.rem > 0).length}</strong> in progress · <strong class="vp-bignum">${pending.length}</strong> not visited yet</div>`
       : `<div class="vp-muted">${A.expected ? 'The tentative plan for this month has no school visits.' : 'No tentative plan was found for this month, so expected visits cannot be shown.'}</div>`;
     const tbl = (cols, rows, w) => `<div class="vp-scroll"><table class="vp-table vp-small vp-fixed">${w ? '<colgroup>' + w.map(x => `<col style="width:${x}%">`).join('') + '</colgroup>' : ''}<thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
     const legend = '<div class="vp-muted" style="margin-top:6px"><span class="vp-key vp-row-ok"></span> visits needed reached (tentative min/max, never more than 2 needed) — no further focus &nbsp; <span class="vp-key vp-row-warn"></span> expected visits not reached yet — needs attention</div>';
     box.innerHTML = head + legend +
       `<div class="vp-h2" style="margin-top:10px;font-size:13px">Schools visited</div>` + (visited.length
         ? tbl(['Emis Code', 'Name of School', 'Visits done', 'Expected (tentative)', 'Remaining', 'Status'],
-            visited.map(r => `<tr class="${r.done >= (r.ex ? r.need : 2) ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.done}</td><td>${has ? r.ex : '—'}</td><td>${has ? r.rem : '—'}</td><td>${r.done >= (r.ex ? r.need : 2) ? '<span class="vp-badge">No need to visit now — focus on other schools</span>' : status(r)}</td></tr>`).join(''), [10, 27, 9, 11, 10, 33])
+            visited.map(r => `<tr class="${r.done >= (r.ex ? r.need : 2) ? 'vp-row-ok' : 'vp-row-warn'}"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td class="vp-num">${r.done}</td><td class="vp-num">${has ? r.ex : '—'}</td><td class="vp-num">${has ? r.rem : '—'}</td><td>${r.done >= (r.ex ? r.need : 2) ? '<span class="vp-badge">No need to visit now — focus on other schools</span>' : status(r)}</td></tr>`).join(''), [10, 27, 9, 11, 10, 33])
         : '<div class="vp-muted">No school visits recorded yet.</div>') +
       (has ? `<div class="vp-h2" style="margin-top:12px;font-size:13px">Not visited yet (${pending.length})</div>` + (pending.length
-        ? tbl(['Emis Code', 'Name of School', 'Expected visits', 'Visits done'], pending.map(r => `<tr class="vp-row-warn"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td>${r.ex}</td><td>0</td></tr>`).join(''), [10, 62, 14, 14])
+        ? tbl(['Emis Code', 'Name of School', 'Expected visits', 'Visits done'], pending.map(r => `<tr class="vp-row-warn"><td class="vp-mono">${esc(r.emis)}</td><td>${esc(r.name)}</td><td class="vp-num">${r.ex}</td><td class="vp-num">0</td></tr>`).join(''), [10, 62, 14, 14])
         : '<div class="vp-check">✔ Every planned school has been visited at least once.</div>') : '');
   }
 

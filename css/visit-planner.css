@@ -111,3 +111,8 @@
 .vp-collbtn.is-min{background:linear-gradient(135deg,#f59e2b 0%,#c76a00 100%);box-shadow:0 2px 6px rgba(199,106,0,.35),inset 0 1px 0 rgba(255,255,255,.3)}
 .vp-collttl{display:flex;align-items:center;gap:10px;font-weight:800;color:#0d5c3a;background:linear-gradient(90deg,#e3f5ea,transparent);padding:6px 12px 6px 0;border-radius:8px}
 .vp-collbar{display:inline-block;width:6px;align-self:stretch;min-height:22px;border-radius:4px;background:linear-gradient(180deg,#1f8f5f,#f59e2b)}
+
+/* progress summary: big, bold numbers */
+.vp-sumline{font-size:15px;line-height:1.9}
+.vp-bignum{font-size:24px;font-weight:800;color:#0d5c3a;padding:0 2px}
+.vp-table td.vp-num{font-size:16px;font-weight:800}
