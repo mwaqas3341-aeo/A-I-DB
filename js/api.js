@@ -2076,6 +2076,32 @@ async function apiCall(action, payload) {
       // push effective sanctioned seats (sanctioned - abolished) below
       // the number of employees actually sitting in this Grade/Subject/
       // Designation/EMIS combination, reject it outright.
+      // Teaching seats: Filled is owned by the Staff Statement (staff linked to
+      // this seat via posted_against_seat_id). A hand-typed value that doesn't
+      // match the staff really posted here only changes the SNE display — the
+      // transfer/assign vacancy check still counts the real staff — which is how
+      // a "vacant" seat could appear that nobody could actually be posted to.
+      // So: reject a manual change that disagrees, and otherwise always store the
+      // real count (this also heals rows that already drifted).
+      if (category === 'teaching' && p.id) {
+        const { count: linkedActive } = await _db('staff')
+          .select('id', { count: 'exact', head: true })
+          .eq('posted_against_seat_id', p.id).eq('status', 'active');
+        const actualFilled = linkedActive || 0;
+        const { data: curSeat } = await _db('sne_subject_sanctioned')
+          .select('filled_count').eq('id', p.id).maybeSingle();
+        const storedFilled = Number(curSeat && curSeat.filled_count) || 0;
+        const typedFilled = parseInt(p.filledCount) || 0;
+        if (typedFilled !== storedFilled && typedFilled !== actualFilled) {
+          return {
+            success: false,
+            message: `Filled seats can't be changed here. ${actualFilled} active employee(s) are currently posted against this seat in the Staff Statement. ` +
+                     `To free or fill a seat, update the Staff Statement first (transfer out, retire, terminate or assign the employee) — the seat count then updates automatically.`,
+          };
+        }
+        filled = actualFilled;
+      }
+
       const effectiveAfterAbolish = sanctioned - abolished;
       if (effectiveAfterAbolish < filled) {
         const maxAbolishable = Math.max(sanctioned - filled, 0);

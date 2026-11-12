@@ -314,7 +314,7 @@ function openSeatModal(id) {
   document.getElementById('seat_filled').style.background = isNonTeaching ? '#f8fafc' : '';
   document.getElementById('seat_filledLabel').innerHTML = isNonTeaching
     ? 'Filled Seats <span style="color:var(--t3);font-weight:400">(auto — from Staff Statement)</span>'
-    : 'Filled Seats';
+    : (id ? 'Filled Seats <span style="color:var(--t3);font-weight:400">(from Staff Statement — update staff first to change)</span>' : 'Filled Seats');
   document.getElementById('seat_remarks').value = row?.remarks || '';
   document.getElementById('seat_reason').value = '';
   document.getElementById('seat_subjectRow').style.display = seatState.category === 'teaching' ? '' : 'none';
