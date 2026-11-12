@@ -186,12 +186,27 @@ function _db(table) {
       // result first — otherwise a server-side cutoff could silently
       // drop rows that a post-filter would have kept.
       const canPushLimit = state.limitN != null && !state.ilike && !state.post;
+      // hr-gateway decides row visibility for non-admins from the ROW's own
+      // district/wing/tehsil/markaz (or previous_* for awaiting-posting) columns.
+      // If a caller asks for only a few columns (e.g. select('name_of_teacher')),
+      // those jurisdiction columns are missing, every row fails the scope check
+      // and a non-admin sees "No staff record found" — while admins (who skip the
+      // check) are fine. So for the scope-checked tables always fetch the full row
+      // from the gateway, then trim to the requested columns here.
+      const SCOPE_CHECKED = ['staff', 'staff_awaiting_posting', 'sne_subject_sanctioned', 'sne_seat_audit_log'];
+      const reqCols = String(state.columns || '*').trim();
+      const needsFullRow = SCOPE_CHECKED.includes(table) && reqCols !== '*';
       const { data, error } = await hrGateway.select(table, {
-        columns: state.columns, filters: state.filters, orders: state.orders,
+        columns: needsFullRow ? '*' : state.columns, filters: state.filters, orders: state.orders,
         limit: canPushLimit ? state.limitN : undefined,
       });
       if (error) return { data: null, error };
       let rows = data || [];
+      if (needsFullRow && !/[():!]/.test(reqCols)) {
+        const keep = reqCols.split(',').map(c => c.trim()).filter(Boolean);
+        // Keep the full row while client-side filters below may still need other columns.
+        state._trimTo = keep;
+      }
       if (state.ilike) {
         const re = new RegExp('^' + state.ilike.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i');
         rows = rows.filter(r => re.test(String(r[state.ilike.col] ?? '')));
@@ -200,6 +215,9 @@ function _db(table) {
       if (state.rangeFrom != null) rows = rows.slice(state.rangeFrom, state.rangeTo + 1);
       if (!canPushLimit && state.limitN != null) rows = rows.slice(0, state.limitN);
       if (state.countHead) return { data: null, error: null, count: rows.length };
+      if (state._trimTo) {
+        rows = rows.map(r => { const o = {}; state._trimTo.forEach(k => { o[k] = r[k]; }); return o; });
+      }
       return _shape(rows);
     },
 
