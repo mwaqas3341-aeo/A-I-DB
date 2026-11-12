@@ -996,7 +996,7 @@ function editUser(cnic) {
     setVal('u_markaz_ur',   row[UH.MARKAZ_UR]    || '');
     setUserDesignation(row[UH.DESIGNATION] || '');
     setVal('u_designation_ur', row[UH.DESIGNATION_UR] || '');
-    setVal('u_scope_type',  row[UH.SCOPE_TYPE]   || 'Markaz');
+    setVal('u_scope_type',  row[UH.SCOPE_TYPE]   || '');
     renderScopeValueUI(row[UH.SCOPE_VALUE] || '');
     setVal('u_page_no',     row[UH.PAGE_NO]      || '');
     setVal('u_ddeo_code',   row[UH.DDEO_CODE]    || '');
@@ -1160,6 +1160,16 @@ function submitUser() {
     return;
   }
 
+  // If no extra scope was actually picked (no type chosen, or a type chosen
+  // but no value selected), clear BOTH fields so the user falls back to their
+  // primary jurisdiction. A scope_type saved with an empty scope_value used to
+  // leave the user matching only their own markaz in the HR scope checks.
+  const _rawScopeType  = document.getElementById('u_scope_type').value.trim();
+  const _rawScopeValue = scopeH ? scopeH.value.trim() : '';
+  const _noExtraScope  = !!rules.level || !_rawScopeType || !_rawScopeValue;
+  const _finalScopeType  = rules.level ? rules.level : (_noExtraScope ? '' : _rawScopeType);
+  const _finalScopeValue = _noExtraScope ? '' : _rawScopeValue;
+
   const dataObj = {
     _id:               document.getElementById('u_row_index').value.trim() || undefined,
     [UH.PERSONAL_NO]: document.getElementById('u_personal_no').value.trim(),
@@ -1176,8 +1186,8 @@ function submitUser() {
     [UH.DISTRICT]:    document.getElementById('u_district').value.trim(),
     [UH.WING]:        rules.wing   ? document.getElementById('u_wing').value.trim()   : '',
     [UH.TEHSIL]:      rules.tehsil ? document.getElementById('u_tehsil').value.trim() : '',
-    [UH.SCOPE_TYPE]:  rules.level ? rules.level : document.getElementById('u_scope_type').value.trim(),
-    [UH.SCOPE_VALUE]: rules.level ? '' : (scopeH ? scopeH.value.trim() : ''),
+    [UH.SCOPE_TYPE]:  _finalScopeType,
+    [UH.SCOPE_VALUE]: _finalScopeValue,
     [UH.ACCESS_TYPE]: document.getElementById('u_access_type').value.trim(),
     [UH.PAGE_NO]:     document.getElementById('u_page_no').value.trim(),
     [UH.DDEO_CODE]:   document.getElementById('u_ddeo_code').value.trim(),
