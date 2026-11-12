@@ -215,6 +215,19 @@ function hrGoToSheet(sheetName, btnEl) {
   if (reportsEl) reportsEl.style.display = hrCurrentSheetView === 'Staff' ? 'contents' : 'none';
   if (hrCurrentSheetView !== 'Staff') resetSummaryCards();
   clearHrFilters();
+  if (sheetName === 'AwaitingPosting' && !hrSheetDataCache['AwaitingPosting']) {
+    const up = typeof currentUser !== 'undefined' ? currentUser : null;
+    google.script.run
+      .withSuccessHandler(res => {
+        if (!res || res.error || hrCurrentSheetView !== 'AwaitingPosting' || hrSheetDataCache['AwaitingPosting']) return;
+        const rowsIn = res.rows || [], headersIn = res.headers || [];
+        rowsIn.forEach(r => { r._searchBlob = headersIn.map(h => r[h] || '').join(' ').toLowerCase(); });
+        hrSheetDataCache['AwaitingPosting'] = { headers: headersIn, rows: rowsIn };
+        buildHrDistrictDropdown();
+      })
+      .withFailureHandler(() => {})
+      .loadSheetForClient('AwaitingPosting', up);
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -348,8 +361,20 @@ function _hrHideFilterStatus() {
 //  now decided by applyJurisdictionLock() (js/jurisdiction-lock.js),
 //  matching the same rules used by Public and Private Schools.
 // ──────────────────────────────────────────────────────────────────
+// Awaiting Posting is statewide: its filters are built from the records themselves
+// (every district), never from the user's own jurisdiction, and are never locked.
+function hrFilterPool() {
+  if (hrCurrentSheetView !== 'AwaitingPosting') return hrSchoolCache;
+  const c = hrSheetDataCache['AwaitingPosting'];
+  return ((c && c.rows) || []).map(r => ({
+    d: r['Previous District'] || r['District'] || '', w: r['Wing'] || '',
+    t: r['Previous Tehsil'] || r['Tehsil'] || '', m: r['Previous Markaz'] || r['MARKAZ NAME'] || '',
+  }));
+}
+
 function buildHrDistrictDropdown() {
-  const pool  = hrSchoolCache; // already jurisdiction-filtered server-side for non-admins
+  const statewide = hrCurrentSheetView === 'AwaitingPosting';
+  const pool  = hrFilterPool(); // otherwise already jurisdiction-filtered server-side for non-admins
   const dists = [...new Set(pool.map(x => x.d).filter(Boolean))].sort();
 
   hrPopulateSelect('hrFilterDistrict', dists, 'All Districts');
@@ -360,7 +385,7 @@ function buildHrDistrictDropdown() {
   // Convenience preselect of the user's primary location.
   const u = typeof currentUser !== 'undefined' ? currentUser : null;
   const isAdmin = u && String(u.role || '').toLowerCase() === 'admin';
-  if (u && !isAdmin && u.district) {
+  if (u && !isAdmin && !statewide && u.district) {
     document.getElementById('hrFilterDistrict').value = u.district;
     onHrDistrictChange();
     if (u.wing) {
@@ -379,12 +404,12 @@ function buildHrDistrictDropdown() {
   if (typeof applyJurisdictionLock === 'function') {
     applyJurisdictionLock(
       { district: 'hrFilterDistrict', wing: 'hrFilterWing', tehsil: 'hrFilterTehsil', markaz: 'hrFilterMarkaz' },
-      u
+      statewide ? { role: 'admin' } : u
     );
   }
 }
 function onHrDistrictChange() {
-  const pool = hrSchoolCache;
+  const pool = hrFilterPool();
   const d    = document.getElementById('hrFilterDistrict').value;
   const wings = d
     ? [...new Set(pool.filter(x => x.d === d).map(x => x.w).filter(Boolean))].sort()
@@ -395,7 +420,7 @@ function onHrDistrictChange() {
 }
 
 function onHrWingChange() {
-  const pool = hrSchoolCache;
+  const pool = hrFilterPool();
   const d    = document.getElementById('hrFilterDistrict').value;
   const w    = document.getElementById('hrFilterWing').value;
   const tehsils = [...new Set(
@@ -406,7 +431,7 @@ function onHrWingChange() {
 }
 
 function onHrTehsilChange() {
-  const pool = hrSchoolCache;
+  const pool = hrFilterPool();
   const d    = document.getElementById('hrFilterDistrict').value;
   const w    = document.getElementById('hrFilterWing').value;
   const t    = document.getElementById('hrFilterTehsil').value;
