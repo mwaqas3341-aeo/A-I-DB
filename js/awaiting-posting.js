@@ -74,22 +74,8 @@ function apBuildDistrictDropdown() {
   apPopulateSelect('apFilterTehsil',   [],    'All Tehsils');
   apPopulateSelect('apFilterMarkaz',   [],    'All Markazs');
 
-  const u = typeof currentUser !== 'undefined' ? currentUser : null;
-  const isAdmin = u && String(u.role || '').toLowerCase() === 'admin';
-  if (u && !isAdmin && u.district) {
-    document.getElementById('apFilterDistrict').value = u.district;
-    onApDistrictChange();
-    if (u.wing)   { document.getElementById('apFilterWing').value   = u.wing;   onApWingChange(); }
-    if (u.tehsil) { document.getElementById('apFilterTehsil').value = u.tehsil; onApTehsilChange(); }
-    if (u.markaz)   document.getElementById('apFilterMarkaz').value = u.markaz;
-  }
-
-  if (typeof applyJurisdictionLock === 'function') {
-    applyJurisdictionLock(
-      { district: 'apFilterDistrict', wing: 'apFilterWing', tehsil: 'apFilterTehsil', markaz: 'apFilterMarkaz' },
-      u
-    );
-  }
+  // Awaiting Posting is statewide: every user sees all districts and can filter freely
+  // (no jurisdiction pre-selection or lock).
 }
 function onApDistrictChange() {
   const pool = apSchoolCache;
