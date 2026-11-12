@@ -2321,6 +2321,10 @@ async function apiCall(action, payload) {
       dbRow.changes_made_by = user?.name || '';
       dbRow.changes_made_at = new Date().toISOString();
       delete dbRow.personal_no;  // don't overwrite the PK
+      // An ordinary edit must NEVER change the employment status (a stale 'Active' value coming back from an
+      // open form would silently undo a Termination/Retirement/etc.). Status only changes through the dedicated
+      // actions (executeStaffAction, revert, end/renew contract, ...).
+      delete dbRow.status;
 
       // Same as addStaffRow: whenever the EMIS is present in the submitted
       // row (i.e. the edit form touched it), re-derive school_name/district/
