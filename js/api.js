@@ -191,21 +191,31 @@ function _db(table) {
       // If a caller asks for only a few columns (e.g. select('name_of_teacher')),
       // those jurisdiction columns are missing, every row fails the scope check
       // and a non-admin sees "No staff record found" — while admins (who skip the
-      // check) are fine. So for the scope-checked tables always fetch the full row
-      // from the gateway, then trim to the requested columns here.
-      const SCOPE_CHECKED = ['staff', 'staff_awaiting_posting', 'sne_subject_sanctioned', 'sne_seat_audit_log'];
-      const reqCols = String(state.columns || '*').trim();
-      const needsFullRow = SCOPE_CHECKED.includes(table) && reqCols !== '*';
+      // check) are fine. So for the scope-checked tables the jurisdiction columns are
+      // ADDED to a narrow request, and the result is trimmed back here.
+      // Jurisdiction columns the gateway needs per table to decide row visibility.
+      const SCOPE_COLS = {
+        staff:                   'district,wing,tehsil,markaz_name,school_emis_code',
+        staff_awaiting_posting:  'previous_district,previous_wing,previous_tehsil,previous_markaz',
+        sne_subject_sanctioned:  'emis,district,wing,tehsil,markaz_name',
+        sne_seat_audit_log:      'emis,district,wing,tehsil,markaz_name',
+      };
+      const reqCols    = String(state.columns || '*').trim();
+      const hasStar    = reqCols.split(',').some(c => c.trim() === '*');
+      const hasEmbed   = /[()]/.test(reqCols);           // e.g. '*, staff(name_of_teacher, ...)'
+      // Narrow select on a scope-checked table: ADD the jurisdiction columns to the request
+      // (never replace the column list, so embedded joins like staff(...) keep working).
+      const needsExtra = !!SCOPE_COLS[table] && !hasStar;
+      const sendCols   = needsExtra ? reqCols + ',' + SCOPE_COLS[table] : state.columns;
       const { data, error } = await hrGateway.select(table, {
-        columns: needsFullRow ? '*' : state.columns, filters: state.filters, orders: state.orders,
+        columns: sendCols, filters: state.filters, orders: state.orders,
         limit: canPushLimit ? state.limitN : undefined,
       });
       if (error) return { data: null, error };
       let rows = data || [];
-      if (needsFullRow && !/[():!]/.test(reqCols)) {
-        const keep = reqCols.split(',').map(c => c.trim()).filter(Boolean);
-        // Keep the full row while client-side filters below may still need other columns.
-        state._trimTo = keep;
+      if (needsExtra && !hasEmbed && !/[:!]/.test(reqCols)) {
+        // Only trim back to the requested columns when it is a plain column list.
+        state._trimTo = reqCols.split(',').map(c => c.trim()).filter(Boolean);
       }
       if (state.ilike) {
         const re = new RegExp('^' + state.ilike.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i');
