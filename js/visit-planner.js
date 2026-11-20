@@ -559,10 +559,11 @@
     if (!pa) { pa = document.createElement('div'); pa.id = 'vpPrintArea'; document.body.appendChild(pa); }
     const h = d.hdr, days = C.DAY_NAMES;
     const cols = d.columns || ['Visit Date', 'Day', 'Emis Code', 'Morning Visit (School 1)', 'Emis Code', 'Mid-Day Visit (School 2)'];
+    const ml = v => esc(v).replace(/\n/g, '<br>');                        // stacked schools: one numbered line each
     const pairRow = r => {
       const [a, b] = r.pair, dt = r.idx === 0 ? `<td rowspan="${r.span}">${fmtDate(r.date)}</td><td rowspan="${r.span}">${days[C.dowOf(r.date)]}</td>` : '';
-      return b ? `<tr>${dt}<td>${esc(a.emis)}</td><td>${esc(a.name)}</td><td>${esc(a.cat)}</td><td>${esc(b.emis)}</td><td>${esc(b.name)}</td><td>${esc(b.cat)}</td></tr>`
-               : `<tr>${dt}<td>${esc(a.emis)}</td><td>${esc(a.name)}</td><td colspan="4">${esc(a.cat)}</td></tr>`;
+      return b ? `<tr>${dt}<td>${ml(a.emis)}</td><td>${ml(a.name)}</td><td>${ml(a.cat)}</td><td>${ml(b.emis)}</td><td>${ml(b.name)}</td><td>${ml(b.cat)}</td></tr>`
+               : `<tr>${dt}<td>${ml(a.emis)}</td><td>${ml(a.name)}</td><td colspan="4">${ml(a.cat)}</td></tr>`;
     };
     const hol = r => `<tr class="vpp-hol vpp-hol-${esc(r.holiday.type)}"><td>${fmtDate(r.date)}</td><td>${days[C.dowOf(r.date)]}</td><td colspan="${cols.length - 2}" style="text-align:center;font-weight:bold">${esc((HOLTYPE[r.holiday.type] || 'Holiday').toUpperCase())} — ${esc(r.holiday.name)}</td></tr>`;
     const hs = (d.holidays || []).length

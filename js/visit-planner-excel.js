@@ -122,7 +122,8 @@
         put(4, a.emis).numFmt = '@'; put(5, a.name); put(6, a.cat);                 // EMIS | school | visit details
         if (b2) { put(7, b2.emis).numFmt = '@'; put(8, b2.name); put(9, b2.cat); }
         else { put(7, null); put(8, null); put(9, null); ws.mergeCells(`F${r}:I${r}`); }   // a single school: its visit details span the rest of the row
-        const lines = Math.max(...[[a.name, 28], [a.cat, b2 ? 26 : 95], [b2 && b2.name, 28], [b2 && b2.cat, 26]].map(([t, w]) => Math.ceil(String(t || '').length / w) || 1));
+        const nl = (t, w) => String(t || '').split('\n').reduce((n, part) => n + (Math.ceil(part.length / w) || 1), 0);   // stacked schools = several lines per cell
+        const lines = Math.max(...[[a.emis, 10], [a.name, 28], [a.cat, b2 ? 26 : 95], [b2 && b2.emis, 10], [b2 && b2.name, 28], [b2 && b2.cat, 26]].map(([t, w]) => nl(t, w)));
         ws.getRow(r).height = Math.max(12.75, 12.75 * lines);
         if (row.idx === 0) pStart = r;
         if (row.span > 1 && row.idx === row.span - 1) { ws.mergeCells(`B${pStart}:B${r}`); ws.mergeCells(`C${pStart}:C${r}`); }   // date + day span all rows of that date

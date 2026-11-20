@@ -36,19 +36,26 @@
 
   // ─── School lists ─────────────────────────────────────────────────
   async function loadWide() {
-    if (A.wide && A.wideFor === A.userId) return;
-    try {
-      const all = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await sb().rpc('visit_actual_wide_pool').range(from, from + PAGE - 1);
-        if (error) throw error;
-        all.push(...data);
-        if (data.length < PAGE) break;
+    if (A.wide && A.wideFor === A.userId) { A.wideState = 'ok'; return; }
+    A.wideState = 'loading';
+    const page = async i => {                                           // stable order so pages never overlap; one retry on a transient error
+      for (let a = 0; ; a++) {
+        const { data, error } = await sb().rpc('visit_actual_wide_pool').order('emis').range(i * PAGE, i * PAGE + PAGE - 1);
+        if (!error) return data;
+        if (a >= 1) throw error;
+        await new Promise(r => setTimeout(r, 600));
       }
-      A.wide = all.map(r => Object.assign({}, r, { emis: String(r.emis) })); A.wideFor = A.userId;
+    };
+    try {
+      const all = [...await page(0)];
+      for (let i = 1, more = all.length === PAGE; more; i += 4) {      // admins have ~39,000 schools: fetch the remaining pages 4 at a time
+        const pages = await Promise.all([0, 1, 2, 3].map(k => page(i + k)));
+        for (const p of pages) { all.push(...p); if (p.length < PAGE) { more = false; break; } }
+      }
+      A.wide = all.map(r => Object.assign({}, r, { emis: String(r.emis) })); A.wideFor = A.userId; A.wideState = 'ok';
     } catch (e) {
-      A.wide = null;
-      if (!A.wideWarned) { A.wideWarned = true; toast('School list function missing — run supabase/visit-planner/06_actual_visits_school_types.sql. Showing your jurisdiction schools only (Outsourced and district-wide Other Duty need it).', 'warning'); }
+      A.wide = null; A.wideState = 'failed';
+      if (!A.wideWarned) { A.wideWarned = true; toast('Could not load the full school list (' + (e.message || e) + '). Other Duty shows only your jurisdiction schools until you reopen this tab.', 'warning'); }
     }
   }
 
@@ -197,10 +204,12 @@
     return first + KINDS.map(([v, l]) => `<option value="${v}" ${v === keep ? 'selected' : ''}>${l}</option>`).join('');
   }
 
+  const filtersOn = () => isAdmin() || curType() === 'other_duty';
+
   function listForKind() {
     const kind = curKind(); if (!kind) return [];
     let l = baseList(curType()).filter(r => r.kind === kind);
-    if (isAdmin()) {
+    if (filtersOn()) {
       const d = $('vaFD').value, w = $('vaFW').value, t = $('vaFT').value, m = $('vaFM').value;
       l = l.filter(r => (!d || r.district === d) && (!w || r.wing === w) && (!t || r.tehsil === t) && (!m || r.markaz_name === m));
     }
@@ -215,7 +224,7 @@
     el.innerHTML = `<option value="">All ${label}</option>` + values.map(v => `<option value="${esc(v)}" ${v === keep ? 'selected' : ''}>${esc(v)}</option>`).join('');
   }
   function renderAdminFilters() {
-    const kind = curKind(); if (!isAdmin() || !kind) return;
+    const kind = curKind(); if (!filtersOn() || !kind) return;
     const all = baseList(curType()).filter(r => r.kind === kind);
     const d0 = $('vaFD').value;
     fillSel('vaFD', 'districts', uniq(all.map(r => r.district)), d0); const d = $('vaFD').value;
@@ -233,7 +242,9 @@
     if (keep && !shown.some(r => r.emis === keep)) { const hit = baseList(curType()).find(r => r.emis === keep); if (hit) shown.push(hit); }
     sel.innerHTML = '<option value="">' + (curType() === 'other_duty' ? '— no specific school (optional) —' : '— select school —') + '</option>' + shown.map(r =>
       `<option value="${esc(r.emis)}" ${r.emis === keep ? 'selected' : ''}>${esc(r.school_name)} (${esc(r.emis)})${r.markaz_name ? ' — ' + esc(r.markaz_name) : ''}</option>`).join('');
-    $('vaPickInfo').textContent = `${l.length} ${KIND_LABEL[curKind()] || ''} school${l.length === 1 ? '' : 's'}` + (l.length > MAX_OPTIONS ? ` — showing ${MAX_OPTIONS}, type in the filter box to narrow` : '');
+    $('vaPickInfo').textContent = `${l.length} ${KIND_LABEL[curKind()] || ''} school${l.length === 1 ? '' : 's'}` + (l.length > MAX_OPTIONS ? ` — showing ${MAX_OPTIONS}, type in the filter box to narrow` : '') +
+      (curType() === 'other_duty' && A.wideState === 'loading' ? ' — still loading all district schools, this list will grow' : '') +
+      (curType() === 'other_duty' && A.wideState === 'failed' ? ' — could not load all district schools; showing your jurisdiction only (reopen this tab to retry)' : '');
   }
 
   function resolveEmis() {
@@ -241,6 +252,7 @@
     if (!code) { out.textContent = ''; return null; }
     const hit = baseList(curType()).find(r => r.emis.toLowerCase() === code.toLowerCase());
     if (!hit) { out.innerHTML = `<span class="vp-error">EMIS ${esc(code)} not found ${curType() === 'other_duty' ? 'in your tehsil / wing / district' : 'in your jurisdiction'}.</span>`; return null; }
+    if (curType() === 'other_duty') { out.innerHTML = `✔ ${esc(hit.school_name)} — ${esc(KIND_LABEL[hit.kind])}${hit.markaz_name ? ' — ' + esc(hit.markaz_name) : ''}`; return hit; }   // Other Duty: the code decides the school type
     if (hit.kind !== curKind()) { out.innerHTML = `<span class="vp-error">${esc(hit.school_name)} is a ${esc(KIND_LABEL[hit.kind])} school — choose “${esc(KIND_LABEL[hit.kind])}” as the school type.</span>`; return null; }
     out.innerHTML = `✔ ${esc(hit.school_name)}${hit.markaz_name ? ' — ' + esc(hit.markaz_name) : ''}`; return hit;
   }
@@ -254,12 +266,13 @@
     $('vaVisitWrap').style.display = t === 'school' ? '' : 'none';
     $('vaCommentLbl').innerHTML = t === 'other_duty' ? 'Comment — what was the duty? (inquiry, exam duty, any other duty) <span style="color:#c0392b;font-weight:700">* required</span>' : 'Details / comment (optional)';
     $('vaComment').style.borderColor = t === 'other_duty' ? '#c0392b' : '';
-    $('vaEmisLbl').textContent = t === 'other_duty' ? 'EMIS code of the Public school (optional — leave blank if no specific school)' : 'EMIS code of the Public school';
-    const needEmis = !!kind && kind === 'public' && !adm, needPick = !!kind && !needEmis;
+    $('vaEmisLbl').textContent = t === 'other_duty' ? 'EMIS code of the school (optional — any school type; or leave blank and use the filters / school type below)' : 'EMIS code of the Public school';
+    const duty = t === 'other_duty';
+    const needEmis = duty || (!!kind && kind === 'public' && !adm), needPick = !!kind && (duty || !needEmis);
     $('vaEmisWrap').style.display = needEmis ? '' : 'none';
     $('vaPickBox').style.display = needPick ? '' : 'none';
-    $('vaAdminBox').style.display = adm && kind ? '' : 'none';
-    if (adm && kind) renderAdminFilters();
+    $('vaAdminBox').style.display = filtersOn() && kind ? '' : 'none';
+    if (filtersOn() && kind) renderAdminFilters();
     if (needPick) renderPick(want);
     if (needEmis) resolveEmis();
   }
@@ -269,6 +282,11 @@
   }
 
   function selectedSchool() {
+    if (curType() === 'other_duty') {
+      if ($('vaEmis').value.trim()) return resolveEmis();
+      const k = curKind(), v = $('vaPick').value; if (!k || !v) return null;
+      return baseList('other_duty').find(r => r.emis === v) || { emis: v, kind: k };
+    }
     const kind = curKind(); if (!kind) return null;
     if (kind === 'public' && !isAdmin()) return resolveEmis();
     const v = $('vaPick').value; if (!v) return null;
@@ -298,7 +316,7 @@
     const comment = $('vaComment').value.trim().slice(0, 500);
     if (!comment) throw new Error('Write a comment describing the other duty (inquiry, exam duty, any other duty).');
     // EMIS / school is optional for Other Duty: blank = no specific school. A typed but unknown EMIS is still rejected.
-    if (kind === 'public' && !isAdmin() && !sel && $('vaEmis').value.trim()) throw new Error(`EMIS ${$('vaEmis').value.trim()} was not found in your tehsil / wing / district. Correct it or clear the box to save without a school.`);
+    if ($('vaEmis').value.trim() && !sel) throw new Error(`EMIS ${$('vaEmis').value.trim()} was not found in your tehsil / wing / district. Correct it or clear the box to save without a school.`);
     return { visit_date: date, entry_type: 'other_duty', emis_code: sel ? sel.emis : null, school_type: sel ? (sel.kind || kind) : null, visit_type: null, comment };
   }
 
@@ -328,9 +346,9 @@
     $('vaDate').value = e.visit_date; $('vaType').value = e.entry_type;
     clearSchoolFields();
     $('vaKind').innerHTML = kindOptions(e.entry_type, e.school_type || '');
-    if (isAdmin()) ['vaFD', 'vaFW', 'vaFT', 'vaFM'].forEach(x => { $(x).value = ''; });
+    ['vaFD', 'vaFW', 'vaFT', 'vaFM'].forEach(x => { $(x).value = ''; });
     syncForm(e.emis_code || '');
-    if (e.emis_code && curKind() === 'public' && !isAdmin()) { $('vaEmis').value = e.emis_code; resolveEmis(); }
+    if (e.emis_code && (e.entry_type === 'other_duty' || (curKind() === 'public' && !isAdmin()))) { $('vaEmis').value = e.emis_code; resolveEmis(); }
     $('vaVisit').value = e.visit_type || ''; $('vaComment').value = e.comment || '';
     $('vaFormTitle').textContent = 'Edit entry'; $('vaBtnAdd').textContent = '💾 Update entry'; $('vaBtnCancel').style.display = '';
     $('vaFormCard').classList.add('va-editing'); $('vaFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -399,6 +417,27 @@
     return out;
   }
 
+  // Excel / print only (the on-screen list keeps one entry per school so each keeps its own edit button).
+  // A day with more than 2 visits is packed 3-4 schools per row: each of the two school blocks stacks its schools as numbered lines.
+  function exportGroups() {
+    const by = new Map();
+    sorted().forEach(e => { if (!by.has(e.visit_date)) by.set(e.visit_date, []); by.get(e.visit_date).push(e); });
+    const out = [], block = (items, from) => items.length ? {
+      emis: items.map((x, i) => `${from + i}) ${x.emis || '—'}`).join('\n'), name: items.map((x, i) => `${from + i}) ${x.name || '—'}`).join('\n'),
+      cat: items.map((x, i) => `${from + i}) ${x.cat || '—'}`).join('\n') } : null;
+    by.forEach((list, date) => {
+      list.filter(e => e.entry_type === 'leave').forEach(e => out.push({ date, leave: e }));
+      const items = list.filter(e => e.entry_type !== 'leave').map(itemOf);
+      if (items.length <= 2) { if (items.length) out.push({ date, pair: [items[0], items[1] || null], idx: 0, span: 1 }); return; }
+      const rows = Math.ceil(items.length / 4), base = Math.floor(items.length / rows), extra = items.length % rows;
+      for (let r = 0, at = 0; r < rows; r++) {
+        const chunk = items.slice(at, at += base + (r < extra ? 1 : 0)), half = Math.ceil(chunk.length / 2);
+        out.push({ date, pair: [block(chunk.slice(0, half), 1), block(chunk.slice(half), half + 1)], idx: r, span: rows });
+      }
+    });
+    return out;
+  }
+
   function render() {
     const list = sorted(), visits = list.filter(e => e.entry_type === 'school');
     const n = (arr) => arr.length;
@@ -437,7 +476,7 @@
     const typed = $('vaMarkazLabel').value.trim();
     const schools = A.entries.filter(e => e.entry_type === 'school').map(e => ({ markaz_name: e.markaz }));
     const hdr = sh().makeHeader(schools, typed, null, 'actual', A.year, A.month);
-    const vis = dayGroups().map(g => g.leave ? { date: g.date, special: 'ON LEAVE' + (g.leave.comment ? ' — ' + g.leave.comment : '') } : { date: g.date, pair: g.pair.map(x => x && { emis: x.emis, name: x.name, cat: x.cat }), idx: g.idx, span: g.span });
+    const vis = exportGroups().map(g => g.leave ? { date: g.date, special: 'ON LEAVE' + (g.leave.comment ? ' — ' + g.leave.comment : '') } : { date: g.date, pair: g.pair.map(x => x && { emis: x.emis, name: x.name, cat: x.cat }), idx: g.idx, span: g.span });
     const hols = holList();
     const holRows = [...A.holidays.entries()].filter(([, h]) => !h.vac || h.first).map(([date, h]) => ({ date, holiday: { type: h.type, name: holText(h) } }));
     const rows = vis.concat(holRows).sort((a, b) => a.date.localeCompare(b.date));
