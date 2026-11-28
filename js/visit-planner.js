@@ -412,8 +412,11 @@
         if (errs.length && !confirm(`${errs.length} warning(s) remain (e.g. schools with fewer than 2 visits). Finalize anyway?`)) return;
       }
       if (!finalized && configIssues().length) { toast(configIssues()[0], 'error'); return; }
-      await patchPlanner({ status: finalized ? 'edited' : 'finalized' }); renderAll();
-      toast(finalized ? 'Planner re-opened for editing.' : 'Planner marked as finalized.', 'success');
+      if (!finalized) { const serr = settingsError(); if (serr) { toast(serr, 'error'); return; } }
+      await patchPlanner(finalized ? { status: 'edited' } : Object.assign(settingsBody(), { status: 'finalized' })); renderAll();
+      if (finalized) { toast('Planner re-opened for editing.', 'success'); return; }
+      toast('Planner saved and marked as finalized.', 'success');
+      backToFirstPage('Plan saved and finalized. You can start another month or open this one again from Month & jurisdiction.');
     });
   }
 
@@ -545,10 +548,20 @@
 
   async function onExcel() {
     try {
-      const d = sheetData();
-      if (!d.rows.some(r => !r.holiday)) { toast('The planner has no visits to export.', 'warning'); return; }
+      if (!sheetData().rows.some(r => !r.holiday)) { toast('The planner has no visits to export.', 'warning'); return; }
+      if (S.planner && !locked()) {                       // save the plan first — the file must match what is stored
+        let saved = false;
+        await enqueue(async () => {
+          const err = settingsError(); if (err) { toast(err, 'error'); return; }
+          await patchPlanner(settingsBody()); saved = true;
+        });
+        if (!saved) return;
+      }
+      const d = sheetData();                              // built AFTER the save
       const name = `VISIT_PLAN_MARKAZ_${d.markazLabel.replace(/[^A-Za-z0-9]+/g, '')}_-_${C.MONTH_NAMES[S.month - 1].toUpperCase()}_${S.year}.xlsx`;
       await window.VisitPlannerExcel.download(d, name);
+      toast('Plan saved and downloaded.', 'success');
+      backToFirstPage('Plan saved and downloaded.');
     } catch (e) { toast(e.message || 'Excel export failed', 'error'); }
   }
 
@@ -835,6 +848,11 @@
     if (n > maxStep() && !isLegacy()) { stepMsg('Complete and save the previous step first.', 'err'); return; }
     if (stepNA(n)) n = n > S.step ? 4 : 2;
     S.step = n; stepMsg(''); renderAll();
+    $('vpWizard').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+  // After a plan is finalized or downloaded it is already saved — return to the first page of the Tentative Planner.
+  function backToFirstPage(msg) {
+    S.step = 1; renderAll(); stepMsg(msg || '', 'ok');
     $('vpWizard').scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
   function onStepSave(advance) {
