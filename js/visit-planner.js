@@ -19,6 +19,7 @@
     year: new Date().getFullYear(), month: new Date().getMonth() + 1,
     planner: null, entries: [], selected: new Map(), extraDates: new Set(),
     q: '', markaz: '', source: '', shown: 150, queue: Promise.resolve(),
+    myPlans: [], exporting: false,
     targets: [], holidays: [], vacations: [], editVac: null, jsel: { d: '', w: '', t: '', m: '' }, catSel: new Map(), editHol: null, step: 1, noHol: false
   };
   const STEPS = ['Month & jurisdiction', 'School categories', 'Private-school reason', 'Holidays', 'Leave & schools', 'Plan & submit'];
@@ -144,6 +145,7 @@
     }
     initWizardState();
     renderAll();
+    refreshMyPlans();
   }
   function initWizardState() {
     const j = jurSaved();
@@ -312,7 +314,7 @@
     return { gender, markaz, district, districtTitle: district.charAt(0) + district.slice(1).toLowerCase(), title };
   }
   function headerInfo() {
-    const typed = $('vpMarkazLabel').value.trim() || (S.planner && S.planner.markaz_label) || '';
+    const typed = (S.exporting ? '' : $('vpMarkazLabel').value.trim()) || (S.planner && S.planner.markaz_label) || '';
     return makeHeader([...S.selected.values()], typed, S.planner && S.planner.start_date, 'tentative', S.year, S.month);
   }
 
@@ -383,7 +385,7 @@
         if (error) throw error;
         S.entries = data.sort((a, b) => a.visit_date.localeCompare(b.visit_date) || a.slot - b.slot);
       }
-      renderAll();
+      renderAll(); refreshMyPlans();
       toast(g.warnings.length ? g.warnings[0] : `Planner generated: ${ents.filter(e => e.entry_type === 'school').length} visits for ${schools.length} school(s).`, g.warnings.length ? 'warning' : 'success');
     });
   }
@@ -425,7 +427,7 @@
       if (!confirm(`Delete the whole ${C.MONTH_NAMES[S.month - 1]} ${S.year} planner and all its visits? This cannot be undone.`)) return;
       const { error } = await sb().from('visit_planners').delete().eq('id', S.planner.id);
       if (error) throw error;
-      S.planner = null; S.entries = []; S.targets = []; S.holidays = []; S.extraDates = new Set(); applyDefaultSettings(); initWizardState(); renderAll(); toast('Planner deleted.', 'success');
+      S.planner = null; S.entries = []; S.targets = []; S.holidays = []; S.extraDates = new Set(); applyDefaultSettings(); initWizardState(); renderAll(); refreshMyPlans(); toast('Planner deleted.', 'success');
     });
   }
 
@@ -852,7 +854,7 @@
   }
   // After a plan is finalized or downloaded it is already saved — return to the first page of the Tentative Planner.
   function backToFirstPage(msg) {
-    S.step = 1; renderAll(); stepMsg(msg || '', 'ok');
+    S.step = 1; renderAll(); stepMsg(msg || '', 'ok'); refreshMyPlans();
     $('vpWizard').scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
   function onStepSave(advance) {
@@ -868,6 +870,64 @@
   }
   function onPrev() { let pv = S.step - 1; if (stepNA(pv)) pv--; goTo(Math.max(pv, 1)); }
 
+  // ─── My prepared plans: one button per saved plan, press = download its Excel ───
+  async function loadMyPlans() {
+    if (!S.userId) return;
+    const { data: ps, error } = await sb().from('visit_planners').select('*').eq('user_id', S.userId)
+      .order('year', { ascending: false }).order('month', { ascending: false }).limit(12);
+    if (error) return;                                  // the list is a convenience — never block the planner
+    const ids = (ps || []).map(p => p.id), counts = {};
+    if (ids.length) {
+      const { data: es } = await sb().from('visit_planner_entries').select('planner_id,entry_type').in('planner_id', ids);
+      (es || []).forEach(e => { if (e.entry_type === 'school') counts[e.planner_id] = (counts[e.planner_id] || 0) + 1; });
+    }
+    S.myPlans = (ps || []).map(p => ({ plan: p, visits: counts[p.id] || 0 }));
+    renderMyPlans();
+  }
+  const refreshMyPlans = () => { loadMyPlans().catch(() => {}); };
+
+  function renderMyPlans() {
+    const box = $('vpMyPlans'); if (!box) return;
+    box.innerHTML = S.myPlans.length
+      ? `<div class="vp-plans">` + S.myPlans.map(({ plan: p, visits }) =>
+          `<button type="button" class="vp-btn vp-plan-btn" data-act="dlPlan" data-id="${esc(p.id)}" ${visits ? '' : 'disabled'} title="${visits ? 'Download this plan as Excel' : 'No visits planned in this plan yet'}">` +
+          `⬇ ${C.MONTH_NAMES[p.month - 1]} ${p.year}<span class="vp-plan-sub"> · ${esc(p.status)}${visits ? ` · ${visits} visit${visits === 1 ? '' : 's'}` : ' · no visits yet'}</span></button>`).join('') + `</div>`
+      : '<div class="vp-muted">No plans prepared yet — every plan you prepare will appear here as a button.</div>';
+  }
+
+  // Builds the file from THAT plan's stored data. The plan open on screen is never touched:
+  // all queries finish first, then S is swapped for the duration of one synchronous sheetData() call and restored.
+  async function onDownloadPlan(id) {
+    const it = S.myPlans.find(x => x.plan.id === id); if (!it) return;
+    const btn = [...document.querySelectorAll('#vpMyPlans [data-act="dlPlan"]')].find(b => b.dataset.id === id);
+    if (btn) btn.disabled = true;
+    let d = null, name = '';
+    try {
+      const p = it.plan, y = p.year, m = p.month, ms = C.iso(y, m, 1), me = C.iso(y, m, C.daysInMonth(y, m));
+      const [tg, hl, en, vs] = await Promise.all([
+        sb().from('visit_planner_category_targets').select('category,min_visits,max_visits').eq('planner_id', p.id).order('category'),
+        sb().from('visit_planner_holidays').select('id,holiday_date,holiday_type,name').eq('planner_id', p.id).order('holiday_date'),
+        sb().from('visit_planner_entries').select('*').eq('planner_id', p.id).order('visit_date').order('slot'),
+        sb().from('visit_vacations').select('id,vacation_type,start_date,end_date,name').eq('user_id', S.userId).lte('start_date', me).gte('end_date', ms).order('start_date')]);
+      const err = tg.error || hl.error || en.error; if (err) throw err;
+      const snap = { planner: S.planner, year: S.year, month: S.month, entries: S.entries, extraDates: S.extraDates, targets: S.targets,
+                     holidays: S.holidays, vacations: S.vacations, selected: S.selected, exporting: S.exporting };
+      try {
+        Object.assign(S, { planner: p, year: y, month: m, entries: en.data || [], extraDates: new Set(), targets: tg.data || [], exporting: true,
+          holidays: (hl.data || []).map(h => ({ id: h.id, date: h.holiday_date, type: h.holiday_type, name: h.name })),
+          vacations: vs.error ? [] : (vs.data || []).map(v => ({ id: v.id, type: v.vacation_type, start: v.start_date, end: v.end_date, name: v.name })),
+          selected: new Map() });
+        S.entries.filter(e => e.entry_type === 'school').forEach(e => { if (!S.selected.has(e.emis_code)) S.selected.set(e.emis_code, schoolFromEntry(e)); });
+        d = sheetData();
+        name = `VISIT_PLAN_MARKAZ_${d.markazLabel.replace(/[^A-Za-z0-9]+/g, '')}_-_${C.MONTH_NAMES[m - 1].toUpperCase()}_${y}.xlsx`;
+      } finally { Object.assign(S, snap); }
+      if (!d.rows.some(r => !r.holiday)) { toast('This plan has no visits to export.', 'warning'); return; }
+      await window.VisitPlannerExcel.download(d, name);
+      toast(`${C.MONTH_NAMES[m - 1]} ${y} plan downloaded.`, 'success');
+    } catch (e) { toast(e.message || 'Download failed', 'error'); }
+    finally { if (btn) btn.disabled = false; }
+  }
+
   // ─── Events ───────────────────────────────────────────────────────
   function wire() {
     const root = $('vpRoot');
@@ -881,6 +941,7 @@
         $('vpSelCount').textContent = `${S.selected.size} selected · ${filteredPool().length} shown by filter · ${eligiblePool().length} eligible for this plan`;
         if (S.planner) renderSheet();
       } else if (a === 'delDate') onDelDate(b.dataset.date);
+      else if (a === 'dlPlan') onDownloadPlan(b.dataset.id);
       else if (a === 'goStep') goTo(+b.dataset.step);
       else if (a === 'editHol') { const h = S.holidays.find(x => x.id === b.dataset.id); if (h) { S.editHol = h.id; $('vpHDate').value = h.date; $('vpHType').value = h.type; $('vpHName').value = h.name; renderHolidays(); } }
       else if (a === 'delHol') { if (confirm('Remove this holiday?')) onHolidayDelete(b.dataset.id); }
@@ -955,6 +1016,7 @@
       <a class="vp-bigcard" href="#visit-planner" data-act="openActual"><div class="vp-bc-ico">✅</div><div class="vp-bc-t">Actual Visits</div><div class="vp-bc-d">Enter only EMIS codes and dates of the visits you actually made · Leave &amp; Other Duty · Excel &amp; print</div></a>
     </div>
     <div id="vpTentative" style="display:none"><button class="vp-btn vp-ghost" data-act="showHome" style="margin-bottom:10px">← Visit Planner</button>
+    <div class="vp-card" id="vpMyPlansCard"><div class="vp-h2">My prepared plans <span class="vp-muted" style="font-weight:400">— press a button to download that plan as Excel</span></div><div id="vpMyPlans"></div></div>
     <div id="vpWizard">
     <ol id="vpStepper" class="vp-stepper" aria-label="Plan configuration steps"></ol>
     <div class="vp-pane" data-pane="1"><div class="vp-card"><div class="vp-h2">Step 1 — Month &amp; jurisdiction</div>

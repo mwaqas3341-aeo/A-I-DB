@@ -116,3 +116,6 @@
 .vp-sumline{font-size:15px;line-height:1.9}
 .vp-bignum{font-size:24px;font-weight:800;color:#0d5c3a;padding:0 2px}
 .vp-table td.vp-num{font-size:24px;font-weight:800;text-align:center;line-height:1.2}
+
+/* ── My prepared plans (one download button per saved plan) ── */
+.vp-plans{display:flex;flex-wrap:wrap;gap:8px}.vp-plan-btn{display:inline-flex;align-items:center;gap:2px;white-space:normal;text-align:left}.vp-plan-sub{font-weight:400;opacity:.75;font-size:12px}
